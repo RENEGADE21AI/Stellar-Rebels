@@ -1,4 +1,4 @@
-import { AIM_PRECISION, ENDLESS_BOSSES, ENEMIES, GHOST, GUNNER_MUZZLES, HEIGHT, INPUT_RESUME, INPUT_SHIFT, PICKUPS, SHIPS, WIDTH, enemyMuzzle, formation, hardpointAt, stageById, weaponStats } from './catalog.mjs';
+import { AIM_PRECISION, ENDLESS_BOSSES, ENEMIES, GHOST, GUNNER_MUZZLES, HEIGHT, INPUT_RESUME, INPUT_SHIFT, PICKUPS, SHIPS, SPECIALS, WIDTH, enemyMuzzle, formation, hardpointAt, stageById, weaponStats } from './catalog.mjs';
 import { advanceBoss, bossPartPosition, launchBoss, operatorWarnings } from './bosses.mjs';
 import { markPull, markRail, markWall } from './boss-patterns.mjs';
 import { VANE_HULL, breakFormation, linkedVolley, vanePosition } from './formations.mjs';
@@ -32,6 +32,7 @@ export class Flight {
     this.inputFlags = 0;
     this.nextResumeGuard = 0;
     this.ship = SHIPS[run.ship] ?? SHIPS.kestrel;
+    this.special = run.special === 'ion' ? 'ion' : 'ghost';
     this.stats = weaponStats(run.equipment);
     this.stage = stageById(run.stage) ?? stageById(1);
     this.endless = run.mode === 'endless';
@@ -117,7 +118,7 @@ export class Flight {
   }
 
   get realmHop() { return this.boss?.kind === 'wraith'; }
-  get ghostCost() { return this.realmHop ? GHOST.hop : GHOST.cost; }
+  get ghostCost() { return this.realmHop ? GHOST.hop : SPECIALS[this.special].cost; }
   get shiftReady() {
     const p = this.player;
     return this.status === 'active' && p.ghostEnergy >= this.ghostCost && !p.ghostTime && !p.ghostRecovery;
@@ -132,6 +133,13 @@ export class Flight {
       p.realm = otherRealm(p.realm);
       p.ghostRecovery = GHOST.hopRecovery;
       this.signal('realmHop', p.x, p.y, p.realm);
+    } else if (this.special === 'ion') {
+      const { radius, recovery } = SPECIALS.ion;
+      const count = this.hostile.length;
+      this.hostile = this.hostile.filter((shot) => !shot.live || shot.kind === 'rock' ||
+        (shot.realm ?? PHYSICAL) !== PHYSICAL || (shot.x - p.x) ** 2 + (shot.y - p.y) ** 2 > radius ** 2);
+      p.ghostRecovery = recovery;
+      this.signal('ionBurst', p.x, p.y, { radius, cleared: count - this.hostile.length });
     } else {
       p.realm = SPECTRAL;
       p.ghostTime = GHOST.duration;
@@ -323,6 +331,8 @@ export class Flight {
         p.realm = PHYSICAL;
         this.signal('ghostEnd', p.x, p.y);
       }
+    } else if (!this.practice && p.ghostEnergy < GHOST.capacity) {
+      this.earnGhost(GHOST.recharge * dt);
     }
     p.ghostRecovery = duration(p.ghostRecovery - dt);
     if (this.keys) {

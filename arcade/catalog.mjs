@@ -2,13 +2,20 @@ import { innerRoute, outerRoute } from './routes.mjs';
 
 export const WIDTH = 384;
 export const HEIGHT = 768;
-export const RULES_VERSION = 'arcade-7';
+export const RULES_VERSION = 'arcade-8';
 export const FIXED_TICK = 1 / 60;
 export const AIM_PRECISION = 16;
 export const INPUT_SHIFT = 1;
 export const INPUT_RESUME = 2;
 export const GUNNER_MUZZLES = [[-21,22],[21,22]];
-export const GHOST = { capacity: 100, start: 26, cost: 38, duration: 1.05, recovery: 1.15, hop: 18, hopRecovery: .42 };
+export const GHOST = { capacity: 100, start: 100, recharge: 3, cost: 38, duration: 1.05, recovery: 1.15, hop: 18, hopRecovery: .42 };
+
+export const SPECIALS = {
+  ghost: { name: 'Ghost Shift', label: 'Shift', clearance: 0, cost: GHOST.cost,
+    description: 'Briefly phase through physical fire.' },
+  ion: { name: 'Ion Burst', label: 'Burst', clearance: 2, cost: 50, radius: 96, recovery: 1.65,
+    description: 'Clear nearby physical shots. Beams and debris keep moving.' }
+};
 
 export const SHIPS = {
   kestrel: {

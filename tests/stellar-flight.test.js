@@ -86,6 +86,29 @@ test('Arcade progression settles one receipt atomically and Endless pays no Salv
   assert.equal(p.salvage, 70);
 });
 
+test('Ion Burst unlocks at Stage 2 and freezes in each attempt and result', async () => {
+  const [, pilot] = await load;
+  const p = pilot.newPilot();
+  delete p.special;
+  assert.equal(pilot.beginRun(p, 'legacy', 'arcade', 1).special, 'ghost');
+  assert.equal(pilot.equipSpecial(p, 'ion'), false);
+  assert.equal(pilot.equipSpecial(p, 'constructor'), false);
+  const terminal = { status:'clear', score:2500, duration:160, kills:28 };
+  assert.equal(pilot.settleRun(p, 'legacy', terminal).newSpecial, null);
+  pilot.beginRun(p, 'second', 'arcade', 2);
+  assert.equal(pilot.settleRun(p, 'second', terminal).newSpecial, 'ion');
+  assert.equal(pilot.equipSpecial(p, 'ion'), true);
+  assert.equal(pilot.beginRun(p, 'repeat', 'arcade', 1).special, 'ion');
+  assert.equal(pilot.equipSpecial(p, 'ghost'), true);
+  const receipt = pilot.settleRun(p, 'repeat', { ...terminal, score:3500 });
+  assert.equal(receipt.special, 'ion');
+  assert.equal(p.records.arcade[1].special, 'ion');
+  assert.equal(receipt.newSpecial, null);
+  delete p.special;
+  assert.equal(pilot.hasSpecial(p, 'ion'), true, 'earlier Stage 2 clears still unlock Ion Burst');
+  assert.equal(pilot.beginRun(p, 'saved', 'endless').special, 'ghost');
+});
+
 test('an active attempt from the previous release retains its payout rules', async () => {
   const [, pilot, { STAGES }] = await load;
   const p = pilot.newPilot();
@@ -275,6 +298,7 @@ test('Ghost Shift spends earned charge and phases through physical danger withou
   const [{ Flight }, , { GHOST }] = await load;
   const f = new Flight(context());
   const p = f.player;
+  p.ghostEnergy = GHOST.cost - 12;
   assert.equal(f.activateGhost(), false);
   p.guard = 0;
   f.collect({ kind:'barrier' });
@@ -297,6 +321,65 @@ test('Ghost Shift spends earned charge and phases through physical danger withou
   while (p.ghostRecovery) f.movePilot(step);
   assert.equal(f.activateGhost(), true);
   assert.equal(new Flight(context()).player.ghostEnergy, GHOST.start);
+});
+
+test('ordinary charge starts full and recharges at three per second while practice controls its charge', async () => {
+  const [{ Flight }, , { GHOST }] = await load;
+  const f = new Flight(context());
+  const p = f.player;
+  assert.equal(p.ghostEnergy, GHOST.capacity);
+  assert.equal(f.activateGhost(), true);
+  const afterShift = p.ghostEnergy;
+  f.movePilot(GHOST.duration);
+  assert.equal(p.ghostEnergy, afterShift);
+  f.movePilot(2);
+  assert.equal(p.ghostEnergy, afterShift + 6);
+  for (let i = 0; i < 60; i++) f.movePilot(step);
+  assert.ok(Math.abs(p.ghostEnergy - afterShift - 9) < 1e-8);
+  f.movePilot(50);
+  assert.equal(p.ghostEnergy, GHOST.capacity);
+  f.practice = true;
+  p.ghostEnergy = 0;
+  f.movePilot(2);
+  assert.equal(p.ghostEnergy, 0);
+});
+
+test('Ion Burst clears local physical shots and leaves other threats and rewards intact', async () => {
+  const [{ Flight }, , { GHOST, SPECIALS }] = await load;
+  const { launchBoss } = await import('../arcade/bosses.mjs');
+  const f = new Flight({ ...context(2), special:'ion' });
+  const p = f.player;
+  const { radius, cost, recovery } = SPECIALS.ion;
+  f.projectile(p.x + radius, p.y, 0, 0);
+  f.projectile(p.x, p.y - 24, 0, 0, 'lance');
+  f.projectile(p.x + radius + 1, p.y, 0, 0);
+  f.projectile(p.x, p.y, 0, 0, 'rock');
+  f.projectile(p.x, p.y, 0, 0, 'specter', { realm:'ghost' });
+  const preserved = f.hostile.slice(-3);
+  const hazard = { type:'rail' };
+  f.hazards.push(hazard);
+  p.guard = 0;
+  assert.equal(f.ghostCost, cost);
+  assert.equal(f.activateGhost(), true);
+  assert.deepEqual(f.hostile, preserved);
+  assert.deepEqual(f.hazards, [hazard]);
+  assert.equal(p.ghostEnergy, GHOST.start - cost);
+  assert.equal(p.ghostRecovery, recovery);
+  assert.equal(p.ghostTime, 0);
+  assert.equal(p.realm, 'physical');
+  assert.equal(p.guard, 0);
+  assert.equal(f.score, 0);
+  assert.equal(f.kills, 0);
+  assert.deepEqual(f.takeEvents(), [{ type:'ionBurst', x:p.x, y:p.y, detail:{ radius, cleared:2 } }]);
+  assert.equal(f.activateGhost(), false);
+  f.movePilot(recovery);
+  assert.equal(f.shiftReady, true);
+  launchBoss(f, 'wraith');
+  assert.equal(f.ghostCost, GHOST.hop);
+  assert.equal(f.activateGhost(), true);
+  assert.equal(p.realm, 'ghost');
+  assert.equal(f.takeEvents().filter((event) => event.type === 'ionBurst').length, 0);
+  assert.equal(f.special, 'ion');
 });
 
 test('Shield refreshes one hit and expires when active flight time runs out', async () => {
@@ -602,7 +685,7 @@ test('the seed controls return lanes and the replay verifier rebuilds the score 
   assert.deepEqual(lanes(seed), lanes(seed));
   assert.notDeepEqual(lanes(seed), lanes('264d04d251dd434a82254d6a3f5409eb'));
 
-  const run = { ...context(), seed, rules:RULES_VERSION };
+  const run = { ...context(), seed, rules:RULES_VERSION, special:'ion' };
   const capture = captureReplay(run);
   const f = new Flight(run, { recordInput:capture.recordInput });
   while (f.status === 'active' && f.elapsed < 250) {
@@ -624,10 +707,15 @@ test('the seed controls return lanes and the replay verifier rebuilds the score 
   console.log(`Replay ${JSON.stringify(replay).length} bytes verified in ${Math.round(performance.now() - start)} ms`);
   assert.equal(checked.valid, true, JSON.stringify(checked));
   assert.equal(checked.result.score, f.score);
-  assert.equal(checked.board, `${RULES_VERSION}/arcade/1/kestrel/stock`);
+  assert.equal(checked.board, `${RULES_VERSION}/arcade/1/kestrel/stock/ion`);
+  assert.equal(verifyReplay({ ...replay, run:{ ...replay.run, special:'unknown' } }).valid, false);
+  assert.equal(verifyReplay({ ...replay, run:{ ...replay.run, special:['ion'] } }).valid, false);
   assert.equal(verifyReplay({ ...replay, result:{ ...replay.result, score:f.score + 1 } }).valid, false);
+  const [, x, y] = replay.commands[0];
   replay.commands[0][3] = 1;
-  assert.match(verifyReplay(replay).reason, /Ghost Shift/);
+  const replace = replay.commands[1]?.[0] === 1 ? 1 : 0;
+  replay.commands.splice(1, replace, [1, x, y, 1]);
+  assert.match(verifyReplay(replay).reason, /Special was unavailable/);
 });
 
 test('reduced effects preserve shot origins and combat outcomes', async () => {

@@ -9,12 +9,17 @@ import '../src/00-asset-manifest.js';
 import { verifyReplay } from '../arcade/replay.mjs';
 
 const commonModules = ['catalog', 'routes', 'seed', 'flight', 'bosses', 'boss-patterns', 'formations', 'cruiser', 'wraith', 'replay'];
+const collisionModules = [...commonModules, 'collision', 'enemy-course', 'silhouettes'];
 const sharedModules = ['src/00-runtime.js', 'src/00-gameplay-rules.js', 'src/00-asset-manifest.js'];
 const snapshots = {
   'arcade-5': { commit: 'b34b16ab9ffa383c0fd7ee6d9614a3ea35588324', modules: commonModules },
   'arcade-6': {
     commit: 'aa2b02f489bdf025e5b7de78774dae2cf4f047dc',
-    modules: [...commonModules, 'collision', 'enemy-course', 'silhouettes']
+    modules: collisionModules
+  },
+  'arcade-7': {
+    commit: '5c358f0d3a57d6eda7c89337891120a6a2b6064c',
+    modules: collisionModules
   }
 };
 
