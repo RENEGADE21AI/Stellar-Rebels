@@ -2,7 +2,7 @@ import { BOSSES, FIXED_TICK, HEIGHT, PICKUPS, SHIPS, STAGES, UPGRADES, WIDTH, st
 import { Flight } from './flight.mjs';
 import { FlightScene, loadSprite, spriteUrl } from './scene.mjs';
 import { FlightAudio } from './audio.mjs';
-import { PilotStore, abandonRun, beginRun, equip, hasShip, hasStage, install, settleRun } from './pilot.mjs';
+import { PilotStore, abandonRun, beginRun, equip, hasShip, hasStage, install, normalizeCallSign, settleRun } from './pilot.mjs';
 import { captureReplay } from './replay.mjs';
 import { otherRealm, realmLabel } from './wraith.mjs';
 import { mountTitlePatrol } from './title-patrol.mjs';
@@ -14,7 +14,7 @@ const sky = $('sky');
 const field = $('flight');
 const modal = $('flight-modal');
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
-const store = new PilotStore(globalThis.indexedDB, { reduced: reduced.matches });
+const store = new PilotStore(globalThis.indexedDB);
 const audio = new FlightAudio();
 const clock = globalThis.createFixedStepClock();
 const renderer = new FlightScene(sky);
@@ -23,6 +23,9 @@ const state = {
   helpBack: 'home', upgrade: null, flight: null, pending: null, last: null, busy: null, launch: null,
   pointer: null, keys: new Set(), input: 'touch', support: '', pack: 'waiting', packCheck: 0, installed: false, resumeAt: 0, finishAt: 0
 };
+const motionLimited = (preferences = state.pilot.settings) => reduced.matches || preferences.reduced;
+const appearance = (preferences) => motionLimited(preferences) === preferences.reduced
+  ? preferences : { ...preferences, reduced: true };
 
 const icons = {
   next: '<path d="m9 5 7 7-7 7"/>', back: '<path d="m15 5-7 7 7 7"/>',
@@ -40,7 +43,8 @@ const icons = {
   power: '<path d="m3 16 4-8 4 8m2 0 4-8 4 8"/>',
   check: '<path d="m4 12 5 5L20 6"/>',
   endless: '<path d="M9 10c-1.7-2.2-5.8-3.3-7 .3-1.2 3.4 2.4 6.6 5.6 3.9l8.9-6.6c3.2-2.7 6.8.5 5.6 3.9-1.1 3.6-5.3 2.5-7 .3"/>',
-  arrowout: '<path d="M12 4h8v8m0-8-9 9m7 2v5H4V6h5"/>'
+  arrowout: '<path d="M12 4h8v8m0-8-9 9m7 2v5H4V6h5"/>',
+  edit: '<path d="m15 5 4 4M5 15l-1 5 5-1L20 8l-4-4Z"/>'
 };
 const icon = (name, cls = '') => `<svg aria-hidden="true" viewBox="0 0 24 24" class="icon ${cls}">${icons[name] ?? ''}</svg>`;
 const format = new Intl.NumberFormat();
@@ -72,15 +76,36 @@ function wallet() {
 }
 
 function home() {
+  const callSign = normalizeCallSign(state.pilot.callSign) || 'Pilot';
+  const ship = SHIPS[state.pilot.ship].name;
   return `<article class="title-screen"><h1 tabindex="-1" class="brand-lockup"><img src="${media('brand/title-wordmark.webp')}" alt="Stellar Rebels" width="768" height="310"></h1>
     <canvas class="title-patrol" aria-hidden="true"></canvas>
-    <div class="title-actions">${saveNotice()}${action('Play', 'fly:next', 'primary', 'play')}
+    <div class="title-actions">${saveNotice()}
+      <div class="title-pilot">
+        <button type="button" class="title-id" data-action="view:callSign" aria-label="Edit call sign" aria-describedby="title-call-sign">
+          <span><small>Call sign</small><strong id="title-call-sign">${callSign}</strong></span>${icon('edit')}
+        </button>
+        <span class="title-equipped"><small>Equipped</small><strong>${ship}</strong></span>
+      </div>
+      ${action('Play', 'fly:next', 'primary', 'play')}
       <nav class="home-links" aria-label="Game options">
-        <button class="home-link" data-action="view:stages" aria-label="Stage Select">${icon('stages')} Arcade</button>
+        <button class="home-link" data-action="view:stages">${icon('stages')} Arcade</button>
         <button class="home-link" data-action="hangar:home">${icon('ship')} Hangar</button>
         <button class="home-link" data-action="view:records">${icon('score')} Records</button>
         <button class="home-link" data-action="view:settings">${icon('settings')} Settings</button>
       </nav></div></article>`;
+}
+
+function callSignView() {
+  const callSign = normalizeCallSign(state.pilot.callSign) ?? '';
+  return screen('Call sign', 'home', `<form class="call-sign-form" id="call-sign-form">
+    <label for="call-sign">Pilot name</label>
+    <input id="call-sign" name="callSign" value="${callSign}" placeholder="Pilot" maxlength="32"
+      autocapitalize="words" autocomplete="off" spellcheck="false" aria-describedby="call-sign-hint call-sign-error">
+    <p class="subtle" id="call-sign-hint">Up to 16 characters. Letters, numbers, spaces, and hyphens.</p>
+    <p class="notice" id="call-sign-error" role="status" hidden></p>
+    <button class="primary" type="submit">Save call sign ${icon('check')}</button>
+  </form>`);
 }
 
 function nextStage(pilot) {
@@ -184,9 +209,12 @@ const settings = {
 };
 
 function settingsView() {
-  const prefs = state.pilot.settings;
-  const switches = Object.entries(settings).map(([key, [label, copy]]) => `<div class="setting"><span><strong>${label}</strong><small>${copy}</small></span>
-    <button class="toggle" data-action="toggle:${key}" aria-label="${label}" aria-pressed="${prefs[key]}">${prefs[key] ? 'On' : 'Off'}</button></div>`).join('');
+  const prefs = appearance(state.pilot.settings);
+  const switches = Object.entries(settings).map(([key, [label, copy]]) => {
+    const systemMotion = key === 'reduced' && reduced.matches;
+    return `<div class="setting"><span><strong>${label}</strong><small>${systemMotion ? 'On in your device settings' : copy}</small></span>
+      <button class="toggle" data-action="toggle:${key}" aria-label="${label}" aria-pressed="${prefs[key]}" ${systemMotion ? 'disabled' : ''}>${prefs[key] ? 'On' : 'Off'}</button></div>`;
+  }).join('');
   return screen('Settings', 'home', `${switches}<div class="setting"><div><strong>Drag sensitivity</strong><small>Changes how far the ship follows a swipe</small></div>
     <select class="toggle" id="sensitivity" aria-label="Drag sensitivity"><option value="gentle" ${prefs.sensitivity === 'gentle' ? 'selected' : ''}>Gentle</option><option value="standard" ${prefs.sensitivity === 'standard' ? 'selected' : ''}>Standard</option><option value="direct" ${prefs.sensitivity === 'direct' ? 'selected' : ''}>Direct</option></select></div>
     <div class="notice" id="pack-status" role="status">${packCopy()}</div>${state.installed ? '' : '<p class="subtle">Install from your browser menu or Add to Home Screen in Safari.</p>'}
@@ -250,7 +278,7 @@ function launchView() {
     <p class="notice" role="status">Loading flight assets…</p>${action('Cancel launch', 'cancel-flight', 'quiet', 'back')}</article>`;
 }
 
-const views = { home, stages, hangar, upgrade: upgradeView, records, settings: settingsView, help: helpView, result: results, launch: launchView };
+const views = { home, callSign: callSignView, stages, hangar, upgrade: upgradeView, records, settings: settingsView, help: helpView, result: results, launch: launchView };
 
 function announce(message) { $('announcer').textContent = message; }
 
@@ -266,14 +294,13 @@ function showBrowserUpdate() {
 
 function show(view, focus = true) {
   if (!views[view]) return;
-  $('frame').dataset.reducedMotion = String(state.pilot.settings.reduced);
+  $('frame').dataset.reducedMotion = String(motionLimited());
   state.mode = 'menu';
   state.view = view;
   field.hidden = true;
   menu.hidden = false;
   menu.innerHTML = views[view]();
-  state.titlePatrol?.stop();
-  state.titlePatrol = view === 'home' ? mountTitlePatrol(menu.querySelector('.title-patrol'), state.pilot.settings.reduced, state.pilot.ship) : null;
+  refreshPatrol();
   showBrowserUpdate();
   menu.scrollTop = 0;
   if (focus) menu.querySelector('h1')?.focus({ preventScroll: true });
@@ -281,6 +308,20 @@ function show(view, focus = true) {
   lookForBrowserUpdate();
   audio.play('hangar');
 }
+
+function refreshPatrol() {
+  state.titlePatrol?.stop();
+  state.titlePatrol = state.view === 'home'
+    ? mountTitlePatrol(menu.querySelector('.title-patrol'), motionLimited(), state.pilot.ship) : null;
+}
+
+reduced.addEventListener('change', () => {
+  if (!state.pilot) return;
+  $('frame').dataset.reducedMotion = String(motionLimited());
+  if (state.mode !== 'menu' || state.launch) return;
+  if (state.view === 'home') refreshPatrol();
+  if (state.view === 'settings') show('settings', false);
+});
 
 function showHangar(from, selection = state.pilot.ship, tab = 'ships') {
   state.hangarBack = from;
@@ -350,7 +391,7 @@ async function start(which, trainingMode = null) {
     const recording = trainingMode ? null : captureReplay(run);
     const flight = new Flight(run, { recordInput: recording?.recordInput });
     const prepared = renderer.prepare(flight, launch.controller.signal);
-    if ((title || fromPractice) && !run.assistance.reduced) {
+    if ((title || fromPractice) && !motionLimited(run.assistance)) {
       await new Promise((done) => setTimeout(done, title ? 420 : 260));
     }
     if (!await prepared || launch.controller.signal.aborted) return;
@@ -367,7 +408,7 @@ async function start(which, trainingMode = null) {
     delete field.dataset.ending;
     clearInput();
     renderer.resize();
-    renderer.beginArrival?.(run.assistance.reduced);
+    renderer.beginArrival?.(motionLimited(run.assistance));
     showTrainingAction();
     globalThis.resetFixedStepClock(clock, performance.now());
     refreshHud(true);
@@ -526,7 +567,7 @@ function refreshHud(restart = false) {
   const visible = Boolean(message || bossCue);
   flash.classList.toggle('shown', visible);
   flash.dataset.kind = message?.kind ?? (bossCue ? 'warning' : '');
-  flash.style.setProperty('--notice-opacity', f.run.assistance.reduced || bossCue || !message ? '1' : String(Math.min(1, message.time / .45)));
+  flash.style.setProperty('--notice-opacity', motionLimited(f.run.assistance) || bossCue || !message ? '1' : String(Math.min(1, message.time / .45)));
   content('flight-name', visible ? message?.title || (bossCue ? 'Wraith' : message?.kind === 'pickup' ? 'Supply acquired' : f.stage.name) : '');
   $('flight-name').hidden = !visible;
   $('flight-tip').hidden = !message;
@@ -613,6 +654,7 @@ async function handle(command) {
   audio.effect('ui');
   if (type === 'view') {
     if (value === 'hangar' && state.view === 'upgrade') updateHangar(`upgrade:${state.upgrade}`);
+    else if (value === 'home' && state.view === 'callSign') returnToPilot();
     else show(value);
     return;
   }
@@ -622,7 +664,11 @@ async function handle(command) {
   if (type === 'help') { state.helpBack = value; show('help'); return; }
   if (type === 'practice') { await start('1', 'practice'); return; }
   if (type === 'finish-practice') { await finishPractice(); return; }
-  if (type === 'fly') { await start(value, value === 'next' && needsTraining() ? 'intro' : null); return; }
+  if (type === 'fly') {
+    const firstStage = value === 'next' || value === '1';
+    await start(value, firstStage && needsTraining() ? 'intro' : null);
+    return;
+  }
   if (type === 'tab') { state.hangarTab = value; updateHangar(command); return; }
   if (type === 'inspect') { state.inspected = value; updateHangar(command); return; }
   if (type === 'upgrade') { state.upgrade = value; show('upgrade'); return; }
@@ -669,6 +715,43 @@ async function handle(command) {
     show(state.view);
   }
 }
+
+function returnToPilot() {
+  show('home', false);
+  menu.querySelector('[data-action="view:callSign"]').focus({ preventScroll: true });
+}
+
+menu.addEventListener('submit', async (event) => {
+  const form = event.target;
+  if (form.id !== 'call-sign-form') return;
+  event.preventDefault();
+  if (state.busy) return;
+  const input = form.elements.callSign;
+  const status = $('call-sign-error');
+  const callSign = normalizeCallSign(input.value);
+  if (callSign === null) {
+    status.textContent = 'Enter up to 16 letters, numbers, spaces, or hyphens.';
+    status.hidden = false;
+    input.setAttribute('aria-invalid', 'true');
+    input.focus();
+    return;
+  }
+  input.removeAttribute('aria-invalid');
+  status.hidden = true;
+  const command = {};
+  state.busy = command;
+  try {
+    const { pilot } = await store.change((saved) => { saved.callSign = callSign; });
+    state.pilot = pilot;
+    returnToPilot();
+    announce(store.temporary ? 'Call sign set for this session.' : 'Call sign saved.');
+  } catch {
+    status.textContent = 'Device storage is unavailable. Try again.';
+    status.hidden = false;
+  } finally {
+    if (state.busy === command) state.busy = null;
+  }
+});
 
 document.addEventListener('click', async (event) => {
   const target = event.target.closest('button[data-action]');
@@ -768,13 +851,13 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('resize', () => {
   clearInput();
   if (state.mode === 'resuming') pause(true);
-  if (!field.hidden && state.flight) { renderer.resize(); renderer.draw(state.flight, state.flight.run.assistance); }
+  if (!field.hidden && state.flight) { renderer.resize(); renderer.draw(state.flight, appearance(state.flight.run.assistance)); }
 });
 
 function loop(timestamp) {
   const f = state.flight;
   if (state.mode === 'playing') {
-    const prefs = f.run.assistance;
+    const prefs = appearance(f.run.assistance);
     const tick = globalThis.advanceFixedStep(clock, timestamp, (dt) => {
       f.step(FIXED_TICK);
       renderer.advanceEffects(dt / 1000);
@@ -816,7 +899,7 @@ function loop(timestamp) {
   } else if (state.mode === 'finishing') {
     renderer.advanceEffects(Math.min(.06, Math.max(0, timestamp - state.finishingFrame) / 1000));
     state.finishingFrame = timestamp;
-    renderer.draw(f, f.run.assistance);
+    renderer.draw(f, appearance(f.run.assistance));
     if (timestamp >= state.finishAt) show('result');
   }
   requestAnimationFrame(loop);

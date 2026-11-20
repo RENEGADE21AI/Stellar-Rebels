@@ -4,6 +4,69 @@ const { chromium, webkit } = require('playwright');
 
 const origin = process.env.STELLAR_WEB_URL;
 
+test('title keeps the call sign, fits its controls, and teaches either first Arcade entry', { skip: !origin, timeout:45000 }, async () => {
+  const browser = await chromium.launch();
+  try {
+    for (const viewport of [{ width:320, height:568 }, { width:390, height:844 }, { width:844, height:390 }]) {
+      const context = await browser.newContext({ viewport, hasTouch:true, isMobile:true, serviceWorkers:'block' });
+      try {
+        const page = await context.newPage();
+        await page.goto(origin);
+        const play = page.getByRole('button', { name:'Play', exact:true });
+        await play.waitFor();
+        const arena = await page.locator('.frame').boundingBox();
+        const action = await play.boundingBox();
+        const ratio = (action.y + action.height / 2 - arena.y) / arena.height;
+        assert.ok(ratio >= .67 && ratio <= .81, `Play center was at ${ratio}`);
+        for (const item of await page.locator('.title-actions button').all()) {
+          const bounds = await item.boundingBox();
+          assert.ok(bounds.width >= 44 && bounds.height >= 44);
+        }
+        const edit = page.getByRole('button', { name:'Edit call sign' });
+        await edit.tap();
+        const name = page.getByRole('textbox', { name:'Pilot name' });
+        await name.fill('<b>');
+        await name.press('Enter');
+        assert.equal(await name.getAttribute('aria-invalid'), 'true');
+        await name.fill('  Orion   9 ');
+        await name.press('Enter');
+        await edit.waitFor();
+        assert.equal(await edit.evaluate((button) => document.activeElement === button), true);
+        await page.reload();
+        await page.getByText('Orion 9', { exact:true }).waitFor();
+        if (viewport.width === 320) {
+          await page.getByRole('button', { name:'Arcade', exact:true }).tap();
+          await page.getByRole('button', { name:/01 Vesper Orbit/ }).tap();
+        } else await play.tap();
+        await page.getByRole('button', { name:'Skip training', exact:true }).waitFor();
+      } finally { await context.close(); }
+    }
+  } finally { await browser.close(); }
+});
+
+test('a returning playfield follows an operating system reduction preference', { skip: !origin, timeout:15000 }, async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport:{ width:390, height:844 }, reducedMotion:'no-preference', serviceWorkers:'block' });
+    await page.goto(origin);
+    const open = () => page.getByRole('button', { name:'Settings', exact:true }).click();
+    const motion = page.getByRole('button', { name:'Reduced motion', exact:true });
+    await open();
+    assert.equal(await motion.getAttribute('aria-pressed'), 'false');
+    await page.getByRole('button', { name:'Back', exact:true }).click();
+    await page.emulateMedia({ reducedMotion:'reduce' });
+    await page.waitForFunction(() => document.querySelector('.frame').dataset.reducedMotion === 'true');
+    await page.reload();
+    await open();
+    assert.equal(await motion.getAttribute('aria-pressed'), 'true');
+    assert.equal(await motion.isDisabled(), true);
+    await page.emulateMedia({ reducedMotion:'no-preference' });
+    await page.waitForFunction(() => document.querySelector('.frame').dataset.reducedMotion === 'false');
+    assert.equal(await motion.getAttribute('aria-pressed'), 'false');
+    assert.equal(await motion.isEnabled(), true);
+  } finally { await browser.close(); }
+});
+
 test('first Play teaches steering, targeting and Shift before starting a recorded flight', { skip: !origin, timeout:45000 }, async () => {
   const browser = await chromium.launch();
   try {
@@ -200,7 +263,7 @@ test('restoring IndexedDB reconciles temporary results with the actual saved rec
         const play = page.getByRole('button', { name:'Play', exact:true });
         await play.waitFor();
         for (const state of ['home','stages']) {
-          if (state === 'stages') await page.getByRole('button', { name:'Stage Select', exact:true }).tap();
+          if (state === 'stages') await page.getByRole('button', { name:'Arcade', exact:true }).tap();
           const box = await banner.boundingBox();
           assert.ok(box.y >= 0 && box.y + box.height < 568, JSON.stringify(box));
         }
@@ -222,7 +285,7 @@ test('restoring IndexedDB reconciles temporary results with the actual saved rec
           await page.getByText('Asteroid Belt unlocked').waitFor();
         }
         await page.reload();
-        await page.getByRole('button', { name:'Stage Select', exact:true }).tap();
+        await page.getByRole('button', { name:'Arcade', exact:true }).tap();
         assert.equal(await page.getByRole('button', {name:/02 Asteroid Belt/}).isEnabled(), !existing);
         await page.getByText(existing ? '0 Salvage' : '78 Salvage', {exact:true}).waitFor();
       } finally { await context.close(); }
@@ -257,7 +320,7 @@ test('flight instructions stay in the HUD during real touch and a rail strike', 
         };
 
         await page.goto(origin);
-        await page.getByRole('button',{name:'Stage Select',exact:true}).tap();
+        await page.getByRole('button',{name:'Arcade',exact:true}).tap();
         await page.getByRole('button',{name:/01 Vesper Orbit/}).tap();
         await page.getByText('Fight through the blockade.',{exact:true}).waitFor();
         await page.keyboard.down('ArrowDown');
@@ -275,7 +338,7 @@ test('flight instructions stay in the HUD during real touch and a rail strike', 
         });
 
         await page.reload();
-        await page.getByRole('button',{name:'Stage Select',exact:true}).tap();
+        await page.getByRole('button',{name:'Arcade',exact:true}).tap();
         const redSun = page.getByRole('button',{name:/04 Red Sun/});
         assert.match(await redSun.innerText(),/Keep hull intact in the boss fight/);
         assert.equal(await page.getByRole('button',{name:'Endless',exact:true}).getAttribute('aria-describedby'),'endless-note');

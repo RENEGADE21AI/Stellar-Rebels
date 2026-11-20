@@ -53,7 +53,7 @@ async function trial(browser, variant) {
   });
 
   await page.goto(origin);
-  await page.getByRole('button', { name: 'Stage Select', exact: true }).click();
+  await page.getByRole('button', { name:'Arcade', exact: true }).click();
   await page.getByRole('button', { name: /01 Vesper Orbit/ }).click();
   await page.waitForFunction(() => globalThis.lab.state.mode === 'playing');
   const first = await snapshot();

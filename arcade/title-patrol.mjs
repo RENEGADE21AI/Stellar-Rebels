@@ -21,24 +21,25 @@ function lamp(c, x, y, size, color) {
   c.fill();
 }
 
-function drawCraft(c, image, x, y, size, turn, luminosity, friendly = false) {
+function drawCraft(c, image, x, y, size, turn, luminosity, friendly = false, thrust = 1) {
   c.save();
   c.translate(x, y);
   c.rotate(turn);
   c.globalAlpha = luminosity;
   const sign = friendly ? -1 : 1;
   const aft = -size * .24 * sign;
-  const tail = aft - size * .67 * sign;
+  const tail = aft - size * .67 * sign * thrust;
   const jet = c.createLinearGradient(0, aft, 0, tail);
   jet.addColorStop(0, friendly ? '#c4fffb' : '#fff3be');
-  jet.addColorStop(.23, friendly ? '#61c9ffb8' : '#ff7957a8');
+  jet.addColorStop(.23, friendly ? '#61c9ff89' : '#ff7957a8');
   jet.addColorStop(1, friendly ? '#4e7af900' : '#ff875100');
   c.fillStyle = jet;
   for (const edge of [-1, 1]) {
     const engine = edge * size * .105;
     c.beginPath();
-    c.moveTo(engine - size * .04, aft);
-    c.lineTo(engine + size * .04, aft);
+    const radius = size * (friendly ? .023 : .04);
+    c.moveTo(engine - radius, aft);
+    c.lineTo(engine + radius, aft);
     c.quadraticCurveTo(engine + size * .015, tail, engine, tail);
     c.closePath();
     c.fill();
@@ -84,7 +85,7 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
     if (!width || !height) return;
     c.setTransform(canvas.width / width, 0, 0, canvas.height / height, 0, 0);
     c.clearRect(0, 0, width, height);
-    const launchPhase = started === null ? 0 : clamp((time - started) / .72);
+    const launchPhase = started === null ? 0 : clamp((time - started) / .46);
     for (const speck of specks) {
       const y = (speck.y * height + time * speck.depth * 7 + launchPhase * 92 * speck.depth) % height;
       const x = speck.x * width;
@@ -108,10 +109,13 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
           i === 0 ? size : size * .88, turn, alpha);
       }
     }
-    if (launchPhase > 0) {
-      const y = height * (1.02 - .34 * launchPhase ** .76);
-      drawCraft(c, images.get(ship), width / 2, y, width * (.21 - launchPhase * .053), 0, clamp(launchPhase * 5), true);
-    }
+    const launchProgress = launchPhase ** 1.7;
+    const hover = reduce ? 0 : Math.sin(time * 1.3);
+    const heroY = height * (.44 - .69 * launchProgress) + hover * (1 - launchPhase) * 3.2;
+    const heroSize = width * (.60 - .34 * launchProgress);
+    const bank = (.12 + hover * .027) * (1 - launchPhase);
+    drawCraft(c, images.get(ship), width * .5, heroY, heroSize, bank,
+      images.has(ship) ? 1 : .28, true, .175 + launchPhase * .9);
   }
 
   function frame(timestamp) {

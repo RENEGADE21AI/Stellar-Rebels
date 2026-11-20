@@ -40,7 +40,7 @@ async function main() {
   try {
     const meta = await (await page.request.get(new URL('/version.json', origin).href)).json();
     await page.goto(origin);
-    await page.getByRole('button', { name: 'Stage Select', exact: true }).tap();
+    await page.getByRole('button', { name:'Arcade', exact: true }).tap();
     await page.getByRole('button', { name: /01 Vesper Orbit/ }).tap();
     await page.getByRole('button', { name: 'Pause', exact: true }).waitFor();
     const normal = await snapshot();

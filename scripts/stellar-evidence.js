@@ -30,7 +30,7 @@ async function open(browser, viewport, prefix) {
   await page.locator('img.craft-art').evaluate((img) => img.decode());
   await save('hangar');
   await page.getByRole('button', { name: 'Back', exact: false }).click();
-  await page.getByRole('button', { name: 'Stage Select', exact: true }).click();
+  await page.getByRole('button', { name:'Arcade', exact: true }).click();
   await save('stages');
   await page.getByRole('button', { name: /01 Vesper Orbit/ }).click();
   await page.waitForFunction(() => globalThis.capture?.state.mode === 'playing');

@@ -117,7 +117,7 @@ async function verify() {
       await page.getByRole('button',{name:'High contrast hazards'}).tap();
       await page.getByRole('button',{name:'Back'}).tap();
     }
-    await page.getByRole('button',{name:'Stage Select',exact:true}).tap();
+    await page.getByRole('button',{name:'Arcade',exact:true}).tap();
     const count=await page.locator('.stage').count();
     assert.ok(count>=3);
     assert.equal(await page.locator('.stage:disabled').count(), count-1);
@@ -182,7 +182,7 @@ async function verify() {
     await page.getByLabel('Stellar Rebels').getByText('Vesper Orbit', { exact:true }).waitFor();
     await shot('records');
     await page.getByRole('button',{name:'Back',exact:true}).tap();
-    await page.getByRole('button',{name:'Stage Select',exact:true}).tap();
+    await page.getByRole('button',{name:'Arcade',exact:true}).tap();
     await page.getByRole('button',{name:'Endless',exact:true}).tap();
     await page.waitForFunction(() => window.campaign.state.mode === 'playing' && window.campaign.state.flight.endless);
     const gravityEntry = await seekBossEntry(page);
