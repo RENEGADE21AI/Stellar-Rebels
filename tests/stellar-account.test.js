@@ -110,6 +110,14 @@ for (const [name, browserType, viewport] of [
       await signIn.waitFor();
       assert.deepEqual(vendorRequests, ['', '?retry=1']);
       assert.ok((await signIn.boundingBox()).height >= 44);
+      if (name === 'Chromium') {
+        await page.setViewportSize({ width:844, height:390 });
+        const control = await signIn.boundingBox();
+        const panel = await page.locator('.account-panel').boundingBox();
+        assert.ok(control.height >= 44);
+        assert.ok(control.x >= panel.x && control.x + control.width <= panel.x + panel.width);
+        await page.setViewportSize(viewport);
+      }
 
       await signIn.tap();
       await status('Could not reach Google. Check your connection and try again.').waitFor();
