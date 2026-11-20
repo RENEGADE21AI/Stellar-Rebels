@@ -31,6 +31,7 @@ export class Flight {
     this.elapsed = 0;
     this.score = 0;
     this.kills = 0;
+    this.movement = 0;
     this.combo = 0;
     this.breaks = 0;
     this.bossDamage = 0;
@@ -239,6 +240,7 @@ export class Flight {
     const amount = Math.min(1, this.ship.speed * dt / Math.max(.01, distance));
     p.x += dx * amount;
     p.y += dy * amount;
+    this.movement += distance * amount;
     p.bank += (clamp(dx / 25, -.22, .22) - p.bank) * Math.min(1, dt * 17);
     p.guard = duration(p.guard - dt);
     p.power = duration(p.power - dt);
@@ -474,7 +476,7 @@ export class Flight {
     if (this.status === 'active') return null;
     const condition = this.stage.mastery?.condition;
     const met = condition === 'parts' ? this.boss?.parts.every((p) => p.hull <= 0) : condition === 'cleanBoss' && this.bossDamage === 0;
-    return { status: this.status, score: this.score, duration: this.elapsed, kills: this.kills, breaks: this.breaks,
+    return { status: this.status, score: this.score, duration: this.elapsed, kills: this.kills, breaks: this.breaks, movement: this.movement,
       mastery: Boolean(!this.endless && this.status === 'clear' && met) };
   }
 }

@@ -102,6 +102,7 @@ button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(
 #sky:focus-visible{outline:2px solid #88f8df70}
 .flight-ui{position:absolute;inset:0;pointer-events:none;padding:calc(env(safe-area-inset-top) + 9px) max(12px,env(safe-area-inset-right)) max(16px,calc(env(safe-area-inset-bottom) + 8px)) max(12px,env(safe-area-inset-left));display:flex;flex-direction:column;gap:5px}
 .instrument{display:grid;grid-template-columns:auto 1fr 44px;align-items:center;gap:12px;min-height:53px;padding:4px 6px 4px 12px;border:1px solid #6a8092a9;background:#111c2bef;box-shadow:0 4px 16px #0008}
+.web-update{display:flex;justify-content:center;padding:10px 12px 0}
 .hull{display:grid;gap:5px}
 #hull{display:flex;gap:3px}
 .segment{width:clamp(8px,2.6vw,13px);height:8px;background:#2f4051;border:1px solid #617487}

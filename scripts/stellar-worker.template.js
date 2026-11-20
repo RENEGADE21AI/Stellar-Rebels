@@ -1,4 +1,5 @@
-const cacheName = 'stellar-flight-__VERSION__';
+const version = '__VERSION__';
+const cacheName = `stellar-flight-${version}`;
 const files = __PACK__;
 const precache = new Set(files);
 const generationPath = cacheName.replace('stellar-flight-', '/arcade/') + '/';
@@ -16,13 +17,17 @@ async function fillPack(cache) {
 }
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(cacheName).then(fillPack));
+  event.waitUntil(caches.open(cacheName).then(fillPack).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
-    for (const key of await caches.keys()) {
-      if (key.startsWith('stellar-flight-') && key !== cacheName) await caches.delete(key);
+    // A newer controller also serves the pinned asset paths of still-open pages.
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    if (!windows.length) {
+      for (const key of await caches.keys()) {
+        if (key.startsWith('stellar-flight-') && key !== cacheName) await caches.delete(key);
+      }
     }
     await self.clients.claim();
   })());
@@ -32,7 +37,7 @@ self.addEventListener('message', (event) => {
   if (event.data !== 'stellar-pack-status' || !event.ports[0]) return;
   event.waitUntil((async () => {
     const cache = await caches.open(cacheName);
-    event.ports[0].postMessage({ ready: await packReady(cache) });
+    event.ports[0].postMessage({ ready: await packReady(cache), version });
   })());
 });
 
@@ -55,7 +60,20 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
   const home = request.mode === 'navigate' && ['/', '/index.html'].includes(url.pathname);
-  if (!home && !precache.has(url.pathname)) return;
+  const requestedVersion = /^\/arcade\/([a-f0-9]{15})\//.exec(url.pathname)?.[1];
+  if (!home && !precache.has(url.pathname)) {
+    if (requestedVersion && requestedVersion !== version) {
+      event.respondWith((async () => {
+        const previous = `stellar-flight-${requestedVersion}`;
+        if (await caches.has(previous)) {
+          const cached = await (await caches.open(previous)).match(url.pathname);
+          if (cached) return request.headers.has('Range') ? fromRange(request, cached) : cached;
+        }
+        return fetch(request);
+      })());
+    }
+    return;
+  }
   event.respondWith((async () => {
     const cache = await caches.open(cacheName);
     const requested = home ? '/index.html' : url.pathname;

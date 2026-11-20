@@ -234,6 +234,16 @@ const views = { home, stages, hangar, upgrade: upgradeView, records, settings: s
 
 function announce(message) { $('announcer').textContent = message; }
 
+function showBrowserUpdate() {
+  if (!state.newPack || state.mode !== 'menu' || state.pending?.working || state.pending?.error ||
+      store.temporary || $('update-web')) return;
+  const update = document.createElement('aside');
+  update.id = 'update-web';
+  update.className = 'web-update';
+  update.innerHTML = action('Update browser build', 'update-web', 'quiet');
+  menu.prepend(update);
+}
+
 function show(view, focus = true) {
   if (!views[view]) return;
   state.mode = 'menu';
@@ -241,9 +251,11 @@ function show(view, focus = true) {
   field.hidden = true;
   menu.hidden = false;
   menu.innerHTML = views[view]();
+  showBrowserUpdate();
   menu.scrollTop = 0;
   if (focus) menu.querySelector('h1')?.focus({ preventScroll: true });
   if (view === 'settings') checkPack();
+  lookForBrowserUpdate();
   audio.play('hangar');
 }
 
@@ -409,6 +421,10 @@ async function changeSetting(key, value) {
 
 async function handle(command) {
   const [type, value] = command.split(':');
+  if (type === 'update-web') {
+    if (state.mode === 'menu' && state.newPack && !state.pending?.working && !state.pending?.error && !store.temporary) location.reload();
+    return;
+  }
   audio.unlock();
   audio.effect('ui');
   if (type === 'view') {
@@ -539,7 +555,7 @@ window.addEventListener('blur', () => pause(true));
 window.addEventListener('pagehide', () => { pause(true); audio.quiet(); });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { pause(true); audio.quiet(); }
-  else if (state.mode === 'menu') audio.play('hangar');
+  else if (state.mode === 'menu') { audio.play('hangar'); lookForBrowserUpdate(); }
 });
 window.addEventListener('resize', () => {
   clearInput();
@@ -590,6 +606,7 @@ function loop(timestamp) {
 }
 
 function packCopy() {
+  if (state.newPack) return 'A new browser build is ready.';
   if (state.pack === 'waiting') return 'Checking the offline flight pack…';
   if (state.pack === 'ready') return navigator.onLine ? 'Offline flight pack ready.' : 'Offline. Flight pack available.';
   if (!navigator.onLine) return 'Flight pack unavailable. Reconnect and reopen the game.';
@@ -616,9 +633,22 @@ function checkPack() {
   probe.port1.onmessage = (reply) => {
     clearTimeout(timeout);
     probe.port1.close();
+    if (reply.data?.ready && reply.data.version && check === state.packCheck) {
+      const own = /\/arcade\/([a-f0-9]{15})\//.exec(new URL(document.baseURI).pathname)?.[1];
+      state.newPack = Boolean(own && own !== reply.data.version);
+      showBrowserUpdate();
+    }
     update(reply.data?.ready === true ? 'ready' : 'missing');
   };
   worker.postMessage('stellar-pack-status', [probe.port2]);
+}
+
+let registration;
+let lastUpdateCheck = 0;
+function lookForBrowserUpdate() {
+  if (!registration || document.hidden || Date.now() - lastUpdateCheck < 60_000) return;
+  lastUpdateCheck = Date.now();
+  registration.update().catch(() => {});
 }
 
 async function boot() {
@@ -631,7 +661,11 @@ async function boot() {
     navigator.serviceWorker.addEventListener('controllerchange', checkPack);
     window.addEventListener('offline', checkPack);
     window.addEventListener('online', checkPack);
-    navigator.serviceWorker.register('/sw.js').then(checkPack).catch(() => {});
+    navigator.serviceWorker.register('/sw.js').then((worker) => {
+      registration = worker;
+      lastUpdateCheck = Date.now();
+      checkPack();
+    }).catch(() => {});
     checkPack();
   }
   state.installed = matchMedia('(display-mode: standalone)').matches;

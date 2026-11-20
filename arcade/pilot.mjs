@@ -10,7 +10,7 @@ function number(value) {
 
 export function newPilot(preferences) {
   return {
-    schema: SCHEMA, salvage: 0, clears: {}, mastery: {}, defeatBank: {}, equipment: [], ship: 'kestrel',
+    schema: SCHEMA, salvage: 0, clears: {}, mastery: {}, equipment: [], ship: 'kestrel',
     records: { arcade: {}, endless: null }, active: {}, receipts: {},
     settings: { ...DEFAULT_SETTINGS, ...preferences }
   };
@@ -76,6 +76,14 @@ export function abandonRun(pilot, id) {
   delete pilot.active[id];
 }
 
+function defeatAward(stage, record, movement) {
+  if (record.duration < 24 || record.kills < 5 || movement < 54) return 0;
+  const progress = Math.min(1, (record.duration - 18) / (stage.bossAt - 18));
+  const earned = Math.floor(.65 * stage.defeatCap * progress ** 1.35);
+  const rateLimit = Math.floor(.8 * stage.repeat * record.duration / (stage.bossAt + 55));
+  return Math.max(1, Math.min(earned, Math.floor(record.kills / 3), rateLimit));
+}
+
 export function settleRun(pilot, id, terminal) {
   if (Object.hasOwn(pilot.receipts, id)) return pilot.receipts[id];
   if (!Object.hasOwn(pilot.active, id)) return null;
@@ -103,11 +111,8 @@ export function settleRun(pilot, id, terminal) {
       newShip = Object.keys(SHIPS).find((key) => SHIPS[key].clearance === stage.id) ?? null;
       newStage = stage.id < STAGES.length ? stage.id + 1 : null;
     }
-  } else if (stage && record.kills >= 3) {
-    const progress = Math.min(1, record.duration / stage.bossAt);
-    const bank = Math.min(stage.defeatCap, Math.floor(progress * stage.defeatCap), Math.floor(record.kills * .85));
-    award = Math.max(0, bank - number(pilot.defeatBank[stage.id]));
-    pilot.defeatBank[stage.id] = Math.max(bank, number(pilot.defeatBank[stage.id]));
+  } else if (stage) {
+    award = defeatAward(stage, record, number(terminal.movement));
   }
 
   if (stage) {

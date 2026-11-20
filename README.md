@@ -11,7 +11,7 @@ npm run build:stellar
 node scripts/serve-static.js dist-stellar 4183
 ```
 
-`firebase.stellar.json` targets the existing Firebase project's additional site `stellar-rebels.web.app`. The original `star-strike-rush.web.app` account and browser storage remain on that origin. The production plan, progression design, truth record and separate critic ledgers record the verified scope. Expo EAS builds require a release-quality candidate and explicit owner approval.
+`firebase.stellar.json` targets the existing Firebase project's additional site `stellar-rebels.web.app`. Standing owner authorization covers tested browser updates on that target. The original `star-strike-rush.web.app` account and browser storage remain on that origin. Expo EAS builds require explicit owner approval. [Stellar Rebels Hosting workflow](docs/STELLAR_REBELS_HOSTING.md)
 
 ## Star Strike RUSH archive and tooling
 

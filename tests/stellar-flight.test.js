@@ -85,18 +85,31 @@ test('Arcade progression settles one receipt atomically and Endless pays no Salv
   assert.equal(p.salvage, 24);
 });
 
-test('a missed or repeated failed attempt cannot be farmed for the same payout', async () => {
-  const [, pilot] = await load;
+test('equally good new attempts earn modest Salvage and one attempt cannot pay twice', async () => {
+  const [, pilot, { STAGES }] = await load;
   const p = pilot.newPilot();
-  const attempt = (id, duration, kills) => {
-    pilot.beginRun(p, id, 'arcade', 1);
-    return pilot.settleRun(p, id, { status:'defeat', duration, kills, score:1000 }).award;
+  p.defeatBank = { 1:20 };
+  const attempt = (id, duration, kills, movement = 120, stage = 1) => {
+    pilot.beginRun(p, id, 'arcade', stage);
+    return pilot.settleRun(p, id, { status:'defeat', duration, kills, movement, score:1000 });
   };
-  assert.equal(attempt('quit', 14, 2), 0);
-  assert.equal(attempt('first', 80, 12), 10);
-  assert.equal(attempt('same', 80, 12), 0);
-  assert.equal(attempt('better', 111, 19), 5);
+  assert.equal(attempt('quit', 14, 8).award, 0);
+  assert.equal(attempt('idle', 80, 12, 0).award, 0);
+  assert.equal(attempt('low-combat', 80, 4).award, 0);
+  const first = attempt('first', 80, 12);
+  assert.equal(first.award, 4);
+  assert.equal(pilot.settleRun(p, 'first', { status:'defeat' }), first);
+  assert.equal(attempt('equal-as-new-run', 80, 12).award, first.award);
+  assert.equal(attempt('better', 111, 24).award, 7);
   assert.equal(p.salvage, 15);
+  for (const stage of STAGES) {
+    if (stage.id > 1) p.clears[stage.id - 1] = 1;
+    for (let t = 24; t <= stage.bossAt + 5; t++) {
+      const award = attempt(`bound-${stage.id}-${t}`, t, 300, 200, stage.id).award;
+      assert.ok(award / t < stage.repeat / (stage.bossAt + 55), `${stage.name} defeat farming at ${t}s`);
+    }
+  }
+  assert.equal(pilot.settleRun(p, 'first', { status:'defeat' }), null, 'aged-out receipts still have no active run to settle');
 });
 
 test('touch intent clamps, reanchors, and moves consistently at different render rates', async () => {

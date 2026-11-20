@@ -15,7 +15,7 @@ node scripts/build_stellar.js
 node scripts/serve-static.js dist-stellar 4183
 ```
 
-`/version.json` records the source commit and whether the package was assembled from a modified tree. The pinned browser artifact is `def5edaa4059a335ddf2a370b27ce508e496f428`, pack `4b5b85cac8444a6`. All 65 web payload files in the portable archive match the clean artifact by SHA-256. The Firebase site `stellar-rebels.web.app` is provisioned in the existing project `star-strike-rush`. Public deployment and Expo EAS mobile builds require explicit owner approval. This browser preview uses device-local data. The old site retains its existing account and saves.
+`/version.json` records the source commit and whether the package was assembled from a modified tree. The pinned predeployment artifact was `def5edaa4059a335ddf2a370b27ce508e496f428`, pack `4b5b85cac8444a6`. All 65 web payload files in that portable archive matched by SHA-256. Tested browser releases at `stellar-rebels.web.app` have standing owner authorization. Expo EAS and other mobile builds require explicit approval. The browser build uses device-local data. The old site retains its existing account and saves. [Public Hosting workflow](STELLAR_REBELS_HOSTING.md)
 
 The browser artifact contains all six stages, complete free progression, offline play after pack download, and the secondary Endless mode. At 320 × 568 and 390 × 844, Chromium exercised the opening combat, each boss with named fixtures, both unlocked ships, upgrade purchases, maximum-loadout replay and records after reload. A wall-clock touch run finished Vesper Orbit in the frozen three-stage checkpoint. WebKit launch, pause and resume are also covered. Hardware touch and sustained physical-device performance require device testing.
 
