@@ -71,6 +71,11 @@ async function main() {
     }
     await page.getByRole('button',{name:endless ? 'Stage Select' : 'Play',exact:true}).tap();
     if (endless) await page.getByRole('button',{name:'Endless',exact:true}).tap();
+    else if (firstStage === 1) {
+      await page.locator('#flight:not([hidden])').waitFor();
+      const skip = page.getByRole('button', { name:'Skip training', exact:true });
+      if (await skip.isVisible()) await skip.tap();
+    }
     const report = [];
     for (let stage = firstStage; stage < firstStage + stages; stage++) {
       await page.waitForFunction((id) => window.fullFlight.state.mode === 'playing' && window.fullFlight.state.flight.stage.id === id, stage);

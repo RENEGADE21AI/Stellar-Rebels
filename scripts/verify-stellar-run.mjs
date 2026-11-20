@@ -8,8 +8,15 @@ import '../src/00-gameplay-rules.js';
 import '../src/00-asset-manifest.js';
 import { verifyReplay } from '../arcade/replay.mjs';
 
-const snapshots = { 'arcade-5': 'b34b16ab9ffa383c0fd7ee6d9614a3ea35588324' };
-const archiveFiles = ['catalog', 'routes', 'seed', 'flight', 'bosses', 'boss-patterns', 'formations', 'cruiser', 'wraith', 'replay'];
+const commonModules = ['catalog', 'routes', 'seed', 'flight', 'bosses', 'boss-patterns', 'formations', 'cruiser', 'wraith', 'replay'];
+const sharedModules = ['src/00-runtime.js', 'src/00-gameplay-rules.js', 'src/00-asset-manifest.js'];
+const snapshots = {
+  'arcade-5': { commit: 'b34b16ab9ffa383c0fd7ee6d9614a3ea35588324', modules: commonModules },
+  'arcade-6': {
+    commit: 'aa2b02f489bdf025e5b7de78774dae2cf4f047dc',
+    modules: [...commonModules, 'collision', 'enemy-course', 'silhouettes']
+  }
+};
 
 async function checkReplay(replay) {
   const rules = replay?.run?.rules;
@@ -17,22 +24,29 @@ async function checkReplay(replay) {
   // Use the released simulation for old files. Restoring today's collision and
   // movement rules must never change the verdict for an earlier replay.
   const base = mkdtempSync(join(tmpdir(), 'stellar-verify-'));
-  const folder = join(base, 'arcade');
+  const snapshot = snapshots[rules];
+  const directories = [];
   const written = [];
   try {
-    mkdirSync(folder);
+    for (const name of ['arcade', 'src']) {
+      const directory = join(base, name);
+      mkdirSync(directory);
+      directories.push(directory);
+    }
     const cwd = dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
-    for (const name of archiveFiles) {
-      const file = join(folder, name + '.mjs');
-      const bytes = execFileSync('git', ['show', snapshots[rules] + ':arcade/' + name + '.mjs'], { cwd });
+    const files = [...sharedModules, ...snapshot.modules.map((name) => `arcade/${name}.mjs`)];
+    for (const path of files) {
+      const file = join(base, path);
+      const bytes = execFileSync('git', ['show', `${snapshot.commit}:${path}`], { cwd });
       writeFileSync(file, bytes);
       written.push(file);
     }
-    const archive = await import(pathToFileURL(join(folder, 'replay.mjs')).href);
+    for (const path of sharedModules) await import(pathToFileURL(join(base, path)).href);
+    const archive = await import(pathToFileURL(join(base, 'arcade', 'replay.mjs')).href);
     return archive.verifyReplay(replay);
   } finally {
     for (const file of written) unlinkSync(file);
-    rmdirSync(folder);
+    for (const folder of directories) rmdirSync(folder);
     rmdirSync(base);
   }
 }

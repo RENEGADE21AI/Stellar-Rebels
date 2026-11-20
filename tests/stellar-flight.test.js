@@ -74,7 +74,7 @@ test('Arcade progression settles one receipt atomically and Endless pays no Salv
   assert.equal(pilot.install(p, 'rails'), false);
   assert.equal(p.salvage, 8);
   pilot.beginRun(p, 'repeat', 'arcade', 1);
-  assert.equal(pilot.settleRun(p, 'repeat', result).award, 16);
+  assert.equal(pilot.settleRun(p, 'repeat', result).award, 62);
   pilot.beginRun(p, 'ongoing', 'arcade', 1);
   pilot.abandonRun(p, 'ongoing');
   assert.equal(pilot.settleRun(p, 'ongoing', result), null);
@@ -83,15 +83,17 @@ test('Arcade progression settles one receipt atomically and Endless pays no Salv
   assert.equal(s.award, 0);
   assert.equal(s.ship, 'kestrel');
   assert.equal(p.records.endless.duration, 183);
-  assert.equal(p.salvage, 24);
+  assert.equal(p.salvage, 70);
 });
 
-test('equally good new attempts earn modest Salvage and one attempt cannot pay twice', async () => {
+test('an active attempt from the previous release retains its payout rules', async () => {
   const [, pilot, { STAGES }] = await load;
   const p = pilot.newPilot();
   p.defeatBank = { 1:20 };
   const attempt = (id, duration, kills, movement = 120, stage = 1) => {
-    pilot.beginRun(p, id, 'arcade', stage);
+    const active = pilot.beginRun(p, id, 'arcade', stage);
+    active.rules = 'arcade-6';
+    delete active.rewardVersion;
     return pilot.settleRun(p, id, { status:'defeat', duration, kills, movement, score:1000 });
   };
   assert.equal(attempt('quit', 14, 8).award, 0);
@@ -111,6 +113,35 @@ test('equally good new attempts earn modest Salvage and one attempt cannot pay t
     }
   }
   assert.equal(pilot.settleRun(p, 'first', { status:'defeat' }), null, 'aged-out receipts still have no active run to settle');
+});
+
+test('an active minute pays useful Salvage while clears earn more per minute', async () => {
+  const [, pilot, { STAGES }] = await load;
+  const p = pilot.newPilot();
+  assert.equal(p.settings.trainingDone, false);
+  const attempt = (id, status, duration, kills, movement, stage = 1) => {
+    pilot.beginRun(p, id, 'arcade', stage);
+    return pilot.settleRun(p, id, { status, duration, kills, movement, score:2500 });
+  };
+  assert.equal(attempt('early', 'defeat', 16, 15, 800).award, 0);
+  assert.equal(attempt('idle', 'defeat', 60, 15, 0).award, 0);
+  assert.equal(attempt('idle-then-steer', 'defeat', 60, 15, 80).award, 0);
+  assert.equal(attempt('no-combat', 'defeat', 60, 4, 1200).award, 0);
+  const active = attempt('active-minute', 'defeat', 60, 15, 900);
+  assert.equal(active.award, 18);
+  assert.equal(pilot.settleRun(p, 'active-minute', { status:'defeat' }), active);
+  assert.equal(attempt('another-minute', 'defeat', 60, 15, 900).award, 18);
+  assert.equal(p.salvage, 36);
+  for (const stage of STAGES) {
+    p.clears[stage.id] = 1;
+    const expectedClearTime = stage.bossAt + 55;
+    const clear = attempt(`clear-${stage.id}`, 'clear', expectedClearTime, 50, 2400, stage.id);
+    for (const duration of [24, 45, 60, 90, expectedClearTime, expectedClearTime + 90]) {
+      const loss = attempt(`defeat-${stage.id}-${duration}`, 'defeat', duration, 70, 2400, stage.id);
+      assert.ok(loss.award / duration < clear.award / expectedClearTime, `${stage.name} defeat farming at ${duration}s`);
+      assert.ok(loss.award <= clear.award * .65);
+    }
+  }
 });
 
 test('touch intent clamps, reanchors, and moves consistently at different render rates', async () => {
@@ -167,6 +198,53 @@ test('rail and gravity lanes take effect only at the marked place and time', asy
   assert.ok(f.hostile.every((shot) => Math.abs(shot.y - wall.rowY) < .001));
 });
 
+test('Harrow marks the actual asteroid launch origin and exact collidable positions', async () => {
+  const [{ Flight }, , , { launchBoss, operatorWarnings }] = await load;
+  const { harrow, markWall } = await import('../arcade/boss-patterns.mjs');
+  const f = new Flight(context(2));
+  markWall(f, 2);
+  assert.ok(f.hazards[0].origin.y < 0);
+  f.hazards.length = 0;
+
+  launchBoss(f, 'warden');
+  const boss = f.boss;
+  Object.assign(boss, { x:241, y:225, attack:1 });
+  harrow(f, boss, 1);
+  const [wall, second] = f.hazards;
+  assert.equal(wall.origin.x, boss.x);
+  assert.ok(wall.origin.y > boss.y && wall.origin.y < wall.y);
+  assert.ok(wall.rocks.length >= 5);
+  assert.ok(wall.rocks.every(({ x, y }) => Math.abs(x - wall.x) >= wall.width/2 + 15 && y === wall.y));
+
+  operatorWarnings(f, wall.windup - .04);
+  assert.equal(f.hostile.length, 0);
+  operatorWarnings(f, .05);
+  assert.deepEqual(f.hostile.map(({ x,y }) => ({ x,y })), wall.rocks);
+
+  boss.x = 193;
+  operatorWarnings(f, -second.age + .01);
+  assert.equal(second.origin.x, boss.x);
+  assert.equal(f.hostile.length, wall.rocks.length);
+});
+
+test('every mounted boss target is reachable from the pilot side of its hull', async () => {
+  const [{ Flight }, , , { launchBoss }] = await load;
+  const f = new Flight(context());
+  for (const kind of ['gatekeeper', 'matron', 'crown']) {
+    launchBoss(f, kind);
+    const b = f.boss;
+    Object.assign(b, { x:192, y:230, age:b.entryTime });
+    for (const part of b.parts) {
+      const x = b.x + part.dx;
+      const y = b.y + part.dy + 78;
+      f.friendly.push({ x, y, px:x, py:y, vx:0, vy:-685, strength:part.hull, live:true });
+      for (let i = 0; i < 10; i++) f.moveProjectiles(step);
+      assert.ok(part.hull <= 0, `${kind} module ${Math.sign(part.dx)} is shielded by its own silhouette`);
+    }
+    assert.equal(b.hull, b.spec.hull);
+  }
+});
+
 test('linked Gunners launch from both rotated hardware mounts', async () => {
   const [{ Flight }, , { GUNNER_MUZZLES, hardpointAt }] = await load;
   const { linkedVolley } = await import('../arcade/formations.mjs');
@@ -193,7 +271,7 @@ test('fatal rail damage ends the run before a simultaneous repair', async () => 
   assert.ok(!f.events.some((event) => event.type === 'pickup'));
 });
 
-test('Ghost Shift spends earned charge and phases through physical danger without spending a barrier', async () => {
+test('Ghost Shift spends earned charge and phases through physical danger without consuming the Shield', async () => {
   const [{ Flight }, , { GHOST }] = await load;
   const f = new Flight(context());
   const p = f.player;
@@ -205,19 +283,52 @@ test('Ghost Shift spends earned charge and phases through physical danger withou
   assert.equal(f.activateGhost(), true);
   assert.equal(p.ghostEnergy, 0);
   assert.equal(f.damage(p.x, p.y), false);
-  assert.equal(p.barrier, 2);
+  assert.equal(p.barrier, 1);
   for (let i = 0; i < 50; i++) { f.scoreKill(100); f.earnGhost(5, true); }
   assert.equal(p.ghostEnergy, 0);
   while (p.ghostTime) f.movePilot(step);
   assert.equal(p.realm, 'physical');
   assert.equal(f.damage(p.x, p.y), true);
-  assert.equal(p.barrier, 1);
+  assert.equal(p.barrier, 0);
+  assert.equal(p.barrierTime, 0);
   f.earnGhost(500);
   assert.equal(p.ghostEnergy, GHOST.capacity);
   assert.equal(f.activateGhost(), false);
   while (p.ghostRecovery) f.movePilot(step);
   assert.equal(f.activateGhost(), true);
   assert.equal(new Flight(context()).player.ghostEnergy, GHOST.start);
+});
+
+test('Shield refreshes one hit and expires when active flight time runs out', async () => {
+  const [{ Flight }, , { PICKUPS }] = await load;
+  const f = new Flight(context());
+  const pilot = f.player;
+  f.collect({ kind:'barrier' });
+  assert.equal(pilot.barrier, 1);
+  assert.equal(pilot.barrierTime, PICKUPS.barrier.duration);
+  f.movePilot(PICKUPS.barrier.duration / 2);
+  assert.equal(pilot.barrier, 1);
+  assert.equal(pilot.barrierTime, PICKUPS.barrier.duration / 2);
+  f.collect({ kind:'barrier' });
+  assert.equal(pilot.barrier, 1);
+  assert.equal(pilot.barrierTime, PICKUPS.barrier.duration);
+  f.movePilot(PICKUPS.barrier.duration);
+  assert.equal(pilot.barrier, 0);
+  assert.equal(pilot.barrierTime, 0);
+  assert.equal(f.damage(pilot.x, pilot.y), true);
+  assert.equal(pilot.hull, pilot.maxHull - 1);
+});
+
+test('interactive practice uses authored encounters without scheduling Arcade waves or supplies', async () => {
+  const [{ Flight }] = await load;
+  const f = new Flight(context());
+  f.practice = true;
+  f.elapsed = f.stage.bossAt + 1;
+  f.updateSchedule();
+  assert.deepEqual(f.spawns, []);
+  assert.deepEqual(f.pickups, []);
+  assert.equal(f.boss, null);
+  assert.equal(f.cruiser, null);
 });
 
 test('Wraith realm hops alternate actual vulnerability and a charged volley keeps its telegraphed target', async () => {
@@ -277,7 +388,7 @@ test('a returning Outer Orbit pilot keeps the original mastery and earns Wraith 
   const run = beginRun(pilot, 'fresh-wraith', 'arcade', 5);
   const result = settleRun(pilot, run.id, { status:'clear', score:5000, duration:190, kills:18, mastery:true });
   assert.equal(result.first, false);
-  assert.equal(result.award, 40);
+  assert.equal(result.award, 124);
   assert.equal(result.mastery, true);
   assert.deepEqual(pilot.mastery, { 5:true, wraith:true });
 });
@@ -342,6 +453,81 @@ test('a surviving fighter loops up the edge once with its existing hull and no d
   f.step(step);
   assert.equal(f.enemies.includes(enemy), false);
   assert.equal(f.kills, 0);
+});
+
+test('Scouts close space quickly while a Diver can be baited during its warning', async () => {
+  const [{ Flight }] = await load;
+  const { diveWarningAt } = await import('../arcade/enemy-course.mjs');
+  const f = new Flight(context());
+  f.addEnemy({ kind:'scout', lane:.1 });
+  f.addEnemy({ kind:'diver', lane:.3 });
+  const [scout, diver] = f.enemies;
+  f.player.x = 350;
+  for (let i = 0; i < 60; i++) f.moveEnemies(step);
+  assert.ok(scout.y > 125, 'travel more than 157 units in the first second');
+  while (diver.age < diveWarningAt + step) f.moveEnemies(step);
+  assert.equal(diver.dive, false);
+  f.player.x = 20;
+  while (!diver.dive && diver.age < 3) f.moveEnemies(step);
+  assert.equal(diver.dive, true);
+  assert.ok(diver.vector < Math.PI / 2, 'locked its dive toward the original right-side pilot');
+});
+
+test('overlapping ships give one another space and hostile projectiles never deal friendly fire', async () => {
+  const [{ Flight }] = await load;
+  const f = new Flight(context());
+  for (let i = 0; i < 2; i++) f.addEnemy({ kind:'scout', lane:.5 });
+  const [first, second] = f.enemies;
+  for (const enemy of [first, second]) {
+    Object.assign(enemy, { y:160, pace:1, fireTimer:99 });
+  }
+  for (let i = 0; i < 18; i++) {
+    const previous = first.x;
+    f.moveEnemies(step);
+    assert.ok(Math.abs(first.x - previous) < 3, 'separation is steered without a teleport');
+  }
+  assert.ok(Math.abs(first.x - second.x) > 17, 'ships no longer share one silhouette');
+  f.player.x = first.x;
+  first.turn = 0;
+  second.x = first.x;
+  second.y = first.y + 45;
+  f.enemyFire(first);
+  assert.equal(f.hostile.length, 0, 'a Scout holds its shot through a wingmate');
+  second.x += 38;
+  f.enemyFire(first);
+  assert.equal(f.hostile.length, 1);
+  f.hostile.length = 0;
+  f.projectile(first.x, first.y - 25, Math.PI / 2, 180, 'bolt');
+  const hostile = f.hostile[0];
+  f.moveProjectiles(.3);
+  assert.ok(hostile.y > first.y + 20);
+  assert.equal(hostile.live, true);
+  assert.equal(first.hull, first.spec.hull);
+  assert.equal(second.hull, second.spec.hull);
+});
+
+test('a Splitter releases one pair of telegraphed Shards with one volley each', async () => {
+  const [{ Flight }] = await load;
+  const { shardArmTime } = await import('../arcade/enemy-course.mjs');
+  const f = new Flight(context(2));
+  f.addEnemy({ kind:'splitter', lane:.5 });
+  const body = f.enemies[0];
+  body.y = 225;
+  f.hitEnemy(body, { strength:100, x:body.x, y:body.y });
+  f.hitEnemy(body, { strength:100, x:body.x, y:body.y });
+  const shards = f.enemies.filter((e) => e.kind === 'shard');
+  assert.equal(shards.length, 2);
+  assert.equal(f.kills, 1);
+  assert.ok(shards[0].x < body.x && shards[1].x > body.x);
+  for (let i = 0; i < Math.floor(shardArmTime / step) - 1; i++) f.moveEnemies(step);
+  assert.equal(f.hostile.length, 0);
+  assert.ok(shards.every((e) => e.y < body.y + 56));
+  for (let i = 0; i < 95; i++) f.moveEnemies(step);
+  assert.ok(shards.every((e) => e.volley === 1));
+  assert.equal(f.hostile.length, 2);
+  f.hitEnemy(shards[0], { strength:100, x:shards[0].x, y:shards[0].y });
+  assert.equal(f.enemies.filter((e) => e.kind === 'shard').length, 2);
+  assert.equal(f.kills, 2);
 });
 
 test('the opening wing can earn the Power drop early, with a single timed fallback', async () => {
@@ -454,18 +640,4 @@ test('reduced effects preserve shot origins and combat outcomes', async () => {
     f.shoot(.25);
   }
   assert.deepEqual(standard.friendly,reduced.friendly);
-});
-
-test('legacy decoding preserves all device save keys and reads nested historical records', async () => {
-  const [, { legacyArchive }] = await load;
-  const values = new Map([
-    ['star_strike_rush_meta_v1','{"totalGlory":624320,"lifetime":{"bestScore":9520}}'],
-    ['star_strike_rush_high_score_v1','8123'],
-    ['star_strike_rush_settings_v1','{"musicEnabled":false,"effectsEnabled":true}']
-  ]);
-  const saved = [...values];
-  assert.deepEqual(legacyArchive({ getItem:key=>values.get(key) }), {
-    visible:true, glory:624320, prestige:2, score:9520, settings:{ music:false, effects:true }
-  });
-  assert.deepEqual([...values], saved);
 });

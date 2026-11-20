@@ -3,7 +3,8 @@ import { validFlightSeed } from './seed.mjs';
 
 const WEEK = 7 * 24 * 3600 * 1000;
 const SCHEMA = 1;
-export const DEFAULT_SETTINGS = { music: true, effects: true, reduced: false, contrast: false, sensitivity: 'standard' };
+const REWARD_VERSION = 2;
+export const DEFAULT_SETTINGS = { music: true, effects: true, reduced: false, contrast: false, sensitivity: 'standard', trainingDone: false };
 
 function number(value) {
   return Number.isFinite(Number(value)) ? Math.max(0, Math.floor(Number(value))) : 0;
@@ -14,24 +15,6 @@ export function newPilot(preferences) {
     schema: SCHEMA, salvage: 0, clears: {}, mastery: {}, equipment: [], ship: 'kestrel',
     records: { arcade: {}, endless: null }, active: {}, receipts: {},
     settings: { ...DEFAULT_SETTINGS, ...preferences }
-  };
-}
-
-export function legacyArchive(storage) {
-  const parse = (key) => {
-    try { return JSON.parse(storage?.getItem(key) ?? 'null'); } catch { return null; }
-  };
-  const legacy = parse('star_strike_rush_meta_v1');
-  const preferences = parse('star_strike_rush_settings_v1');
-  const glory = number(legacy?.totalGlory ?? legacy?.glory ?? 0);
-  let visible = false;
-  try { visible = storage?.getItem('star_strike_rush_meta_v1') != null || storage?.getItem('star_strike_rush_high_score_v1') != null; } catch {}
-  const settings = {};
-  if (typeof preferences?.musicEnabled === 'boolean') settings.music = preferences.musicEnabled;
-  if (typeof preferences?.effectsEnabled === 'boolean') settings.effects = preferences.effectsEnabled;
-  return {
-    visible, glory, prestige: Math.floor(glory / 300000), settings,
-    score: Math.max(number(legacy?.lifetime?.bestScore), number(legacy?.highScore), number(parse('star_strike_rush_high_score_v1')))
   };
 }
 
@@ -65,9 +48,11 @@ export function beginRun(pilot, id, mode, stage, now = Date.now(), seed = '') {
   for (const [key, run] of Object.entries(pilot.active)) {
     if (now - run.started > WEEK) delete pilot.active[key];
   }
+  const assistance = { ...pilot.settings };
+  delete assistance.trainingDone;
   const run = {
-    id, mode, stage: mode === 'arcade' ? stage : null, started: now, rules: RULES_VERSION,
-    ship: pilot.ship, equipment: [...pilot.equipment], assistance: { ...pilot.settings }, seed: validFlightSeed(seed) ? seed : undefined
+    id, mode, stage: mode === 'arcade' ? stage : null, started: now, rules: RULES_VERSION, rewardVersion: REWARD_VERSION,
+    ship: pilot.ship, equipment: [...pilot.equipment], assistance, seed: validFlightSeed(seed) ? seed : undefined
   };
   pilot.active[id] = run;
   return run;
@@ -77,12 +62,18 @@ export function abandonRun(pilot, id) {
   delete pilot.active[id];
 }
 
-function defeatAward(stage, record, movement) {
+function previousDefeatAward(stage, record, movement) {
   if (record.duration < 24 || record.kills < 5 || movement < 54) return 0;
   const progress = Math.min(1, (record.duration - 18) / (stage.bossAt - 18));
   const earned = Math.floor(.65 * stage.defeatCap * progress ** 1.35);
   const rateLimit = Math.floor(.8 * stage.repeat * record.duration / (stage.bossAt + 55));
   return Math.max(1, Math.min(earned, Math.floor(record.kills / 3), rateLimit));
+}
+
+function defeatAward(stage, record, movement, repeatAward) {
+  if (record.duration < 24 || record.kills < 5 || movement < 100 + 3 * record.duration) return 0;
+  const rateCap = Math.floor(.92 * repeatAward * record.duration / (stage.bossAt + 55));
+  return Math.min(rateCap, Math.floor(1.35 * record.kills), Math.floor(.65 * repeatAward));
 }
 
 export function settleRun(pilot, id, terminal) {
@@ -99,6 +90,8 @@ export function settleRun(pilot, id, terminal) {
     kills: number(terminal.kills), breaks: number(terminal.breaks), status: terminal.status
   };
   const cleared = terminal.status === 'clear';
+  const updatedRewards = run.rewardVersion === REWARD_VERSION;
+  const repeatAward = stage && (updatedRewards ? Math.round(.8 * stage.first) : stage.repeat);
   let award = 0;
   let first = false;
   let newShip = null;
@@ -107,13 +100,14 @@ export function settleRun(pilot, id, terminal) {
   if (stage && cleared) {
     first = !pilot.clears[stage.id];
     pilot.clears[stage.id] = number(pilot.clears[stage.id]) + 1;
-    award = first ? stage.first : stage.repeat;
+    award = first ? stage.first : repeatAward;
     if (first) {
       newShip = Object.keys(SHIPS).find((key) => SHIPS[key].clearance === stage.id) ?? null;
       newStage = stage.id < STAGES.length ? stage.id + 1 : null;
     }
   } else if (stage) {
-    award = defeatAward(stage, record, number(terminal.movement));
+    const movement = number(terminal.movement);
+    award = updatedRewards ? defeatAward(stage, record, movement, repeatAward) : previousDefeatAward(stage, record, movement);
   }
 
   if (stage) {
@@ -213,6 +207,7 @@ export class PilotStore {
         try {
           const pilot = read.result ?? newSave ?? newPilot(this.preferences);
           if (pilot.schema !== SCHEMA) throw Error('This device save requires a different game version');
+          if (!Object.hasOwn(pilot.settings ?? {}, 'trainingDone')) pilot.settings = { ...DEFAULT_SETTINGS, ...pilot.settings };
           const result = operation?.(pilot);
           if (operation) store.put(pilot, 'profile');
           reply = { pilot, result };

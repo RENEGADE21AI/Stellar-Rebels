@@ -2,21 +2,19 @@ import { BOSSES, FIXED_TICK, HEIGHT, PICKUPS, SHIPS, STAGES, UPGRADES, WIDTH, st
 import { Flight } from './flight.mjs';
 import { FlightScene, loadSprite, spriteUrl } from './scene.mjs';
 import { FlightAudio } from './audio.mjs';
-import { PilotStore, abandonRun, beginRun, equip, hasShip, hasStage, install, legacyArchive, settleRun } from './pilot.mjs';
+import { PilotStore, abandonRun, beginRun, equip, hasShip, hasStage, install, settleRun } from './pilot.mjs';
 import { captureReplay } from './replay.mjs';
 import { otherRealm, realmLabel } from './wraith.mjs';
+import { mountTitlePatrol } from './title-patrol.mjs';
+import { advanceTraining, startTraining } from './training.mjs';
 
 const $ = (id) => document.getElementById(id);
 const menu = $('menu');
 const sky = $('sky');
 const field = $('flight');
 const modal = $('flight-modal');
-const legacyUrl = 'https://star-strike-rush.web.app/';
-const archive = (() => {
-  try { return legacyArchive(localStorage); } catch { return legacyArchive(null); }
-})();
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
-const store = new PilotStore(globalThis.indexedDB, { reduced: reduced.matches, ...archive.settings });
+const store = new PilotStore(globalThis.indexedDB, { reduced: reduced.matches });
 const audio = new FlightAudio();
 const clock = globalThis.createFixedStepClock();
 const renderer = new FlightScene(sky);
@@ -74,11 +72,11 @@ function wallet() {
 }
 
 function home() {
-  return `<article class="title-screen"><h1 tabindex="-1" class="brand-lockup"><img src="${media('brand/stacked-light.svg')}" alt="Stellar Rebels" width="336" height="201"></h1>
-    <img class="title-craft" alt="" src="${media('environment/title-craft.webp')}" width="720" height="720">
+  return `<article class="title-screen"><h1 tabindex="-1" class="brand-lockup"><img src="${media('brand/title-wordmark.webp')}" alt="Stellar Rebels" width="768" height="310"></h1>
+    <canvas class="title-patrol" aria-hidden="true"></canvas>
     <div class="title-actions">${saveNotice()}${action('Play', 'fly:next', 'primary', 'play')}
       <nav class="home-links" aria-label="Game options">
-        <button class="home-link" data-action="view:stages" aria-label="Stage Select">${icon('stages')} Stages</button>
+        <button class="home-link" data-action="view:stages" aria-label="Stage Select">${icon('stages')} Arcade</button>
         <button class="home-link" data-action="hangar:home">${icon('ship')} Hangar</button>
         <button class="home-link" data-action="view:records">${icon('score')} Records</button>
         <button class="home-link" data-action="view:settings">${icon('settings')} Settings</button>
@@ -177,9 +175,7 @@ function records() {
   }).join('');
   const survival = endless ? recordLine('Endless survival', `${num(endless.score)} score · ${recordContext(endless)}`, time(endless.duration))
     : recordLine('Endless survival', 'Fly a survival run to set a record.', '—');
-  const legacy = archive.visible ? recordLine('Historical device record', `${num(archive.glory)} Glory · Prestige ${num(archive.prestige)}`, num(archive.score)) : '';
-  return screen('Records', 'home', `<p class="subtle">Personal bests saved on this device.</p>${rows || '<p class="subtle">Clear or finish a stage to start your flight record.</p>'}${survival}${legacy}
-    <a class="quiet" href="${legacyUrl}" rel="noopener">Star Strike RUSH archive ${icon('arrowout')}</a>`);
+  return screen('Records', 'home', `<p class="subtle">Personal bests saved on this device.</p>${rows || '<p class="subtle">Finish a stage to start your record.</p>'}${survival}`);
 }
 
 const settings = {
@@ -210,7 +206,8 @@ function helpView() {
     ['Expose shielded escorts', 'Follow the solid blue links to the Command Ship. Destroy it to drop the escorts’ shields.'],
     ...Object.values(PICKUPS).map((drop) => [drop.name, drop.hint])
   ];
-  return screen('Flight school', state.helpBack, rows.map(([title, text]) => `<div class="info"><strong>${title}</strong><p class="subtle">${text}</p></div>`).join(''));
+  return screen('Flight school', state.helpBack, action('Practice flight', 'practice', 'primary', 'play') +
+    rows.map(([title, text]) => `<div class="info"><strong>${title}</strong><p class="subtle">${text}</p></div>`).join(''));
 }
 
 function results() {
@@ -242,9 +239,9 @@ function results() {
     <div class="result-facts"><div><span class="caption">${!isEndless && p.receipt?.best && report.score > 0 ? 'Personal best' : 'Score'}</span><strong>${num(report.score)}</strong></div><div><span class="caption">Flight time</span><strong>${time(report.duration)}</strong></div><div><span class="caption">Targets</span><strong>${num(report.kills)}</strong></div></div>
     ${mastery}${progression}${pendingCopy}${unlocked}${primary}${ship}<div class="result-secondary">
     ${p.receipt && (next || finale) ? action(repeat, retry, 'quiet', '') : ''}
-    ${p.receipt ? action('Hangar', 'hangar:result', 'quiet', '') : p.error ? action('Leave unsaved', 'discard', 'quiet', '') : ''}
-    ${p.receipt && !finale ? action('Stages', 'view:stages', 'quiet', '') : ''}
-    ${buyable ? action('Upgrades', 'shop:result', 'quiet', '') : ''}</div>${p.replay ? action('Save flight replay', 'save-replay', 'flat replay-link', '') : ''}</div></article>`;
+    ${p.receipt ? action(buyable ? 'Upgrades' : 'Hangar', buyable ? 'shop:result' : 'hangar:result', 'quiet', '') : p.error ? action('Leave unsaved', 'discard', 'quiet', '') : ''}
+    ${p.receipt && !finale ? action('Arcade', 'view:stages', 'quiet', '') : ''}
+    </div>${p.replay ? action('Save flight replay', 'save-replay', 'flat replay-link', '') : ''}</div></article>`;
 }
 
 function launchView() {
@@ -269,11 +266,14 @@ function showBrowserUpdate() {
 
 function show(view, focus = true) {
   if (!views[view]) return;
+  $('frame').dataset.reducedMotion = String(state.pilot.settings.reduced);
   state.mode = 'menu';
   state.view = view;
   field.hidden = true;
   menu.hidden = false;
   menu.innerHTML = views[view]();
+  state.titlePatrol?.stop();
+  state.titlePatrol = view === 'home' ? mountTitlePatrol(menu.querySelector('.title-patrol'), state.pilot.settings.reduced, state.pilot.ship) : null;
   showBrowserUpdate();
   menu.scrollTop = 0;
   if (focus) menu.querySelector('h1')?.focus({ preventScroll: true });
@@ -299,38 +299,76 @@ function readId() {
   return Array.from(crypto.getRandomValues(new Uint32Array(4)), (n) => n.toString(16)).join('-');
 }
 
-async function start(which) {
+function needsTraining() {
+  const { pilot } = state;
+  return !pilot.settings.trainingDone && !Object.keys(pilot.clears).length &&
+    !Object.keys(pilot.records.arcade).length && !pilot.records.endless && !pilot.salvage;
+}
+
+async function start(which, trainingMode = null) {
   const endless = which === 'endless';
   const chooseStage = (pilot) => endless ? null : which === 'next'
     ? (nextStage(pilot) ?? STAGES.at(-1)).id : Number(which);
   const stage = chooseStage(state.pilot);
-  const launch = { controller: new AbortController(), from: state.view, which, name: endless ? 'Endless' : stageById(stage)?.name };
+  const launch = { controller: new AbortController(), from: state.training?.from ?? state.view, which,
+    name: trainingMode ? 'Flight School' : endless ? 'Endless' : stageById(stage)?.name };
   if (!launch.name) return;
   let run;
   let launched = false;
   state.launch = launch;
-  show('launch');
+  audio.effect('launch');
+  const title = !menu.hidden && menu.querySelector('.title-screen');
+  const fromPractice = !field.hidden && state.flight?.practice;
+  if (title) {
+    title.classList.add('is-launching');
+    title.querySelector('.title-actions').inert = true;
+    state.titlePatrol?.launch();
+    const status = document.createElement('div');
+    status.className = 'launch-status';
+    status.innerHTML = '<p role="status">Launching…</p>' + action('Cancel launch', 'cancel-flight', 'quiet', '');
+    title.append(status);
+    status.querySelector('button').focus({ preventScroll:true });
+  } else if (fromPractice) {
+    state.mode = 'launching';
+    clearInput();
+    $('training-actions').innerHTML = '<span class="caption" role="status">Joining Arcade…</span>';
+  } else show('launch');
   try {
     const seed = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
-    const saved = await store.change((pilot) => beginRun(pilot, readId(), endless ? 'endless' : 'arcade', chooseStage(pilot), Date.now(), seed));
-    run = saved.result;
+    if (trainingMode) {
+      run = { id:readId(), mode:'arcade', stage:1, ship:'kestrel', equipment:[], assistance:{ ...state.pilot.settings }, seed };
+    } else {
+      const saved = await store.change((pilot) => beginRun(pilot, readId(), endless ? 'endless' : 'arcade', chooseStage(pilot), Date.now(), seed));
+      state.pilot = saved.pilot;
+      run = saved.result;
+    }
     if (launch.controller.signal.aborted) return;
-    state.pilot = saved.pilot;
     if (!run) {
       restoreLaunch(launch, 'This stage is locked.');
       return;
     }
-    const recording = captureReplay(run);
-    const flight = new Flight(run, { recordInput: recording.recordInput });
-    if (!await renderer.prepare(flight, launch.controller.signal)) return;
+    const recording = trainingMode ? null : captureReplay(run);
+    const flight = new Flight(run, { recordInput: recording?.recordInput });
+    const prepared = renderer.prepare(flight, launch.controller.signal);
+    if ((title || fromPractice) && !run.assistance.reduced) {
+      await new Promise((done) => setTimeout(done, title ? 420 : 260));
+    }
+    if (!await prepared || launch.controller.signal.aborted) return;
+    state.titlePatrol?.stop();
+    state.titlePatrol = null;
+    state.training = trainingMode ? { ...startTraining(flight), mode:trainingMode, from:launch.from } : null;
+    state.returnView = launch.from === 'home' ? 'home' : 'stages';
     state.last = run;
     state.recording = recording;
     state.flight = flight;
     state.mode = 'playing';
     menu.hidden = true;
     field.hidden = false;
+    delete field.dataset.ending;
     clearInput();
     renderer.resize();
+    renderer.beginArrival?.(run.assistance.reduced);
+    showTrainingAction();
     globalThis.resetFixedStepClock(clock, performance.now());
     refreshHud(true);
     audio.play('flight');
@@ -343,7 +381,7 @@ async function start(which) {
     if (state.launch === launch) restoreLaunch(launch, 'Could not prepare the flight. Try launching again.');
   } finally {
     if (state.launch === launch) state.launch = null;
-    if (run && !launched) await store.change((pilot) => abandonRun(pilot, run.id)).catch(() => {});
+    if (run && !launched && !trainingMode) await store.change((pilot) => abandonRun(pilot, run.id)).catch(() => {});
   }
 }
 
@@ -402,12 +440,43 @@ function resume() {
 }
 
 async function leave() {
+  if (state.training) {
+    const back = state.training.from;
+    clearInput();
+    modal.close();
+    state.training = null;
+    state.flight = null;
+    show(back);
+    return;
+  }
   await store.change((saved) => abandonRun(saved, state.flight.run.id)).catch(() => {});
   clearInput();
   modal.close();
   state.flight = null;
   state.recording = null;
-  show('stages');
+  show(state.returnView ?? 'stages');
+}
+
+function showTrainingAction() {
+  const container = $('training-actions');
+  const training = state.training;
+  container.hidden = !training;
+  if (!training) return;
+  const done = training.step === 'complete';
+  const label = training.mode === 'intro' ? done ? 'Start arcade' : 'Skip training' : done ? 'Done' : 'End practice';
+  container.innerHTML = action(label, 'finish-practice', done ? 'primary' : 'quiet', done ? 'play' : '');
+}
+
+async function finishPractice() {
+  const training = state.training;
+  if (!training) return;
+  const saved = await store.change((pilot) => { pilot.settings.trainingDone = true; }).catch(() => null);
+  if (saved) state.pilot = saved.pilot;
+  state.training = null;
+  if (training.mode === 'intro') {
+    state.view = 'home';
+    await start('next');
+  } else show(training.from);
 }
 
 const lastHud = {};
@@ -452,25 +521,28 @@ function refreshHud(restart = false) {
   const activeBoss = Boolean(f.boss && f.boss.hull > 0);
   const showRealm = activeBoss && f.realmHop;
   const message = f.notice?.time > 0 ? f.notice : null;
-  const brief = message && ['intro','tactic','warning'].includes(message.kind);
-  content('flight-name', f.endless ? 'Endless' : f.stage.name);
+  const bossCue = showRealm && f.boss.shifting;
+  const flash = $('flight-message');
+  const visible = Boolean(message || bossCue);
+  flash.classList.toggle('shown', visible);
+  flash.dataset.kind = message?.kind ?? (bossCue ? 'warning' : '');
+  flash.style.setProperty('--notice-opacity', f.run.assistance.reduced || bossCue || !message ? '1' : String(Math.min(1, message.time / .45)));
+  content('flight-name', visible ? message?.title || (bossCue ? 'Wraith' : message?.kind === 'pickup' ? 'Supply acquired' : f.stage.name) : '');
+  $('flight-name').hidden = !visible;
+  $('flight-tip').hidden = !message;
+  content('flight-tip', message?.copy ?? '');
   content('clock', time(f.elapsed));
-  $('clock').hidden = showRealm;
-  $('flight-tip').hidden = !brief;
-  content('flight-tip', brief ? message.copy : '');
   content('flight-score', num(f.score));
-  const chapter = activeBoss ? showRealm ? `You · ${realmLabel(p.realm)}` : '' : f.endless ? 'Survival'
-    : f.stage.chapters.findLast(([start]) => start <= f.elapsed)?.[1] ?? '';
-  content('flight-progress', message?.kind === 'pickup' ? message.brief : message?.kind === 'tactic' ? message.title : chapter);
+  content('flight-progress', showRealm ? `You · ${realmLabel(p.realm)}` : '');
+  $('flight-progress').hidden = !bossCue;
   content('chain', f.combo >= 2 ? `×${f.combo}` : '');
   content('hull', Array.from({ length: p.maxHull }, (_, i) => `<i class="segment ${i < p.hull ? 'full' : ''}" aria-hidden="true"></i>`).join(''), true);
   $('hull').setAttribute('aria-valuemax', p.maxHull);
   $('hull').setAttribute('aria-valuenow', p.hull);
   refreshGhost(f);
   $('boss-meter').hidden = !activeBoss;
-  $('boss-name').hidden = !activeBoss;
-  $('boss-realm').hidden = !showRealm;
-  $('flight-name').hidden = activeBoss;
+  $('boss-name').hidden = true;
+  $('boss-realm').hidden = !bossCue;
   if (activeBoss) {
     const boss = f.boss;
     const realm = boss.realm === 'ghost' ? 'Ghost' : 'Physical';
@@ -482,22 +554,10 @@ function refreshHud(restart = false) {
     $('boss-value').style.transform = `scaleX(${hp.toFixed(3)})`;
     $('boss-track').setAttribute('aria-valuenow', Math.ceil(hp * 100));
   }
-  const flags = [];
-  if (p.barrier) flags.push(`Barrier ×${p.barrier}`);
-  if (p.power) flags.push(`Power ${Math.ceil(p.power)}s`);
-  if (p.overdrive) flags.push(`Boost ${Math.ceil(p.overdrive)}s`);
-  content('field-effects', flags.map((flag) => `<span class="field-chip">${flag}</span>`).join(''), true);
-  const ghostLesson = !f.endless && f.stage.id === 1 && f.shiftReady && !f.usedShift && f.elapsed < 27;
-  const showHelp = !brief && !flags.length && (ghostLesson || f.elapsed <= (f.endless ? 4.5 : 8.5));
-  $('flight-help').hidden = !showHelp;
-  $('field-effects').hidden = Boolean(brief) || !flags.length;
-  $('flight-progress').hidden = Boolean(brief || showHelp || flags.length);
-  $('chain').hidden = Boolean(brief || flags.length || f.combo < 2);
-  const keyboard = state.input === 'keyboard';
-  content('flight-help', ghostLesson ? `${keyboard ? 'Space' : 'Tap Shift'} to phase` : keyboard ? 'Arrows / WASD · Auto-fire' : 'Drag to steer · Auto-fire');
+  $('chain').hidden = f.combo < 2;
   if (message && (lastHud.message !== message || restart)) {
     lastHud.message = message;
-    if (['warning', 'pickup', 'tactic'].includes(message.kind)) announce([message.title,message.copy].filter(Boolean).join('. '));
+    if (['warning', 'pickup', 'tactic', 'training'].includes(message.kind)) announce([message.title,message.copy].filter(Boolean).join('. '));
   }
 }
 
@@ -560,7 +620,9 @@ async function handle(command) {
   if (type === 'shop') { showHangar(value, state.pilot.ship, 'upgrades'); return; }
   if (type === 'unlocked') { showHangar('result', value); return; }
   if (type === 'help') { state.helpBack = value; show('help'); return; }
-  if (type === 'fly') { await start(value); return; }
+  if (type === 'practice') { await start('1', 'practice'); return; }
+  if (type === 'finish-practice') { await finishPractice(); return; }
+  if (type === 'fly') { await start(value, value === 'next' && needsTraining() ? 'intro' : null); return; }
   if (type === 'tab') { state.hangarTab = value; updateHangar(command); return; }
   if (type === 'inspect') { state.inspected = value; updateHangar(command); return; }
   if (type === 'upgrade') { state.upgrade = value; show('upgrade'); return; }
@@ -718,6 +780,11 @@ function loop(timestamp) {
       renderer.advanceEffects(dt / 1000);
     });
     const events = f.takeEvents();
+    if (state.training) {
+      const previous = state.training.step;
+      advanceTraining(f, state.training, events);
+      if (previous !== state.training.step) showTrainingAction();
+    }
     renderer.accept(events, prefs.reduced);
     audio.accept(events);
     if (tick.steps) refreshHud();
@@ -726,7 +793,9 @@ function loop(timestamp) {
     if (end) {
       clearInput();
       state.mode = 'finishing';
-      state.finishAt = timestamp + (prefs.reduced ? 380 : 900);
+      state.finishingFrame = timestamp;
+      if (end.status === 'defeat') field.dataset.ending = 'defeat';
+      state.finishAt = timestamp + (prefs.reduced ? 450 : end.status === 'defeat' ? 1260 : 850);
       state.pending = { terminal: end, run: f.run, replay: state.recording?.finish(f.ticks, end) };
       state.recording = null;
       void settle();
@@ -745,7 +814,8 @@ function loop(timestamp) {
       $('countdown').textContent = Math.ceil(wait / 1000);
     }
   } else if (state.mode === 'finishing') {
-    renderer.advanceEffects(1 / 60);
+    renderer.advanceEffects(Math.min(.06, Math.max(0, timestamp - state.finishingFrame) / 1000));
+    state.finishingFrame = timestamp;
     renderer.draw(f, f.run.assistance);
     if (timestamp >= state.finishAt) show('result');
   }

@@ -14,7 +14,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1] / 'arcade'
 SPRITES = ROOT / 'media' / 'sprites'
-SMALL = ('scout', 'lancer', 'diver', 'sweeper', 'escort', 'relay', 'phantom', 'rock', 'turret', 'shield-node')
+SMALL = ('scout', 'lancer', 'diver', 'sweeper', 'escort', 'relay', 'phantom', 'splitter', 'shard', 'rock', 'turret', 'shield-node')
 LARGE = ('cruiser', 'gatekeeper', 'warden', 'matron', 'tyrant', 'siphon', 'wraith', 'crown')
 PILOTS = ('kestrel', 'needle', 'bastion')
 

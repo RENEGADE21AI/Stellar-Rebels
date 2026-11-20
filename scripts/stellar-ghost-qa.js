@@ -62,7 +62,7 @@ async function verify() {
     const touch = await context.newCDPSession(page);
     await page.goto(origin);
     await button('Play').waitFor();
-    await page.locator('.title-craft').evaluate((image) => image.decode());
+    await page.locator('.brand-lockup img').evaluate((image) => image.decode());
     await shot('title');
     await button('Stage Select').tap();
     await button(/01 Vesper Orbit/).tap();

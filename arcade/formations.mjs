@@ -19,11 +19,11 @@ export function linkedVolley(flight, command) {
     if (wing.kind === 'lancer') {
       for (const [dx, dy] of GUNNER_MUZZLES) {
         const { x, y } = hardpointAt(wing, dx, dy, wing.turn);
-        flight.projectile(x, y, direction + Math.sign(dx) * .13, 195, 'pulse');
+        flight.enemyProjectile(wing, x, y, direction + Math.sign(dx) * .13, 195, 'pulse');
       }
     } else {
       const { x, y } = enemyMuzzle(wing);
-      flight.projectile(x, y, direction, 195, 'pulse');
+      flight.enemyProjectile(wing, x, y, direction, 195, 'pulse');
     }
   }
   flight.signal('linkedFire', command.x, command.y);

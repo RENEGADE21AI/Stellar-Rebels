@@ -4,8 +4,10 @@ const effects = {
   shieldHit: [1080, 450, .09, .047, 'triangle'],
   enemyDown: [150, 41, .24, .18, 'sawtooth'],
   moduleDown: [225, 34, .36, .23, 'triangle'],
+  splitterSplit: [178, 390, .14, .066, 'triangle'],
   bossDown: [124, 28, .78, .29, 'sawtooth'],
-  playerDown: [190, 32, .55, .26, 'triangle'],
+  launch: [87, 230, .34, .064, 'triangle'],
+  playerDown: [214, 41, .42, .19, 'triangle'],
   hurt: [98, 42, .25, .19, 'square'],
   barrier: [1000, 280, .19, .12, 'sine'],
   ghostStart: [260, 980, .28, .115, 'triangle'],
@@ -100,6 +102,11 @@ export class FlightAudio {
     this.tone(recipe, t, power);
     if (kind === 'enemyDown' || kind === 'moduleDown' || kind === 'bossDown') {
       this.tone([365, 93, .11, kind === 'enemyDown' ? .032 : .047, 'square'], t);
+    } else if (kind === 'launch') {
+      this.tone([260, 610, .24, .027, 'sine'], t + .10);
+    } else if (kind === 'playerDown') {
+      this.tone([580, 125, .105, .075, 'square'], t);
+      this.tone([146, 34, .56, .135, 'sawtooth'], t + .20);
     }
   }
 

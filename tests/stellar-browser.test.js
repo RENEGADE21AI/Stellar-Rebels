@@ -4,6 +4,46 @@ const { chromium, webkit } = require('playwright');
 
 const origin = process.env.STELLAR_WEB_URL;
 
+test('first Play teaches steering, targeting and Shift before starting a recorded flight', { skip: !origin, timeout:45000 }, async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport:{ width:390, height:844 }, serviceWorkers:'block' });
+    await page.route(/\/app\.mjs(\?|$)/, async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({ response, body:(await response.text()) + '\nwindow.trainingProbe = { state, store };' });
+    });
+    await page.goto(origin);
+    await page.getByRole('button', { name:'Play', exact:true }).click();
+    await page.getByText('Steer your Fighter', { exact:true }).waitFor();
+    await page.keyboard.down('ArrowRight');
+    await page.getByText('Line up a shot', { exact:true }).waitFor();
+    await page.keyboard.up('ArrowRight');
+    const move = () => page.evaluate(() => {
+      const { training, flight } = window.trainingProbe.state;
+      return training.step === 'fire' && flight.enemies.length ? flight.enemies[0].x - flight.player.x : null;
+    });
+    for (let attempt = 0; attempt < 160; attempt++) {
+      const dx = await move();
+      if (await page.getByText('Ghost Shift', { exact:true }).first().isVisible() && await page.locator('#flight-name').textContent() === 'Ghost Shift') break;
+      if (dx !== null && Math.abs(dx) > 6) {
+        const key = dx < 0 ? 'ArrowLeft' : 'ArrowRight';
+        await page.keyboard.down(key);
+        const delay = Math.min(90, Math.abs(dx) * 1.6);
+        await page.waitForTimeout(delay);
+        await page.keyboard.up(key);
+      } else await page.waitForTimeout(85);
+    }
+    await page.waitForFunction(() => window.trainingProbe.state.training.step === 'shift');
+    await page.keyboard.press('Space');
+    const launch = page.getByRole('button', { name:'Start arcade', exact:true });
+    await launch.waitFor();
+    assert.equal(await page.evaluate(() => Object.keys(window.trainingProbe.state.pilot.active).length), 0);
+    await launch.click();
+    await page.waitForFunction(() => window.trainingProbe.state.mode === 'playing' && !window.trainingProbe.state.training);
+    assert.ok(await page.evaluate(() => window.trainingProbe.state.pilot.settings.trainingDone));
+  } finally { await browser.close(); }
+});
+
 test('Play resumes the Arcade route with the equipped ship and replays the finale after completion', { skip: !origin, timeout:45000 }, async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport:{ width:320, height:568 }, hasTouch:true, isMobile:true, serviceWorkers:'block' });
@@ -210,38 +250,26 @@ test('flight instructions stay in the HUD during real touch and a rail strike', 
           await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
         };
         const verifyClearance = async () => {
-          const clearance = await page.evaluate(() => {
-            const {state,renderer} = window.hudProbe;
-            const f = state.flight;
-            const frame = renderer.canvas.getBoundingClientRect();
-            const y = frame.top + (frame.height - 768 * renderer.unit) / 2;
-            const shipTop = y + (f.player.y - f.ship.size / 2) * renderer.unit;
-            const tip = document.querySelector('#flight-tip');
-            const hudBottom = document.querySelector('.flight-ui').getBoundingClientRect().bottom;
-            return {inside:tip.closest('.instrument') !== null, gap:shipTop - hudBottom, blocked: hudBottom > frame.top};
-          });
-          assert.ok(clearance.inside && clearance.gap > 30 && !clearance.blocked, JSON.stringify(clearance));
+          const frame = await page.locator('#sky').boundingBox();
+          assert.ok(Math.abs(frame.height / frame.width - 2) < .006, JSON.stringify(frame));
+          const tip = await page.locator('#flight-tip').boundingBox();
+          if (tip) assert.ok(tip.x + tip.width / 2 > viewport.width / 2 && Math.abs(tip.y - viewport.height / 2) < 95);
         };
 
         await page.goto(origin);
-        await page.getByRole('button',{name:'Play',exact:true}).tap();
+        await page.getByRole('button',{name:'Stage Select',exact:true}).tap();
+        await page.getByRole('button',{name:/01 Vesper Orbit/}).tap();
         await page.getByText('Fight through the blockade.',{exact:true}).waitFor();
         await page.keyboard.down('ArrowDown');
         await page.waitForFunction(() => window.hudProbe.state.flight.player.y >= 729);
         await page.keyboard.up('ArrowDown');
-        await page.locator('#flight-help').waitFor();
-        const help = await page.locator('#flight-help').boundingBox();
-        assert.ok(help && help.y + help.height < viewport.height * .25);
         await dragHigh();
         await verifyClearance();
         await page.evaluate(() => {
           const f = window.hudProbe.state.flight;
-          for (const kind of ['barrier', 'power', 'overdrive']) f.collect({ kind });
+          f.collect({ kind:'barrier' });
         });
-        const effects = page.locator('#field-effects');
-        await effects.getByText('Barrier ×2').waitFor();
-        const effectsBox = await effects.boundingBox();
-        assert.ok(effectsBox.y + effectsBox.height < viewport.height * .25);
+        await page.locator('#flight-name').filter({ hasText:'Shield' }).waitFor();
         await page.evaluate(async () => {
           await window.hudProbe.store.change((pilot) => { pilot.clears = {1:1,2:1,3:1,4:1}; });
         });
@@ -261,6 +289,7 @@ test('flight instructions stay in the HUD during real touch and a rail strike', 
           f.waveIndex = f.stage.waves.length;
           f.dropIndex = f.stage.drops.length;
           f.player.guard = 0;
+          f.player.hull = f.player.maxHull;
         });
         await page.getByText('Leave the striped lane.',{exact:true}).waitFor();
         await verifyClearance();
@@ -307,6 +336,7 @@ test('Space activates Pause on focus and uses the indicated ability from the pla
         const playing = () => page.waitForFunction(() => document.activeElement?.id === 'sky');
         await page.goto(origin);
         await button('Play').press('Enter');
+        await button('Skip training').press('Enter');
         await playing();
         assert.match(await page.locator('#sky').getAttribute('aria-label'), /Space for Ghost Shift/);
         await page.evaluate(() => { window.controlProbe.state.flight.player.ghostEnergy = 100; });

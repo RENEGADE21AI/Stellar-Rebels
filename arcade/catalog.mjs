@@ -2,7 +2,7 @@ import { innerRoute, outerRoute } from './routes.mjs';
 
 export const WIDTH = 384;
 export const HEIGHT = 768;
-export const RULES_VERSION = 'arcade-6';
+export const RULES_VERSION = 'arcade-7';
 export const FIXED_TICK = 1 / 60;
 export const AIM_PRECISION = 16;
 export const INPUT_SHIFT = 1;
@@ -40,19 +40,21 @@ export const UPGRADES = {
 
 export const PICKUPS = {
   power: { name: 'Weapon Power', hint: 'Adds two flank shots for 12 seconds.', color: '#c8a0ff', duration: 12 },
-  barrier: { name: 'Barrier', hint: 'Blocks the next two hits.', color: '#77c7ff', charges: 2 },
+  barrier: { name: 'Shield', hint: 'Blocks one hit for up to 12 seconds.', color: '#77c7ff', duration: 12 },
   repair: { name: 'Repair', hint: 'Restores up to two hull segments.', color: '#8bffd0', hull: 2 },
   overdrive: { name: 'Overdrive', hint: 'Faster, harder shots for seven seconds.', color: '#ffd478', duration: 7 }
 };
 
 export const ENEMIES = {
-  scout: { name: 'Scout', hull: 2.45, y: 138, size: 43, hit: 11, value: 120, cadence: 2.9, speed: 108, drift: 20, muzzle: 11 },
-  lancer: { name: 'Gunner', hull: 5.4, y: 169, size: 52, hit: 13, value: 240, cadence: 2.6, speed: 95, drift: 8 },
-  diver: { name: 'Diver', hull: 3.35, y: 144, size: 42, hit: 10, value: 220, cadence: 3.25, speed: 119, drift: 10, muzzle: 18 },
-  sweeper: { name: 'Sweeper', hull: 6.8, y: 153, size: 56, hit: 14, value: 270, cadence: 2.45, speed: 84, drift: 43, muzzle: 7 },
-  escort: { name: 'Escort', hull: 8.4, y: 191, size: 54, hit: 15, value: 300, cadence: 2.8, speed: 90, drift: 9, muzzle: 16 },
-  relay: { name: 'Command Ship', hull: 6.6, y: 133, size: 55, hit: 15, value: 390, cadence: 2.9, speed: 91, drift: 20, muzzle: 17 },
-  phantom: { name: 'Phantom', hull: 6.1, y: 153, size: 59, hit: 14, value: 295, cadence: 2.9, speed: 91, drift: 25, muzzle: 19 }
+  scout: { name: 'Scout', hull: 2.45, y: 138, size: 43, hit: 11, value: 120, cadence: 1.95, speed: 166, drift: 20, muzzle: 11 },
+  lancer: { name: 'Gunner', hull: 5.4, y: 169, size: 52, hit: 13, value: 240, cadence: 2.28, speed: 107, drift: 8 },
+  diver: { name: 'Diver', hull: 3.35, y: 144, size: 42, hit: 10, value: 220, cadence: 3.25, speed: 144, drift: 10, muzzle: 18 },
+  sweeper: { name: 'Sweeper', hull: 6.8, y: 153, size: 56, hit: 14, value: 270, cadence: 2.3, speed: 100, drift: 43, muzzle: 7 },
+  escort: { name: 'Escort', hull: 8.4, y: 191, size: 54, hit: 15, value: 300, cadence: 2.62, speed: 90, drift: 9, muzzle: 16 },
+  relay: { name: 'Command Ship', hull: 6.6, y: 133, size: 55, hit: 15, value: 390, cadence: 2.73, speed: 91, drift: 20, muzzle: 17 },
+  phantom: { name: 'Phantom', hull: 6.1, y: 153, size: 59, hit: 14, value: 295, cadence: 2.7, speed: 113, drift: 25, muzzle: 19 },
+  splitter: { name: 'Splitter', hull: 6.2, size: 58, hit: 15, value: 310, speed: 102 },
+  shard: { name: 'Shard', hull: 1.3, size: 26, hit: 7, value: 60, speed: 247, cadence: 4, muzzle: 8 }
 };
 
 // Lanes are normalized fractions. Successive craft arrive at 0.25-second intervals.
@@ -73,6 +75,7 @@ const formations = {
   ladder: [['lancer', .17], ['scout', .27], ['lancer', .46], ['scout', .56], ['lancer', .77], ['diver', .86]],
   pinch: [['sweeper', .22], ['sweeper', .78], ['diver', .40], ['diver', .60], ['escort', .50]],
   specters: [['phantom', .32], ['scout', .50], ['phantom', .69], ['diver', .81]],
+  splitWing: [['splitter', .44], ['scout', .18], ['scout', .76]],
   screen: [['scout', .29], ['diver', .61], ['scout', .77]]
 };
 
@@ -96,13 +99,13 @@ export const STAGES = [
 ];
 
 export const BOSSES = {
-  gatekeeper: { name: 'Warden', intro: 'Destroy its two turrets.', hull: 164, size: 235, artSize:267, hit: 38, motion: 43, parts: [[-69, 39], [69, 39]], partHull: 27 },
+  gatekeeper: { name: 'Warden', intro: 'Destroy its two turrets.', hull: 164, size: 235, artSize:267, hit: 38, motion: 43, parts: [[-59, 28], [59, 28]], partHull: 27 },
   warden: { name: 'Harrow', intro: 'Follow each debris gap.', hull: 186, size: 203, artSize:242, hit: 42, motion: 42, arrivalY:225, parts: [] },
-  matron: { name: 'Relay Carrier', intro: 'Break the linked nodes to expose the core.', hull: 196, size: 198, artSize:246, hit: 35, motion: 42, parts: [[-70, 11], [70, 11]], partHull: 30 },
+  matron: { name: 'Relay Carrier', intro: 'Break the linked nodes to expose the core.', hull: 196, size: 198, artSize:246, hit: 35, motion: 42, parts: [[-63, 40], [63, 40]], partHull: 30 },
   tyrant: { name: 'Rail Ship', intro: 'Leave its striped lane before the rail fires.', hull: 238, size: 245, hit: 40, motion: 47, arrivalY: 230, parts: [] },
   siphon: { name: 'Gravity Platform', intro: 'Stay clear of pull lanes.', hull: 253, size: 224, artSize:247, hit: 37, motion: 47, arrivalY: 248, parts: [] },
   wraith: { name: 'Wraith', intro: 'Hop to match realms. Shoot the core.', hull: 152, size: 215, hit: 37, motion: 48, arrivalY: 229, parts: [] },
-  crown: { name: 'Flagship', intro: 'Break its pylons and read the next safe seam.', hull: 272, size: 208, artSize:258, hit: 40, motion: 45, arrivalY: 231, parts: [[-74, 29], [74, 29]], partHull: 37 }
+  crown: { name: 'Flagship', intro: 'Break its pylons and read the next safe seam.', hull: 272, size: 208, artSize:258, hit: 40, motion: 45, arrivalY: 231, parts: [[-77, 35], [77, 35]], partHull: 37 }
 };
 
 export const ENDLESS_BOSSES = [...STAGES.map((stage) => stage.boss), 'siphon'];

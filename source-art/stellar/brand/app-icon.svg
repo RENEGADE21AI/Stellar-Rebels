@@ -1,13 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><title>Stellar Rebels app icon</title>
-    <defs><linearGradient id="field" x2=".9" y2="1"><stop stop-color="#152233"/>
-    <stop offset=".53" stop-color="#0b1320"/><stop offset="1" stop-color="#311b1c"/>
-    </linearGradient><linearGradient id="ember" x2="1" y2="1"><stop stop-color="#ffc180"/>
-    <stop offset="1" stop-color="#ff633d"/></linearGradient></defs>
-    <path fill="url(#field)" d="M0 0h1024v1024H0z"/>
-    <circle cx="512" cy="512" r="334" fill="#0d1623" stroke="#4b4750" stroke-width="3"/>
-    <path d="M187 535a326 326 0 0 1 580-223M838 494a326 326 0 0 1-589 216"
-      fill="none" stroke="url(#ember)" stroke-width="7" stroke-linecap="round"/>
-    <g transform="translate(242 243) scale(5.4)"><path fill="#fff0db" d="M50 8 86 69 69 63 50 34 30 63 14 69Z M12 73 34 66 50 92 24 82Z M88 73 66 66 50 92 76 82Z"/><path fill="#111927" d="M50 43 58 56 50 69 42 56Z"/></g>
-    <path fill="#ff7848" d="M512 475l38 70-38 69-38-69z"/>
-    <path d="M512 140v25m0 695v25M140 512h25m695 0h25" fill="none" stroke="#ae7370" stroke-width="5"/>
-    </svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Stellar Rebels icon">
+  <title>Stellar Rebels icon</title>
+  <defs>
+    <radialGradient id="space" cx=".48" cy=".38" r=".72">
+      <stop stop-color="#253b54"/>
+      <stop offset="1" stop-color="#080f1c"/>
+    </radialGradient>
+  </defs>
+  <rect width="100" height="100" fill="url(#space)"/>
+  <g transform="translate(13 13) scale(.74)">
+    <path fill="#f5efe2" d="M5 38h32l10 15-16-8H15zm90 0H63L53 53l16-8h16z"/>
+    <path fill="#b7e1ed" d="M50 24c1.5 16 3.5 21 14 26-10.5 4-12.5 9-14 26-1.5-17-3.5-22-14-26 10.5-5 12.5-10 14-26ZM20 48h13l8 7H27zm60 0H67l-8 7h14z"/>
+  </g>
+</svg>

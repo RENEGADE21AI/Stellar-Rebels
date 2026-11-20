@@ -3,7 +3,7 @@ export const innerRoute = [
     id: 2, name: 'Asteroid Belt', region: 'Debris field', brief: 'Follow the openings through the belt.', accent: '#c39be9',
     environment: 'belt', boss: 'warden', bossAt: 152, first: 95, repeat: 21, defeatCap: 24,
     chapters: [[0,'Belt approach'],[34,'Debris lanes'],[67,'Inner belt'],[119,'Last crossing']],
-    waves: [[1,'sweep'],[8,'cross'],[14,'break'],[22,'column',1],[29,'sweep',1],[40,'cross',1],[46,'break',1],[55,'sweep'],[60,'hook'],[70,'break'],[78,'cross'],[83,'sweep',1],[94,'anvil'],[100,'column',1],[104,'sweep'],[111,'linked',1],[122,'break'],[132,'sweep',1],[137,'cross'],[144,'anvil',1]],
+    waves: [[1,'sweep'],[8,'cross'],[14,'break'],[22,'splitWing'],[29,'sweep',1],[40,'cross',1],[46,'break',1],[55,'sweep'],[60,'hook'],[70,'break'],[78,'cross'],[83,'sweep',1],[94,'anvil'],[100,'splitWing',1],[104,'sweep'],[111,'linked',1],[122,'break'],[132,'sweep',1],[137,'cross'],[144,'anvil',1]],
     drops: [[16,'power',.38],[38,'barrier',.61],[72,'repair',.50],[101,'power',.35],[138,'overdrive',.55]],
     terrain: [[34,'wall',2],[67,'wall',1],[92,'wall',3],[119,'wall',2]],
     mastery: { name: 'Thread the belt', detail: 'Beat Harrow without losing hull in the boss fight.', condition: 'cleanBoss' }

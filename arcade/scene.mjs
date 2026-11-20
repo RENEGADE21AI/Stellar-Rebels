@@ -2,7 +2,7 @@ import { ENDLESS_BOSSES, ENEMIES, GUNNER_MUZZLES, HEIGHT, PICKUPS, WIDTH, enemyM
 import { bossPartPosition } from './bosses.mjs';
 import { commandCharge, vanePosition } from './formations.mjs';
 import { SPECTRAL, WRAITH_EMITTER, otherRealm, realmTint } from './wraith.mjs';
-import { diveWarningAt } from './enemy-course.mjs';
+import { diveWarningAt, shardArmTime } from './enemy-course.mjs';
 import { shieldModules } from './collision.mjs';
 import { spriteBodies } from './silhouettes.mjs';
 
@@ -35,6 +35,9 @@ const regular = [...Object.keys(ENEMIES), 'turret', 'shield-node', 'rock', ...Ob
 const playfields = { breach:'vesper', belt:'belt', relay:'relay', sun:'sun', outer:'outer', flagship:'fleet' };
 const fallbackEnvironments = new Set(['breach','belt','relay']);
 const lerp = (a, b, t) => a + (b - a) * t;
+const saturate = (value) => Math.max(0, Math.min(1, value));
+const arrivalDuration = .57;
+const rockSize = 42;
 
 function seededNoise(i) {
   const n = Math.sin(i * 191.472 + 7.3) * 45784.621;
@@ -82,6 +85,8 @@ export class FlightScene {
     this.shocks = [];
     this.cameraPulse = 0;
     this.hurtPulse = 0;
+    this.arrival = 0;
+    this.death = null;
     this.backdrop = document.createElement('canvas');
     this.backdropContext = this.backdrop.getContext('2d', { alpha: false });
     this.resize();
@@ -112,7 +117,13 @@ export class FlightScene {
     this.shocks = [];
     this.cameraPulse = 0;
     this.hurtPulse = 0;
+    this.arrival = 0;
+    this.death = null;
     return true;
+  }
+
+  beginArrival(reduced) {
+    this.arrival = reduced ? 0 : arrivalDuration;
   }
 
   resize() {
@@ -130,6 +141,7 @@ export class FlightScene {
         case 'hit': this.burst(e.x, e.y, '#91f9e6', 3, 55, .22); break;
         case 'shieldHit': this.burst(e.x, e.y, '#a0bfff', 3, 52, .25); break;
         case 'enemyDown': this.explode(e.x, e.y, '#ff8a5c', 17, 13); break;
+        case 'splitterSplit': this.burst(e.x, e.y, '#ffc88e', 14, 138, .42); break;
         case 'formationBreak':
           this.explode(e.x, e.y, '#ac91fd', 22, 38);
           this.burst(e.x, e.y, '#a1fff1', 16, 182, .57);
@@ -152,7 +164,10 @@ export class FlightScene {
           this.hurtPulse = reduce ? .13 : .47;
           this.explode(e.x, e.y, '#ff705d', 17, 15);
           break;
-        case 'playerDown': this.explode(e.x, e.y, '#ffc58d', 34, 30); break;
+        case 'playerDown':
+          this.death = { x:e.x, y:e.y, reduced:reduce, age:0, burst:false };
+          this.explode(e.x, e.y, '#fff0c3', reduce ? 12 : 30, reduce ? 16 : 30);
+          break;
         default: break;
       }
       if (reduce) this.cameraPulse = 0;
@@ -180,6 +195,16 @@ export class FlightScene {
   }
 
   advanceEffects(dt) {
+    this.arrival = Math.max(0, this.arrival - dt);
+    if (this.death) {
+      const death = this.death;
+      death.age += dt;
+      if (!death.reduced && !death.burst && death.age >= .20) {
+        death.burst = true;
+        this.explode(death.x + 6, death.y + 8, '#ff9d58', 37, 38);
+        this.burst(death.x, death.y + 11, '#cad9e4', 15, 132, .94);
+      }
+    }
     this.cameraPulse = Math.max(0, this.cameraPulse - dt * 2.2);
     this.hurtPulse = Math.max(0, this.hurtPulse - dt * 1.7);
     this.shocks = this.shocks.filter((p) => (p.life += dt) < p.total);
@@ -213,11 +238,18 @@ export class FlightScene {
     this.drawLinks(flight);
     for (const enemy of flight.enemies) this.enemy(enemy, flight.elapsed);
     if (flight.boss) this.boss(flight.boss, prefs);
+    for (const warning of flight.hazards) {
+      if (warning.kind === 'wall' && warning.age >= 0 && warning.age < warning.windup) {
+        this.debrisWindup(warning, prefs, flight.boss);
+      }
+    }
     for (const drop of flight.pickups) this.drop(drop, prefs);
     for (const shot of flight.friendly) this.playerShot(shot);
     for (const shot of flight.hostile) this.enemyShot(shot, prefs.contrast, flight.player.realm);
     if (flight.status !== 'defeat') this.pilot(flight, prefs);
+    else if (this.death) this.wreck(flight);
     this.effects();
+    if (this.arrival) this.arrivalSweep(flight);
     this.collisionOverlay?.(c, flight);
     c.restore();
     if (this.hurtPulse > 0) {
@@ -233,6 +265,62 @@ export class FlightScene {
       c.fillRect(0, 0, 38, HEIGHT);
       c.restore();
       c.globalAlpha = 1;
+    }
+    if (this.death) {
+      const death = this.death;
+      const fadeAt = death.reduced ? .12 : .56;
+      const endAt = death.reduced ? .40 : 1.14;
+      const fade = saturate((death.age - fadeAt) / (endAt - fadeAt));
+      c.save();
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.fillStyle = `rgba(8,15,25,${fade * fade * (3 - 2 * fade)})`;
+      c.fillRect(0, 0, this.canvas.width, this.canvas.height);
+      c.restore();
+    }
+  }
+
+  arrivalSweep(flight) {
+    const c = this.ctx;
+    const bloom = this.arrival / arrivalDuration;
+    c.save();
+    c.globalAlpha = bloom * .34;
+    const light = c.createRadialGradient(flight.player.x, HEIGHT, 10, flight.player.x, HEIGHT, 292);
+    light.addColorStop(0, '#59beed9b');
+    light.addColorStop(1, '#59beed00');
+    c.fillStyle = light;
+    c.fillRect(0, HEIGHT - 290, WIDTH, 290);
+    for (let i = 0; i < 15; i++) {
+      const star = stars[i * 4];
+      const y = (star.y + (1 - bloom) * 165) % HEIGHT;
+      line(c, star.x, y, .1, 24 + bloom * 45, '#b0e8ffcc', .9);
+    }
+    c.restore();
+  }
+
+  wreck(flight) {
+    const c = this.ctx;
+    const death = this.death;
+    const size = flight.ship.size;
+    const age = death.age;
+    const roll = (flight.player.bank || .07) * 2.6;
+    if (death.reduced || age < .20) {
+      const y = death.y + (death.reduced ? 0 : 57 * age);
+      this.sprite(flight.run.ship, death.x, y, size, flight.player.bank + (death.reduced ? 0 : age * roll), saturate(1 - age * 2), '#ffa764');
+      return;
+    }
+    const t = age - .20;
+    const pivotY = death.y + 11.4;
+    const joint = size * .135;
+    const alpha = saturate(.87 - t * .83);
+    for (const [side, left, right] of [[-1, -size, -joint], [1, joint, size], [0, -joint, joint]]) {
+      c.save();
+      c.translate(death.x + side * t * (69 - 13 * t), pivotY + t * (48 + Math.abs(side) * 27));
+      c.rotate(flight.player.bank + .20 * roll + t * (side * 2.4 + roll));
+      c.beginPath();
+      c.rect(left, -size / 2, right - left, size);
+      c.clip();
+      this.sprite(flight.run.ship, 0, 0, size, 0, alpha, '#ff8455');
+      c.restore();
     }
   }
 
@@ -333,7 +421,7 @@ export class FlightScene {
     const c = this.ctx;
     const p = flight.player;
     const ghost = p.realm === SPECTRAL;
-    const plume = prefs.reduced ? 15 : 13 + (Math.sin(flight.elapsed * 75) + 1) * 2.6;
+    const plume = prefs.reduced ? 15 : 13 + (Math.sin(flight.elapsed * 75) + 1) * 2.6 + this.arrival * 48;
     for (const [dx, dy] of flight.ship.engines) {
       const { x, y } = hardpointAt(p, dx, dy, p.bank);
       const color = ghost ? '#dccbff' : p.overdrive ? '#ffd478' : '#72ffe6';
@@ -366,9 +454,12 @@ export class FlightScene {
       }
     }
     if (p.barrier) {
-      ring(c, p.x, p.y, 28, '#256fa4', 3.2);
-      ring(c, p.x, p.y, 28, '#8fdeff', 1.1);
-      for (let i = 0; i < p.barrier; i++) filled(c, p.x - 4 + i * 8, p.y + 31, 1.9, '#bbecff');
+      const charge = saturate(p.barrierTime / PICKUPS.barrier.duration);
+      c.save();
+      c.globalAlpha = charge;
+      ring(c, p.x, p.y, 28, '#296a9d', 3.4);
+      ring(c, p.x, p.y, 28, '#b2eaff', 1.15);
+      c.restore();
     }
     if (p.guard && prefs.reduced) ring(c, p.x, p.y, 22, '#b7d5dd99', 1.5);
   }
@@ -385,13 +476,23 @@ export class FlightScene {
       if (e.dive) {
         const v = e.vector;
         line(c, e.x, e.y, -Math.cos(v) * 27, -Math.sin(v) * 27, '#ed875cb3', 2);
-      } else {
-        line(c, e.x - 7, e.y + 16, 7, 7, '#ffd49a', 2);
-        line(c, e.x, e.y + 23, 7, -7, '#ffd49a', 2);
+      } else if (Number.isFinite(e.diveAim)) {
+        c.save();
+        c.translate(e.x, e.y);
+        c.rotate(e.diveAim - Math.PI / 2);
+        line(c, -7, 17, 7, 7, '#ffd49a', 2.2);
+        line(c, 0, 24, 7, -7, '#ffd49a', 2.2);
+        c.restore();
       }
     }
     this.sprite(e.kind, e.x, e.y, e.spec.size, e.turn, e.retreat ? .66 : 1);
-    if (e.fireTimer < .26 && e.y > 102 && !e.dive && !e.retreat) {
+    const arming = e.kind === 'shard' && e.age < shardArmTime;
+    if (arming) {
+      const progress = e.age / shardArmTime;
+      ring(c, e.x, e.y, 15 - 7 * progress, '#ffc78f9b', 1.15);
+    }
+    const canTelegraph = e.kind !== 'splitter' && !(e.kind === 'shard' && (arming || e.volley > 0));
+    if (canTelegraph && e.fireTimer < .26 && e.y > 102 && !e.dive && !e.retreat) {
       const points = e.kind === 'lancer' ? GUNNER_MUZZLES.map(([dx, dy]) => hardpointAt(e, dx, dy, e.turn)) : [enemyMuzzle(e)];
       for (const muzzle of points) {
         filled(this.ctx, muzzle.x, muzzle.y, 2.2 + Math.sin(clock * 19) * .7, '#fff1c9');
@@ -538,7 +639,7 @@ export class FlightScene {
     } else if (w.kind === 'wall') {
       const l = w.x - w.width / 2;
       const r = w.x + w.width / 2;
-      const y = solid ? w.rowY : w.y > 220 ? w.y + 30 : 352;
+      const y = solid ? w.rowY : w.y;
       const seamColor = solid ? '#bfffe6' : color;
       if (!solid) {
         c.setLineDash([8,5]);
@@ -571,6 +672,31 @@ export class FlightScene {
     c.restore();
   }
 
+  debrisWindup(w, prefs, boss) {
+    if (!w.origin || !w.rocks?.length) return;
+    const c = this.ctx;
+    const phase = saturate(w.age / w.windup);
+    const spread = 1 - (1 - phase) ** 2;
+    const { reduced, contrast } = prefs;
+    const color = contrast ? '#fff4b7' : '#ffae63';
+    const followsBoss = !reduced && boss && Number.isFinite(w.emitter);
+    const originX = followsBoss ? boss.x : w.origin.x;
+    const originY = followsBoss ? boss.y + w.emitter : w.origin.y;
+    c.save();
+    c.globalAlpha = (1 - phase) * .60;
+    ring(c, originX, originY, 4 + (reduced ? 0 : 10 * phase), color, 2);
+    c.setLineDash([3, 5]);
+    for (const rock of w.rocks) {
+      const x = reduced ? rock.x : lerp(originX, rock.x, spread);
+      const y = reduced ? rock.y : lerp(originY, rock.y, spread) - Math.sin(Math.PI * phase) * 15;
+      const size = reduced ? rockSize : lerp(9, rockSize, phase);
+      const turn = reduced ? 0 : Math.sign(rock.x - originX) * (1 - phase) * .8;
+      line(c, originX, originY, x - originX, y - originY, color, 1.25);
+      this.sprite('rock', x, y, size, turn, lerp(reduced ? .14 : .27, 1, phase));
+    }
+    c.restore();
+  }
+
   drop(d, prefs) {
     const c = this.ctx;
     const size = Math.min(33, d.age * 90);
@@ -591,7 +717,7 @@ export class FlightScene {
   enemyShot(s, contrast, pilotRealm) {
     const c = this.ctx;
     if (s.kind === 'rock') {
-      this.sprite('rock', s.x, s.y, 42, s.age * .7);
+      this.sprite('rock', s.x, s.y, rockSize, s.age * .7);
       if (contrast) ring(c, s.x, s.y, s.radius + 1, '#ffcc93', 2);
       return;
     }

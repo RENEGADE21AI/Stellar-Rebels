@@ -45,20 +45,29 @@ function chooseFlightPath(f, bounds, useSupplies = false) {
   const optionsX = [p.x, targetX, ...Array.from({ length:22 }, (_,i) => bounds.left + 15 + i * 15.2)];
   const optionsY = [p.y, 530, 599, 668, 710];
   if (pickup && useSupplies) optionsY.push(Math.max(bounds.top, Math.min(bounds.bottom, pickup.y + 24)));
-  const divers = f.enemies.filter((e) => e.dive && e.hull > 0).map((e) => ({
-    x:e.x, y:e.y, vx:Math.cos(e.vector) * 225, vy:Math.max(.55, Math.sin(e.vector)) * 225, radius:e.spec.hit
-  }));
-  const threats = [...f.hostile, ...divers];
+  const fighters = f.enemies.filter((e) => e.hull > 0 && !e.retreat && !e.loop).map((e) => ({
+    x:e.x, y:e.y, vx:(e.x - e.px) * 60, vy:(e.y - e.py) * 60, radius:Math.max(e.spec.hit, e.spec.size * .39)
+  })).filter((e) => Number.isFinite(e.vx) && Number.isFinite(e.vy));
+  const threats = [...f.hostile, ...fighters];
   let best;
   for (const rawX of optionsX) {
     const x = Math.min(bounds.right - 4, Math.max(bounds.left + 4, rawX));
     for (const y of optionsY) {
       const target = { x, y };
       const travel = Math.hypot(x - p.x, y - p.y);
+      const steeringTime = Math.max(.001, travel / f.ship.speed);
       let cost = Math.abs(x - targetX) * .29 + travel * .20 + Math.abs(y - (pickup?.y ?? 594)) * .07;
-      if (rails.some((w) => Math.abs(x - w.x) < w.width / 2 + f.ship.hit + 6)) cost += 180;
+      for (const rail of rails) {
+        const start = Math.max(0, rail.windup - rail.age);
+        const end = Math.max(start, rail.windup + rail.live - rail.age);
+        const enter = p.x + (x - p.x) * Math.min(1, start / steeringTime);
+        const exit = p.x + (x - p.x) * Math.min(1, end / steeringTime);
+        const radius = rail.width / 2 + f.ship.hit + 6;
+        if (Math.min(enter, exit) < rail.x + radius && Math.max(enter, exit) > rail.x - radius) cost += 260;
+      }
       for (const s of threats) {
-        if (s.y > Math.max(p.y, y) + 22 || s.y + s.vy * 1.08 < Math.min(p.y, y) - 34) continue;
+        const padding = s.radius + f.ship.hit + 10;
+        if (s.y > Math.max(p.y, y) + padding || s.y + s.vy * 1.08 < Math.min(p.y, y) - padding) continue;
         cost += routeRisk(p, f.ship, target, s);
       }
       if (!best || cost < best.cost) best = { x, y, cost };

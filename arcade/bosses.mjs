@@ -1,5 +1,5 @@
 import { BOSSES, WIDTH, HEIGHT } from './catalog.mjs';
-import { flagship, gravityPlatform, harrow, railShip, relayCarrier } from './boss-patterns.mjs';
+import { flagship, gravityPlatform, harrow, railShip, relayCarrier, startWallWarning } from './boss-patterns.mjs';
 import { advanceWraith, enterWraith } from './wraith.mjs';
 import { bodiesMeet, pilotBody, railBody, rememberPosition } from './collision.mjs';
 
@@ -66,7 +66,7 @@ export function operatorWarnings(flight, dt) {
   for (const warning of flight.hazards) {
     const delayed = warning.age < 0;
     warning.age += dt;
-    if (delayed && warning.age >= 0) flight.signal('charge', warning.x, warning.y);
+    if (delayed && warning.age >= 0) startWallWarning(flight, warning);
     if (warning.age < warning.windup) continue;
     if (warning.kind === 'wall' && warning.triggered) warning.rowY += warning.rowSpeed * dt;
     if (!warning.triggered) {
@@ -75,14 +75,7 @@ export function operatorWarnings(flight, dt) {
       if (warning.kind === 'wall') {
         warning.rowY = warning.y;
         warning.rowSpeed = warning.speed * flight.pressure;
-        const left = (warning.left ?? 0) + 18;
-        const span = (warning.right ?? WIDTH) - 18 - left;
-        const steps = Math.round(span / 34);
-        for (let i = 0; i <= steps; i++) {
-          const x = left + span * i / steps;
-          if (Math.abs(x - warning.x) < warning.width / 2 + 15) continue;
-          flight.projectile(x, warning.y, Math.PI/2, warning.speed, 'rock');
-        }
+        for (const { x, y } of warning.rocks) flight.projectile(x, y, Math.PI/2, warning.speed, 'rock');
       }
     }
     if (warning.kind === 'rail' && bodiesMeet(pilotBody(flight), railBody(warning))) {

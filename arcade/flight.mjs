@@ -5,7 +5,7 @@ import { VANE_HULL, breakFormation, linkedVolley, vanePosition } from './formati
 import { PHYSICAL, SPECTRAL, otherRealm, realmLabel } from './wraith.mjs';
 import { flightRandom } from './seed.mjs';
 import { advanceCruiser, launchCruiser } from './cruiser.mjs';
-import { fliesBack, flyEnemy, inFiringRange } from './enemy-course.mjs';
+import { fliesBack, flyEnemy, inFiringRange, separateWing, shardArmTime } from './enemy-course.mjs';
 import { bodiesMeet, bossBody, contactTime, coreBody, enemyBody, friendlyBody, hostileBody, moduleBody,
   pickupBody, pilotBody, pilotReceiver, rememberPosition, shieldModules, vaneBody, wraithWingBody } from './collision.mjs';
 
@@ -68,7 +68,7 @@ export class Flight {
     this.yIntent = HEIGHT * .80;
     this.player = {
       x: this.xIntent, y: this.yIntent, hull: this.ship.hull + this.stats.hull, maxHull: this.ship.hull + this.stats.hull,
-      guard: 1.6, barrier: 0, power: 0, overdrive: 0, bank: 0,
+      guard: 1.6, barrier: 0, barrierTime: 0, power: 0, overdrive: 0, bank: 0,
       realm: PHYSICAL, ghostEnergy: GHOST.start, ghostTime: 0, ghostRecovery: 0, ghostEarnAt: 0
     };
     this.message(this.endless ? 'Survive as long as you can.' : this.stage.brief, 3, 'intro', this.endless ? 'Endless' : this.stage.name);
@@ -152,15 +152,16 @@ export class Flight {
     const p = this.player;
     if (p.realm !== realm || p.guard || this.status !== 'active') return false;
     if (p.barrier) {
-      p.barrier--;
+      p.barrier = 0;
+      p.barrierTime = 0;
       p.guard = .58;
       this.signal('barrier', p.x, p.y);
-      if (!p.barrier) this.message('Barrier depleted', 2, 'pickup');
+      this.message('One hit blocked.', 1.6, 'pickup', 'Shield spent');
       return true;
     }
     p.hull--;
     if (this.boss) this.bossDamage++;
-    p.guard = 1.38;
+    p.guard = 1.04;
     this.combo = 0;
     this.comboTime = 0;
     this.signal('hurt', p.x, p.y, { x, y });
@@ -182,8 +183,10 @@ export class Flight {
   collect(drop) {
     const p = this.player;
     const type = PICKUPS[drop.kind];
-    if (drop.kind === 'barrier') p.barrier = type.charges;
-    else if (drop.kind === 'repair') {
+    if (drop.kind === 'barrier') {
+      p.barrier = 1;
+      p.barrierTime = type.duration;
+    } else if (drop.kind === 'repair') {
       const add = Math.min(type.hull, p.maxHull - p.hull);
       p.hull += add;
       this.message(add ? `+${add} hull restored` : 'Hull already full', 2, 'pickup', type.name, add ? `+${add} hull` : 'Hull full');
@@ -203,8 +206,25 @@ export class Flight {
       kind, radius: projectileRadii[kind], age: 0, live: true, ...extras });
   }
 
-  fan(x, y, direction, count, spacing, speed, kind, extras) {
-    for (let i = 0; i < count; i++) this.projectile(x, y, direction + (i - (count - 1) / 2) * spacing, speed, kind, extras);
+  enemyProjectile(source, x, y, angle, speed, kind, extras) {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const blocked = this.enemies.some((ally) => {
+      if (ally === source || ally.hull <= 0 || ally.retreat || ally.loop) return false;
+      const dx = ally.x - x;
+      const dy = ally.y - y;
+      const depth = dx * cos + dy * sin;
+      return depth > 1 && depth < 84 && Math.abs(dx * sin - dy * cos) < ally.spec.hit + 4;
+    });
+    if (!blocked) this.projectile(x, y, angle, speed, kind, extras);
+  }
+
+  fan(x, y, direction, count, spacing, speed, kind, extras, source) {
+    for (let i = 0; i < count; i++) {
+      const angle = direction + (i - (count - 1) / 2) * spacing;
+      if (source) this.enemyProjectile(source, x, y, angle, speed, kind, extras);
+      else this.projectile(x, y, angle, speed, kind, extras);
+    }
   }
 
   queue(name, flip = false, reward) {
@@ -221,8 +241,9 @@ export class Flight {
   }
 
   updateSchedule() {
+    if (this.practice) return;
     if (this.endless) {
-      this.pressure = 1 + Math.min(.49, this.elapsed / 570);
+      this.pressure = 1.08 + Math.min(.45, this.elapsed / 485);
       if (!this.boss && this.elapsed >= this.nextEndlessBoss) {
         const boss = ENDLESS_BOSSES[this.endlessBossCount % ENDLESS_BOSSES.length];
         this.endlessBossCount++;
@@ -230,17 +251,18 @@ export class Flight {
         launchBoss(this, boss);
       }
       if (!this.boss && this.elapsed >= this.endlessNext) {
-        const loop = ['arrow','spear','cross','anvil','hook','sweep','escort','break','trap','surge','specters'];
+        const loop = ['arrow','spear','cross','anvil','hook','splitWing','sweep','escort','break','trap','surge','specters'];
         const unlocked = Math.min(loop.length, 4 + Math.floor(this.elapsed / 23));
         this.queue(loop[this.endlessWave % unlocked], this.endlessWave % 2 === 1);
         this.endlessWave++;
-        this.endlessNext = this.elapsed + Math.max(3.5, 6.8 - this.elapsed / 95);
+        this.endlessNext = this.elapsed + Math.max(3.25, 6.1 - this.elapsed / 95);
         if (this.endlessWave % 4 === 0) {
           const supply = ['power','barrier','repair','overdrive'][(this.endlessWave / 4 - 1) % 4];
           this.pickup(supply, this.endlessWave % 8 === 0 ? .62 : .36);
         }
       }
     } else {
+      this.pressure = 1.08 + .035 * (this.stage.id - 1) + Math.min(.075, this.elapsed / 1400);
       const beat = this.stage.waves[this.waveIndex];
       if (beat && this.elapsed >= beat[0]) {
         this.queue(beat[1], Boolean(beat[2]), beat[3]);
@@ -276,17 +298,20 @@ export class Flight {
   }
 
   addEnemy(data) {
-    if (this.enemies.length >= 35) return;
+    if (this.enemies.length >= 35 && this.enemies.filter((enemy) => enemy.hull > 0).length >= 35) return;
     const spec = ENEMIES[data.kind];
     const x = WIDTH * data.lane;
-    this.enemies.push({
-      kind: data.kind, spec, x, home: x, y: -32, age: 0, hull: spec.hull, fireTimer: data.group && data.kind === 'relay' ? 3.1 : 1.55 + data.lane * .8,
+    const enemy = {
+      kind: data.kind, spec, x, home: x, courseX: x, laneOffset: 0, y: -32, age: 0, hull: spec.hull,
+      fireTimer: data.group && data.kind === 'relay' ? 2.83 : data.kind === 'scout' ? 1.13 + data.lane * .6 : 1.41 + data.lane * .7,
       flash: 0, turn: 0, volley: 0, side: x < WIDTH / 2 ? 1 : -1, dive: false, retreat: false,
       group: data.group, vane: data.group && data.kind === 'relay' ? VANE_HULL : 0, jam: 0,
       supplyWing: data.supplyWing,
       pace: .94 + this.random() * .12,
       loop: null, returned: false, returns: data.returns ?? fliesBack(data.kind)
-    });
+    };
+    this.enemies.push(enemy);
+    return enemy;
   }
 
   movePilot(dt, recordedAim = null) {
@@ -317,6 +342,10 @@ export class Flight {
     this.movement += distance * amount;
     p.bank += (clamp(dx / 25, -.22, .22) - p.bank) * Math.min(1, dt * 17);
     p.guard = duration(p.guard - dt);
+    if (p.barrier) {
+      p.barrierTime = duration(p.barrierTime - dt);
+      if (!p.barrierTime) p.barrier = 0;
+    }
     p.power = duration(p.power - dt);
     p.overdrive = duration(p.overdrive - dt);
     this.comboTime = duration(this.comboTime - dt);
@@ -351,19 +380,22 @@ export class Flight {
       case 'lancer':
         for (const [dx, dy] of GUNNER_MUZZLES) {
           const muzzle = hardpointAt(e, dx, dy, e.turn);
-          this.projectile(muzzle.x, muzzle.y, this.angleToPilot(muzzle.x, muzzle.y) + Math.sign(dx) * .095, 207, 'lance');
+          this.enemyProjectile(e, muzzle.x, muzzle.y, this.angleToPilot(muzzle.x, muzzle.y) + Math.sign(dx) * .095, 218, 'lance');
         }
         break;
-      case 'sweeper': this.fan(x, y, Math.PI / 2 + Math.sin(e.volley * 1.52) * .49, 5, .20, 162, 'blade'); break;
-      case 'escort': this.fan(x, y, Math.PI / 2, 3, .29, 136, 'seed'); break;
-      case 'relay': this.fan(x, y, aim, 2, .27, 157, 'pulse'); break;
+      case 'sweeper': this.fan(x, y, Math.PI / 2 + Math.sin(e.volley * 1.52) * .49, 5, .20, 170, 'blade', undefined, e); break;
+      case 'escort': this.fan(x, y, Math.PI / 2, 3, .29, 136, 'seed', undefined, e); break;
+      case 'relay': this.fan(x, y, aim, 2, .27, 165, 'pulse', undefined, e); break;
       case 'phantom': {
         const physical = e.volley % 2 === 1;
-        this.fan(x, y, aim, 3, .24, 151, physical ? 'orb' : 'specter', { realm: physical ? PHYSICAL : SPECTRAL });
+        this.fan(x, y, aim, 3, .24, 158, physical ? 'orb' : 'specter', { realm: physical ? PHYSICAL : SPECTRAL }, e);
         break;
       }
-      case 'diver': this.projectile(x, y, aim, 170, 'bolt'); break;
-      default: this.projectile(x, y, Math.PI / 2 + e.side * .075, 149, 'bolt'); break;
+      case 'diver': this.enemyProjectile(e, x, y, aim, 179, 'bolt'); break;
+      case 'shard':
+        if (e.volley === 1) this.enemyProjectile(e, x, y, clamp(aim, 1.03, 2.11), 183, 'bolt');
+        break;
+      default: this.enemyProjectile(e, x, y, clamp(aim, 1.13, 2.01), 168, 'bolt'); break;
     }
   }
 
@@ -399,8 +431,8 @@ export class Flight {
     e.x = loop.edge + (loop.entryX - loop.edge) * loop.across;
     if (loop.across < 1) return;
     const home = loop.entryX;
-    Object.assign(e, { x: home, home, y: -34, age: 0, turn: 0, fireTimer: 2.1, side: home < WIDTH / 2 ? 1 : -1,
-      returned: true, loop: null });
+    Object.assign(e, { x: home, home, courseX: home, laneOffset: 0, y: -34, age: 0, turn: 0,
+      fireTimer: 1.58, side: home < WIDTH / 2 ? 1 : -1, diveAim: null, returned: true, loop: null });
     rememberPosition(e);
   }
 
@@ -414,7 +446,9 @@ export class Flight {
       : Math.min(this.stage.bossAt, this.sawCruiser ? Infinity : this.stage.cruiserAt ?? Infinity) - this.elapsed;
     const canReturn = !this.boss && !this.cruiser && timeToSetPiece > 3;
     let returning = this.enemies.filter((e) => e.loop && !e.retreat).length;
+    const active = [];
     for (const e of this.enemies) {
+      if (e.hull <= 0) continue;
       rememberPosition(e);
       e.age += dt;
       e.flash = duration(e.flash - dt);
@@ -430,6 +464,10 @@ export class Flight {
       }
       if (e.group && !wingCommand.has(e.group)) e.group = 0;
       flyEnemy(this, e, dt);
+      active.push(e);
+    }
+    separateWing(active, dt);
+    for (const e of active) {
       if (canReturn && e.returns && !e.returned && returning < maxReturning && e.y > HEIGHT + e.spec.size * .45) {
         this.startReturn(e);
         returning++;
@@ -440,7 +478,7 @@ export class Flight {
       e.fireTimer -= dt;
       if (linked === e && canFire && e.fireTimer <= 0 && e.vane > 0) {
         linkedVolley(this, e);
-        e.fireTimer = 3.05;
+        e.fireTimer = 2.94 / this.pressure;
       } else if (!linked && canFire && e.fireTimer <= 0 && !e.jam) {
         this.enemyFire(e);
         e.fireTimer = e.spec.cadence / this.pressure;
@@ -461,7 +499,23 @@ export class Flight {
       ally.kind === 'relay' && ally.hull > 0 && !ally.retreat && !ally.loop && Math.hypot(enemy.x-ally.x, enemy.y-ally.y) < 144);
   }
 
+  splitEnemy(parent) {
+    if (this.enemies.filter((enemy) => enemy.hull > 0).length > 33) return;
+    const center = clamp(parent.x, 27, WIDTH - 27);
+    this.signal('splitterSplit', parent.x, parent.y);
+    for (const side of [-1, 1]) {
+      const lane = (center + side * 11) / WIDTH;
+      const child = this.addEnemy({ kind:'shard', lane });
+      Object.assign(child, { y:parent.y - 5, splitSide:side, fireTimer:.91 + side * .045, turn:-side * .16 });
+    }
+    if (!this.taughtSplit && this.notice?.kind !== 'warning') {
+      this.taughtSplit = true;
+      this.message('Two Shards fan out when its hull breaks.', 2.4, 'tactic', 'Splitter');
+    }
+  }
+
   hitEnemy(e, s) {
+    if (e.hull <= 0) return;
     const protectedEscort = this.escortProtected(e);
     e.hull -= s.strength * (protectedEscort ? .27 : e.jam > 0 ? 1.54 : 1);
     e.flash = .075;
@@ -470,6 +524,7 @@ export class Flight {
     if (e.hull <= 0) {
       this.scoreKill(e.spec.value + (e.jam > 0 ? 125 : 0));
       this.signal('enemyDown', e.x, e.y, e.kind);
+      if (e.kind === 'splitter') this.splitEnemy(e);
       if (e.supplyWing && !this.openingPowerGranted && --e.supplyWing.remaining === 0) {
         this.openingPowerGranted = true;
         this.pickup('power', e.x / WIDTH, clamp(e.y + 12, 97, this.player.y - 65));
@@ -628,6 +683,7 @@ export class Flight {
     const p = this.player;
     const cockpit = pilotBody(this);
     for (const e of this.enemies) {
+      if (e.kind === 'shard' && e.age < shardArmTime) continue;
       if (p.realm === PHYSICAL && !p.guard && e.hull > 0 && !e.retreat && !e.loop && bodiesMeet(enemyBody(e), cockpit)) {
         if (this.damage(e.x, e.y)) e.retreat = true;
       }

@@ -1,14 +1,36 @@
 import { WIDTH } from './catalog.mjs';
 
+function wallOrigin(flight, emitter) {
+  const boss = flight.boss;
+  return boss && Number.isFinite(emitter) ? { x:boss.x, y:boss.y + emitter } : { x:WIDTH / 2, y:-20 };
+}
+
+export function startWallWarning(flight, warning) {
+  warning.origin = wallOrigin(flight, warning.emitter);
+  const source = warning.origin.y < 0 ? warning : warning.origin;
+  flight.signal('charge', source.x, source.y);
+}
+
 export function markWall(flight, slot, options = {}) {
   const gap = globalThis.debrisSafeGap(slot, { slots:5, width:WIDTH, asteroidRadius:12, playerRadius:flight.ship.hit, margin:8 });
   const delay = options.delay ?? 0;
   const y = options.y ?? 176;
-  flight.hazards.push({
-    kind:'wall', x:gap.center, y, width:Math.max(94, gap.width), age:-delay, windup:1.12,
+  const width = Math.max(94, gap.width);
+  const margin = 18;
+  const span = WIDTH - 2 * margin;
+  const steps = Math.round(span / 34);
+  const rocks = [];
+  for (let lane = 0; lane <= steps; lane++) {
+    const x = margin + span * lane / steps;
+    if (Math.abs(x - gap.center) >= width / 2 + 15) rocks.push({ x, y });
+  }
+  const warning = {
+    kind:'wall', x:gap.center, y, width, rocks, age:-delay, windup:1.12,
+    emitter:options.emitter, origin:wallOrigin(flight, options.emitter),
     speed:options.speed ?? 141
-  });
-  if (!delay) flight.signal('charge', gap.center, y);
+  };
+  flight.hazards.push(warning);
+  if (!delay) startWallWarning(flight, warning);
 }
 
 export function markRail(flight, x, width = 38, y = 105, emitter = null) {
@@ -33,8 +55,9 @@ export function harrow(flight, boss, phase) {
   } else {
     const speed = globalThis.debrisWardenRowSpeed(boss.hull / boss.spec.hull, 'wall') * 60;
     const y = boss.y + 81 * boss.artScale;
-    markWall(flight, gap, { speed, y });
-    if (phase && turn % 2 === 0) markWall(flight, gapOrder[(turn + 1) % gapOrder.length], { speed, y, delay:2.12 });
+    const emitter = 49 * boss.artScale;
+    markWall(flight, gap, { speed, y, emitter });
+    if (phase && turn % 2 === 0) markWall(flight, gapOrder[(turn + 1) % gapOrder.length], { speed, y, emitter, delay:2.12 });
   }
   boss.timer = lighter ? 2.32 : phase ? 3.25 : 3.75;
 }
@@ -93,19 +116,20 @@ export function gravityPlatform(flight, boss, phase) {
 
 export function flagship(flight, boss, phase) {
   const active = boss.parts.filter((part) => part.hull > 0);
+  const wall = { y:boss.y + 101 * boss.artScale, emitter:26 * boss.artScale };
   if (active.length > 0) {
     for (const part of active) {
       const x = boss.x + part.dx;
       flight.fan(x, boss.y + part.dy + part.muzzle, Math.PI/2 + Math.sign(part.dx) * .38, 4, .128, 177, 'lance');
     }
-    if (boss.attack % 2 === 0) markWall(flight, gapOrder[boss.attack % gapOrder.length], { speed:147, y:boss.y + 101 * boss.artScale });
+    if (boss.attack % 2 === 0) markWall(flight, gapOrder[boss.attack % gapOrder.length], { ...wall, speed:147 });
     boss.timer = 2.64;
     return;
   }
   const turn = boss.attack % 3;
   const y = boss.y + 32 * boss.artScale;
   if (turn === 0) {
-    markWall(flight, gapOrder[(boss.attack + 1) % gapOrder.length], { speed:161 + phase * 16, y:boss.y + 101 * boss.artScale });
+    markWall(flight, gapOrder[(boss.attack + 1) % gapOrder.length], { ...wall, speed:161 + phase * 16 });
     boss.timer = 2.50;
   } else if (turn === 1) {
     const x = flight.player.x;

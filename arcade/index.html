@@ -24,14 +24,11 @@
     <section class="flight" id="flight" aria-label="Flight" hidden>
       <canvas id="sky" aria-label="Flight playfield. Drag or use arrow keys to steer. Weapons fire automatically. Press Space for Ghost Shift."></canvas>
       <div class="flight-ui">
-        <div class="instrument">
-          <div class="hull"><div id="hull" role="meter" aria-label="Hull" aria-valuemin="0" aria-valuemax="5" aria-valuenow="5"></div><span id="flight-score">0</span></div>
-          <div class="flight-label">
-            <div class="flight-heading"><span id="flight-name">Vesper Orbit</span><span id="boss-name" hidden></span><span id="boss-realm" aria-live="polite" hidden></span><span id="clock" class="caption">00:00</span></div>
-            <div class="run-line"><div class="run-status">
-              <span id="flight-tip" hidden></span><span id="flight-progress"></span><p id="flight-help" hidden>Drag to steer · Auto-fire</p><div id="field-effects" hidden></div>
-            </div><span id="chain"></span></div>
-          </div>
+        <div class="hull">
+          <div id="hull" role="meter" aria-label="Hull" aria-valuemin="0" aria-valuemax="5" aria-valuenow="5"></div>
+          <div class="flight-points"><span class="visually-hidden">Score</span><span id="flight-score">0</span><span id="chain"></span></div>
+        </div>
+        <div class="flight-controls">
           <div id="ghost-control" class="ghost-control">
             <button id="ghost-shift" type="button" aria-label="Ghost Shift" aria-describedby="ghost-status" aria-disabled="true">
               <span id="ghost-label" class="caption">Ghost</span><strong id="ghost-action">Shift</strong>
@@ -41,8 +38,16 @@
           </div>
           <button id="pause" class="icon-button" type="button" aria-label="Pause"></button>
         </div>
-        <div id="boss-meter" class="boss-hud" hidden><div id="boss-track" role="meter" aria-label="Boss hull" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><div id="boss-value"></div></div></div>
+        <div id="flight-message" class="flight-label">
+          <div class="flight-heading"><span id="flight-name" hidden></span><span id="boss-name" hidden></span><span id="boss-realm" aria-live="polite" hidden></span></div>
+          <div class="run-status">
+            <span id="flight-tip" hidden></span><span id="flight-progress" hidden></span><p id="flight-help" hidden>Drag to steer · Auto-fire</p><div id="field-effects" hidden></div>
+          </div>
+        </div>
+        <span id="clock" class="visually-hidden">00:00</span>
+        <div id="boss-meter" class="visually-hidden" hidden><div id="boss-track" role="meter" aria-label="Boss hull" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><div id="boss-value"></div></div></div>
       </div>
+      <div id="training-actions" class="training-actions" hidden></div>
       <dialog id="flight-modal" aria-labelledby="pause-title"></dialog>
     </section>
     <p id="announcer" class="visually-hidden" role="status" aria-live="polite"></p>
