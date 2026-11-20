@@ -323,7 +323,11 @@ test('Space activates Pause on focus and uses the indicated ability from the pla
         await page.waitForFunction(() => window.controlProbe.state.flight.player.realm === 'ghost');
         await button('Pause').press('Enter');
         await page.getByRole('heading', { name:'Paused' }).waitFor();
-        await page.evaluate(() => window.controlProbe.store.change((pilot) => { pilot.clears = { 1:1, 2:1, 3:1, 4:1 }; }));
+        await page.evaluate(() => window.controlProbe.store.change((pilot) => {
+          pilot.clears = { 1:1, 2:1, 3:1, 4:1 };
+          pilot.ship = 'bastion';
+          pilot.equipment = ['hull'];
+        }));
 
         await page.reload();
         await button('Stage Select').tap();
@@ -338,14 +342,26 @@ test('Space activates Pause on focus and uses the indicated ability from the pla
         });
         await page.getByText('Hop to match realms. Shoot the core.', { exact:true }).waitFor();
         assert.match(await page.locator('#sky').getAttribute('aria-label'), /Space to Hop between realms/);
+        await page.evaluate(() => { const { flight } = window.controlProbe.state;
+          flight.score = 38640;
+          flight.boss.shifting = true; });
+        const incoming = page.locator('#boss-realm').filter({ hasText:'Physical → Ghost' });
+        await incoming.waitFor();
+        const visible = await incoming.evaluate((cue) => {
+          const band = cue.parentElement.getBoundingClientRect();
+          const bounds = cue.getBoundingClientRect();
+          return bounds.left >= band.left && bounds.right <= band.right && cue.scrollWidth <= cue.clientWidth;
+        });
+        assert.equal(visible, true);
+        await page.evaluate(() => { window.controlProbe.state.flight.boss.shifting = false; });
         const toGhost = button('Hop to Ghost realm');
         const toPhysical = button('Hop to Physical realm');
         assert.match(await page.locator('#ghost-status').textContent(), /Current realm is Physical/);
-        assert.equal(await page.locator('#flight-progress').textContent(), 'Physical realm');
+        assert.equal(await page.locator('#flight-progress').textContent(), 'You · Physical');
         await toGhost.tap();
         await toPhysical.waitFor();
         assert.match(await page.locator('#ghost-status').textContent(), /Current realm is Ghost/);
-        assert.equal(await page.locator('#flight-progress').textContent(), 'Ghost realm');
+        assert.equal(await page.locator('#flight-progress').textContent(), 'You · Ghost');
         await page.waitForFunction(() => document.querySelector('#ghost-shift').getAttribute('aria-disabled') === 'false');
         await page.evaluate(() => {
           const f = window.controlProbe.state.flight;

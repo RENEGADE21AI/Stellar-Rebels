@@ -450,14 +450,16 @@ function refreshHud(restart = false) {
   const f = state.flight;
   const p = f.player;
   const activeBoss = Boolean(f.boss && f.boss.hull > 0);
+  const showRealm = activeBoss && f.realmHop;
   const message = f.notice?.time > 0 ? f.notice : null;
   const brief = message && ['intro','tactic','warning'].includes(message.kind);
   content('flight-name', f.endless ? 'Endless' : f.stage.name);
   content('clock', time(f.elapsed));
+  $('clock').hidden = showRealm;
   $('flight-tip').hidden = !brief;
   content('flight-tip', brief ? message.copy : '');
   content('flight-score', num(f.score));
-  const chapter = activeBoss ? f.realmHop ? `${realmLabel(p.realm)} realm` : '' : f.endless ? 'Survival'
+  const chapter = activeBoss ? showRealm ? `You · ${realmLabel(p.realm)}` : '' : f.endless ? 'Survival'
     : f.stage.chapters.findLast(([start]) => start <= f.elapsed)?.[1] ?? '';
   content('flight-progress', message?.kind === 'pickup' ? message.brief : message?.kind === 'tactic' ? message.title : chapter);
   content('chain', f.combo >= 2 ? `×${f.combo}` : '');
@@ -467,12 +469,14 @@ function refreshHud(restart = false) {
   refreshGhost(f);
   $('boss-meter').hidden = !activeBoss;
   $('boss-name').hidden = !activeBoss;
+  $('boss-realm').hidden = !showRealm;
   $('flight-name').hidden = activeBoss;
   if (activeBoss) {
     const boss = f.boss;
     const realm = boss.realm === 'ghost' ? 'Ghost' : 'Physical';
     const transition = boss.shifting ? `${realm} → ${boss.realm === 'ghost' ? 'Physical' : 'Ghost'}` : realm;
-    content('boss-name', f.realmHop ? `Wraith · ${transition}` : boss.spec.name);
+    content('boss-name', boss.spec.name);
+    if (showRealm) content('boss-realm', transition);
     $('boss-meter').dataset.realm = f.realmHop ? boss.realm : '';
     const hp = Math.max(0, f.boss.hull / f.boss.spec.hull);
     $('boss-value').style.transform = `scaleX(${hp.toFixed(3)})`;
