@@ -3,7 +3,11 @@ import { innerRoute, outerRoute } from './routes.mjs';
 export const WIDTH = 384;
 export const HEIGHT = 768;
 export const BOSS_ARENA_SCALE = 1.22;
-export const RULES_VERSION = 'arcade-3';
+export const RULES_VERSION = 'arcade-4';
+export const FIXED_TICK = 1 / 60;
+export const AIM_PRECISION = 16;
+export const INPUT_SHIFT = 1;
+export const INPUT_RESUME = 2;
 export const GUNNER_MUZZLES = [[-21,22],[21,22]];
 export const GHOST = { capacity: 100, start: 26, cost: 38, duration: 1.05, recovery: 1.15, hop: 18, hopRecovery: .42 };
 

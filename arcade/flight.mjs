@@ -1,14 +1,17 @@
-import { BOSS_ARENA_SCALE, ENDLESS_BOSSES, ENEMIES, GHOST, GUNNER_MUZZLES, HEIGHT, PICKUPS, SHIPS, WIDTH, enemyMuzzle, formation, hardpointAt, stageById, weaponStats } from './catalog.mjs';
+import { AIM_PRECISION, BOSS_ARENA_SCALE, ENDLESS_BOSSES, ENEMIES, GHOST, GUNNER_MUZZLES, HEIGHT, INPUT_RESUME, INPUT_SHIFT, PICKUPS, SHIPS, WIDTH, enemyMuzzle, formation, hardpointAt, stageById, weaponStats } from './catalog.mjs';
 import { advanceBoss, bossPartPosition, launchBoss, operatorWarnings } from './bosses.mjs';
 import { markPull, markRail, markWall } from './boss-patterns.mjs';
 import { VANE_HULL, breakFormation, linkedVolley, vanePosition } from './formations.mjs';
 import { PHYSICAL, SPECTRAL, WRAITH_WINGS, otherRealm, realmLabel } from './wraith.mjs';
+import { flightRandom } from './seed.mjs';
 
 export const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 export const bounds = { left: 17, right: WIDTH - 17, top: 235, bottom: HEIGHT - 37 };
 const bossSideRoom = WIDTH * (BOSS_ARENA_SCALE - 1) / 2;
+const bossLowerRoom = HEIGHT * (BOSS_ARENA_SCALE - 1) / 2;
 const loopTurn = .27;
 const maxReturning = 3;
+const returnLanes = [.18, .34, .50, .66, .82].map((lane) => lane * WIDTH);
 const projectileRadii = { bolt: 4, seed: 4.5, rock: 12, lance: 4.8, blade: 5, pulse: 4.7, orb: 5.1, specter: 5.4 };
 const duration = (value) => Math.max(0, value);
 
@@ -27,6 +30,11 @@ function shotHits(shot, x, y, radius) {
 export class Flight {
   constructor(run, options = {}) {
     this.run = run;
+    this.random = flightRandom(run.seed);
+    this.recordInput = options.recordInput;
+    this.ticks = 0;
+    this.inputFlags = 0;
+    this.nextResumeGuard = 0;
     this.ship = SHIPS[run.ship] ?? SHIPS.kestrel;
     this.stats = weaponStats(run.equipment);
     this.stage = stageById(run.stage) ?? stageById(1);
@@ -76,9 +84,10 @@ export class Flight {
   }
 
   get sideRoom() { return bossSideRoom * this.arenaMix; }
+  get lowerRoom() { return bossLowerRoom * this.arenaMix; }
   get movementBounds() {
     const room = this.sideRoom;
-    return { left: bounds.left - room, right: bounds.right + room, top: bounds.top, bottom: bounds.bottom + 24 * this.arenaMix };
+    return { left: bounds.left - room, right: bounds.right + room, top: bounds.top, bottom: bounds.bottom + this.lowerRoom };
   }
 
   drag(dx, dy) {
@@ -95,7 +104,11 @@ export class Flight {
 
   resumeProtection() {
     this.reanchor();
+    if (this.elapsed < this.nextResumeGuard) return false;
+    this.nextResumeGuard = this.elapsed + 18;
     this.player.guard = Math.max(this.player.guard, .72);
+    this.inputFlags |= INPUT_RESUME;
+    return true;
   }
 
   signal(type, x, y, detail) {
@@ -121,6 +134,7 @@ export class Flight {
 
   activateGhost() {
     if (!this.shiftReady) return false;
+    this.inputFlags |= INPUT_SHIFT;
     const p = this.player;
     p.ghostEnergy -= this.ghostCost;
     if (this.realmHop) {
@@ -273,7 +287,7 @@ export class Flight {
     });
   }
 
-  movePilot(dt) {
+  movePilot(dt, recordedAim = null) {
     const p = this.player;
     const priorRoom = this.arenaMix;
     this.arenaMix = clamp(this.arenaMix + (this.boss ? dt * 1.25 : -dt * 1.45), 0, 1);
@@ -289,8 +303,13 @@ export class Flight {
     if (this.keys) {
       this.drag(this.keys.x * this.ship.speed * dt, this.keys.y * this.ship.speed * dt);
     }
-    const dx = this.xIntent - p.x;
-    const dy = this.yIntent - p.y;
+    const area = this.movementBounds;
+    const aimX = recordedAim ? recordedAim[0] : Math.round(this.xIntent * AIM_PRECISION);
+    const aimY = recordedAim ? recordedAim[1] : Math.round(this.yIntent * AIM_PRECISION);
+    this.recordInput?.(this.ticks, aimX, aimY, this.inputFlags);
+    this.inputFlags = 0;
+    const dx = clamp(aimX / AIM_PRECISION, area.left, area.right) - p.x;
+    const dy = clamp(aimY / AIM_PRECISION, area.top, area.bottom) - p.y;
     const distance = Math.hypot(dx, dy);
     const amount = Math.min(1, this.ship.speed * dt / Math.max(.01, distance));
     p.x += dx * amount;
@@ -350,7 +369,11 @@ export class Flight {
 
   startReturn(e) {
     const edge = e.x < WIDTH / 2 ? 15 : WIDTH - 15;
-    e.loop = { edge, fromX: e.x, fromTurn: e.turn, time: 0 };
+    const newLanes = returnLanes.filter((lane) => Math.abs(lane - e.home) >= WIDTH / 4);
+    const distantLanes = newLanes.filter((lane) => Math.abs(lane - e.x) >= WIDTH / 8);
+    const candidates = distantLanes.length ? distantLanes : newLanes;
+    const entryX = candidates[Math.floor(this.random() * candidates.length)];
+    e.loop = { edge, fromX: e.x, fromTurn: e.turn, entryX, time: 0 };
     e.group = 0;
     e.vane = 0;
     e.jam = 0;
@@ -371,7 +394,7 @@ export class Flight {
     if (turn < 1) return;
     e.y -= 460 * dt;
     if (e.y >= -49) return;
-    const home = clamp(WIDTH - e.home + 14 * e.side, 44, WIDTH - 44);
+    const home = loop.entryX;
     Object.assign(e, { x: home, home, y: -34, age: 0, turn: 0, fireTimer: 2.1, side: home < WIDTH / 2 ? 1 : -1,
       returned: true, loop: null });
   }
@@ -543,7 +566,7 @@ export class Flight {
       } else if (this.hitBoss(s)) s.live = false;
     }
     const sideRoom = this.sideRoom;
-    const bottomRoom = 24 * this.arenaMix;
+    const bottomRoom = this.lowerRoom;
     this.friendly = this.friendly.filter((s) => s.live && s.y > -35 && s.x > -30 - sideRoom && s.x < WIDTH + 30 + sideRoom);
     if (this.status !== 'active') return;
     for (const s of this.hostile) {
@@ -558,11 +581,12 @@ export class Flight {
       s.y > -40 && s.x > -42 - sideRoom && s.x < WIDTH + 42 + sideRoom);
   }
 
-  step(dt) {
+  step(dt, recordedAim = null) {
     if (this.status !== 'active') return;
     this.elapsed += dt;
     if (this.notice) this.notice.time -= dt;
-    this.movePilot(dt);
+    this.movePilot(dt, recordedAim);
+    this.ticks++;
     this.updateSchedule();
     this.moveEnemies(dt);
     advanceBoss(this, dt);

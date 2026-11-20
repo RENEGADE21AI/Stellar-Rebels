@@ -74,7 +74,9 @@ Ghost Energy starts at 26 out of 100. Landed hits and kills charge it. A normal 
 
 Boss arrival opens the arena 22% wider, including extra lower space for dodging. The camera pulls back on entry and the HUD stays anchored. Debris rows span the wider field, and rails and pull lanes extend through the added space. Reduced motion uses the wide view without animating the pullback. In Endless, existing fighters withdraw at boss entry and the arena returns to its normal size after a kill.
 
-Ordinary survivors can turn below the view, fly up the nearest edge and make a second pass from the top. They keep their existing hull and give one normal reward if destroyed. Up to three fighters can loop simultaneously. They hold their fire and do not ram on the way up. They leave after the second pass.
+Ordinary survivors can turn below the view, fly up the nearest edge and make a second pass from the top at least a quarter of the field away from their original lane. The run's own seed selects an eligible lane. They keep their existing hull and give one normal reward if destroyed. Up to three fighters can loop simultaneously. They hold their fire and do not ram on the way up. They leave after the second pass.
+
+New browser flights use independent 128-bit seeds. The result can export a versioned replay containing the seed and fixed-tick inputs. The Node verifier recomputes the terminal result without rendering. A future public board must issue its seed and run ID on the server, persist that issuance, accept a replay once, and write scores only after the verifier succeeds. That service requires its own deployment. [Score verification](STELLAR_REBELS_REPLAYS.md)
 
 ## Interface and visual direction
 

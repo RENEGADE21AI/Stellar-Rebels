@@ -38,7 +38,7 @@ async function main() {
   };
   const shot = (name) => page.screenshot({ path: path.join(output, `${name}.png`) });
   try {
-    const meta = await (await page.request.get(new URL('/version.json', origin))).json();
+    const meta = await (await page.request.get(new URL('/version.json', origin).href)).json();
     await page.goto(origin);
     await page.getByRole('button', { name: 'Play', exact: true }).tap();
     await page.getByRole('button', { name: /01 Vesper Orbit/ }).tap();
@@ -54,16 +54,17 @@ async function main() {
       const f = window.arenaQA.state.flight;
       window.arenaQA.returning = f.enemies.find((e) => e.loop && e.y < 640 && e.y > 440);
       const e = window.arenaQA.returning;
-      return { kind: e.kind, edge: e.loop.edge, hull: e.hull, heading: e.turn };
+      return { kind: e.kind, edge: e.loop.edge, hull: e.hull, heading: e.turn, originalLane: e.home };
     });
     assert.ok(seen.heading > 3 && seen.hull > 0);
     await shot('edge-return');
     await page.waitForFunction(() => window.arenaQA.returning.returned);
     const reentry = await page.evaluate(() => {
       const e = window.arenaQA.returning;
-      return { hull: e.hull, y: e.y, turn: e.turn };
+      return { hull: e.hull, x: e.x, y: e.y, turn: e.turn };
     });
     assert.equal(reentry.hull, seen.hull);
+    assert.ok(Math.abs(reentry.x - seen.originalLane) >= 95);
     assert.ok(reentry.y < 0 && Math.abs(reentry.turn) < .3);
     await shot('reentry');
 

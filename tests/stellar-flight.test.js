@@ -317,6 +317,7 @@ test('a surviving fighter loops up the edge once with its existing hull and no d
   const f = new Flight(context());
   f.addEnemy({ kind:'scout', lane:.2 });
   const enemy = f.enemies[0];
+  const originalLane = enemy.home;
   Object.assign(enemy, { y:HEIGHT + 24, age:9, hull:1.25 });
   f.moveEnemies(step);
   assert.ok(enemy.loop);
@@ -329,10 +330,54 @@ test('a surviving fighter loops up the edge once with its existing hull and no d
   assert.equal(enemy.returned, true);
   assert.equal(enemy.loop, null);
   assert.equal(enemy.hull, 1.25);
+  assert.ok(Math.abs(enemy.home - originalLane) >= 96);
   Object.assign(enemy, { y:HEIGHT + 42, age:9 });
   f.step(step);
   assert.equal(f.enemies.includes(enemy), false);
   assert.equal(f.kills, 0);
+});
+
+test('the seed controls return lanes and the replay verifier rebuilds the score from inputs', async () => {
+  const [{ Flight, bounds }, , { RULES_VERSION }] = await load;
+  const { captureReplay, verifyReplay } = await import('../arcade/replay.mjs');
+  const seed = '4288578730338ed3aecc03a02e15645c';
+  const lanes = (value) => {
+    const f = new Flight({ ...context(), seed:value });
+    for (let i = 0; i < 10; i++) {
+      f.addEnemy({ kind:'scout', lane:.34 });
+      f.startReturn(f.enemies.at(-1));
+    }
+    return f.enemies.map((enemy) => enemy.loop.entryX);
+  };
+  assert.deepEqual(lanes(seed), lanes(seed));
+  assert.notDeepEqual(lanes(seed), lanes('264d04d251dd434a82254d6a3f5409eb'));
+
+  const run = { ...context(), seed, rules:RULES_VERSION };
+  const capture = captureReplay(run);
+  const f = new Flight(run, { recordInput:capture.recordInput });
+  while (f.status === 'active' && f.elapsed < 250) {
+    if (f.ticks % 5 === 0) {
+      const desired = chooseFlightPath(f, bounds);
+      f.drag(desired.x - f.xIntent, desired.y - f.yIntent);
+    }
+    if (f.ticks === 900) assert.equal(f.resumeProtection(), true);
+    if (f.ticks === 901) assert.equal(f.resumeProtection(), false);
+    if (f.ticks > 400 && f.ticks % 180 === 0 && f.shiftReady) f.activateGhost();
+    f.step(step);
+    f.takeEvents();
+  }
+  assert.equal(f.status, 'clear');
+  const replay = JSON.parse(JSON.stringify(capture.finish(f.ticks, f.terminal())));
+  assert.ok(replay.commands.length < f.ticks);
+  const start = performance.now();
+  const checked = verifyReplay(replay);
+  console.log(`Replay ${JSON.stringify(replay).length} bytes verified in ${Math.round(performance.now() - start)} ms`);
+  assert.equal(checked.valid, true, JSON.stringify(checked));
+  assert.equal(checked.result.score, f.score);
+  assert.equal(checked.board, `${RULES_VERSION}/arcade/1/kestrel/stock`);
+  assert.equal(verifyReplay({ ...replay, result:{ ...replay.result, score:f.score + 1 } }).valid, false);
+  replay.commands[0][3] = 1;
+  assert.match(verifyReplay(replay).reason, /Ghost Shift/);
 });
 
 test('reduced effects preserve shot origins and combat outcomes', async () => {

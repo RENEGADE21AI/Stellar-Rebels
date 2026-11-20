@@ -1,4 +1,5 @@
 import { RULES_VERSION, SHIPS, STAGES, UPGRADES, stageById } from './catalog.mjs';
+import { validFlightSeed } from './seed.mjs';
 
 const WEEK = 7 * 24 * 3600 * 1000;
 const SCHEMA = 1;
@@ -57,7 +58,7 @@ export function install(pilot, key) {
   return true;
 }
 
-export function beginRun(pilot, id, mode, stage, now = Date.now()) {
+export function beginRun(pilot, id, mode, stage, now = Date.now(), seed = '') {
   if (mode !== 'arcade' && mode !== 'endless') return null;
   if (!id || Object.hasOwn(pilot.active, id) || Object.hasOwn(pilot.receipts, id)) return null;
   if (mode === 'arcade' && !hasStage(pilot, stage)) return null;
@@ -66,7 +67,7 @@ export function beginRun(pilot, id, mode, stage, now = Date.now()) {
   }
   const run = {
     id, mode, stage: mode === 'arcade' ? stage : null, started: now, rules: RULES_VERSION,
-    ship: pilot.ship, equipment: [...pilot.equipment], assistance: { ...pilot.settings }
+    ship: pilot.ship, equipment: [...pilot.equipment], assistance: { ...pilot.settings }, seed: validFlightSeed(seed) ? seed : undefined
   };
   pilot.active[id] = run;
   return run;

@@ -91,6 +91,6 @@ export function operatorWarnings(flight, dt) {
     }
   }
   flight.hazards = flight.hazards.filter((warning) => warning.kind === 'wall'
-    ? !warning.triggered || warning.rowY < HEIGHT + 17 + 24 * flight.arenaMix
+    ? !warning.triggered || warning.rowY < HEIGHT + 17 + flight.lowerRoom
     : warning.age < warning.windup + warning.live);
 }

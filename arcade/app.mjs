@@ -1,8 +1,9 @@
-import { BOSSES, HEIGHT, PICKUPS, SHIPS, STAGES, UPGRADES, WIDTH, stageById } from './catalog.mjs';
+import { BOSSES, FIXED_TICK, HEIGHT, PICKUPS, SHIPS, STAGES, UPGRADES, WIDTH, stageById } from './catalog.mjs';
 import { Flight } from './flight.mjs';
 import { FlightScene, loadSprite, spriteUrl } from './scene.mjs';
 import { FlightAudio } from './audio.mjs';
 import { PilotStore, abandonRun, beginRun, equip, hasShip, hasStage, install, legacyArchive, settleRun } from './pilot.mjs';
+import { captureReplay } from './replay.mjs';
 
 const $ = (id) => document.getElementById(id);
 const menu = $('menu');
@@ -227,14 +228,14 @@ function results() {
   const primary = p.discarded ? action('Return to stages', 'view:stages', 'primary')
     : !p.receipt ? (p.error ? action('Retry saving', 'settle', 'primary', 'check') : '')
     : next ? action(`Next · ${next.name}`, `fly:${next.id}`, 'primary') : finale ? action('Return to stages', 'view:stages', 'primary') : action(repeat, retry, 'primary');
-  const mastery = p.receipt && clear && stage?.mastery ? `<p class="subtle">${state.pilot.mastery?.[stage.id] ? 'Mastered · ' + stage.mastery.name : stage.mastery.detail}</p>` : '';
+  const mastery = p.receipt && clear && stage?.mastery ? `<p class="subtle">${state.pilot.mastery?.[stage.mastery.key ?? stage.id] ? 'Mastered · ' + stage.mastery.name : stage.mastery.detail}</p>` : '';
   return `<article class="screen result-screen"><div class="result-card">${saveNotice()}<span class="caption">${finale ? 'Campaign complete' : isEndless ? 'Endless' : stage.name}</span>
     <h1 tabindex="-1">${title}</h1>${finale && p.receipt ? '<p class="subtle">The enemy fleet has fallen. Every completed stage is open for replay.</p>' : ''}
     <div class="result-facts"><div><span class="caption">${!isEndless && p.receipt?.best && report.score > 0 ? 'Personal best' : 'Score'}</span><strong>${num(report.score)}</strong></div><div><span class="caption">Flight time</span><strong>${time(report.duration)}</strong></div></div>
     ${mastery}${progression}${pendingCopy}${unlocked}${primary}${ship}<div class="result-secondary">
     ${p.receipt && (next || finale) ? action(repeat, retry, 'quiet', '') : p.receipt ? action('Hangar', 'hangar:result', 'quiet', '') : p.error ? action('Leave unsaved', 'discard', 'quiet', '') : ''}
     ${p.receipt && !finale ? action('Stages', 'view:stages', 'quiet', '') : ''}
-    ${buyable ? action('Upgrades', 'shop:result', 'quiet', '') : ''}</div></div></article>`;
+    ${buyable ? action('Upgrades', 'shop:result', 'quiet', '') : ''}</div>${p.replay ? action('Save flight replay', 'save-replay', 'flat', '') : ''}</div></article>`;
 }
 
 const views = { home, stages, hangar, upgrade: upgradeView, records, settings: settingsView, help: helpView, result: results };
@@ -286,11 +287,13 @@ function readId() {
 async function start(which) {
   const endless = which === 'endless';
   const stage = endless ? null : Number(which);
-  const { pilot, result: run } = await store.change((saved) => beginRun(saved, readId(), endless ? 'endless' : 'arcade', stage));
+  const seed = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
+  const { pilot, result: run } = await store.change((saved) => beginRun(saved, readId(), endless ? 'endless' : 'arcade', stage, Date.now(), seed));
   state.pilot = pilot;
   if (!run) { announce('This stage is locked.'); show('stages'); return; }
   state.last = run;
-  state.flight = new Flight(run);
+  state.recording = captureReplay(run);
+  state.flight = new Flight(run, { recordInput: state.recording.recordInput });
   await renderer.prepare(state.flight);
   state.mode = 'playing';
   menu.hidden = true;
@@ -350,6 +353,7 @@ async function leave() {
   clearInput();
   modal.close();
   state.flight = null;
+  state.recording = null;
   show('stages');
 }
 
@@ -457,6 +461,19 @@ async function changeSetting(key, value) {
 
 async function handle(command) {
   const [type, value] = command.split(':');
+  if (type === 'save-replay') {
+    const replay = state.pending?.replay;
+    if (!replay) return;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(replay)], { type:'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `stellar-rebels-${replay.run.seed.slice(0, 12)}.json`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return;
+  }
   if (type === 'update-web') {
     if (state.mode === 'menu' && state.newPack && !state.pending?.working && !state.pending?.error && !store.temporary) {
       location.replace(`/?build=${state.newPack}`);
@@ -622,7 +639,7 @@ function loop(timestamp) {
   if (state.mode === 'playing') {
     const prefs = f.run.assistance;
     const tick = globalThis.advanceFixedStep(clock, timestamp, (dt) => {
-      f.step(dt / 1000);
+      f.step(FIXED_TICK);
       renderer.advanceEffects(dt / 1000);
     });
     const events = f.takeEvents();
@@ -635,7 +652,8 @@ function loop(timestamp) {
       clearInput();
       state.mode = 'finishing';
       state.finishAt = timestamp + (prefs.reduced ? 380 : 900);
-      state.pending = { terminal: end, run: f.run };
+      state.pending = { terminal: end, run: f.run, replay: state.recording?.finish(f.ticks, end) };
+      state.recording = null;
       void settle();
     }
   } else if (state.mode === 'resuming') {
