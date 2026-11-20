@@ -540,6 +540,16 @@ test('slow flight art can be canceled and failed art has a bounded fallback', { 
     const routeHandler = (route) => { hold(route); };
     await page.route(target, routeHandler);
     await page.goto(origin);
+    await page.getByRole('button', { name:'Play', exact:true }).waitFor();
+    await page.evaluate(async () => {
+      const main = document.querySelector('script[type=module]').src;
+      const { PilotStore } = await import(new URL('pilot.mjs', main));
+      const store = new PilotStore(indexedDB);
+      await store.open();
+      await store.change((pilot) => { pilot.settings.trainingDone = true; });
+      store.db.close();
+    });
+    await page.reload();
     const button = (name) => page.getByRole('button', { name, exact:typeof name === 'string' });
     await button('Arcade').tap();
     const stage = button(/^01 Vesper Orbit/);
