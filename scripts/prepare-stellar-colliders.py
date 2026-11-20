@@ -56,7 +56,7 @@ def solid_rectangles(source, cells):
 
 def main():
     masks = {key: solid_rectangles(SPRITES / (key + '.png'), 56 if key in LARGE else 34)
-             for key in (*SMALL, *LARGE)}
+             for key in (*PILOTS, *SMALL, *LARGE)}
     checked = (*PILOTS, *SMALL, *LARGE, 'wraith-ghost')
     hashes = {key: hashlib.sha256((SPRITES / (key + '.png')).read_bytes()).hexdigest() for key in checked}
 

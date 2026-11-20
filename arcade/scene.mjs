@@ -4,6 +4,7 @@ import { commandCharge, vanePosition } from './formations.mjs';
 import { SPECTRAL, WRAITH_EMITTER, otherRealm, realmTint } from './wraith.mjs';
 import { diveWarningAt } from './enemy-course.mjs';
 import { shieldModules } from './collision.mjs';
+import { spriteBodies } from './silhouettes.mjs';
 
 export function spriteUrl(key) {
   return new URL(`./media/sprites/${key}.png`, import.meta.url).href;
@@ -297,8 +298,22 @@ export class FlightScene {
       c.shadowColor = glow;
       c.shadowBlur = 10;
     }
-    if (image) c.drawImage(image, -size / 2, -size / 2, size, size);
-    else {
+    const silhouette = spriteBodies[key === 'wraith-ghost' ? 'wraith' : key];
+    if (image) {
+      c.drawImage(image, -size / 2, -size / 2, size, size);
+    } else if (silhouette) {
+      const unit = size * .001;
+      const light = c.createLinearGradient(0, -size / 2, 0, size / 2);
+      light.addColorStop(0, '#a0adb9');
+      light.addColorStop(.54, '#697d93');
+      light.addColorStop(1, '#3f5270');
+      c.fillStyle = light;
+      c.beginPath();
+      for (const [left, top, right, bottom] of silhouette) {
+        c.rect(left * unit, top * unit, (right - left) * unit, (bottom - top) * unit);
+      }
+      c.fill();
+    } else {
       c.fillStyle = '#60728a';
       c.strokeStyle = '#d5edeb';
       c.lineWidth = 1.5;
