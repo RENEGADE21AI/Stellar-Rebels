@@ -6,23 +6,20 @@ export function spriteUrl(key) {
   return new URL(`./media/sprites/${key}.png`, import.meta.url).href;
 }
 
-const assets = new Map();
-
 export function loadSprite(key) {
-  const url = key === 'vesper-playfield' ? new URL('./media/environment/vesper-playfield.webp', import.meta.url).href : spriteUrl(key);
-  const resource = assets.get(url);
-  if (resource) return resource;
+  const url = key.endsWith('-playfield') ? new URL(`./media/environment/${key}.webp`, import.meta.url).href : spriteUrl(key);
   const image = new Image();
   const promise = new Promise((resolve) => {
     image.onload = () => resolve(image);
-    image.onerror = () => { assets.delete(url); resolve(null); };
+    image.onerror = () => resolve(null);
   });
-  assets.set(url, promise);
   image.src = url;
   return promise;
 }
 
 const regular = [...Object.keys(ENEMIES), 'turret', 'rock', ...Object.keys(PICKUPS).map((name) => `pickup-${name}`)];
+const playfields = { breach:'vesper', belt:'belt', relay:'relay', sun:'sun', outer:'outer', flagship:'fleet' };
+const fallbackEnvironments = new Set(['breach','belt','relay']);
 const lerp = (a, b, t) => a + (b - a) * t;
 
 function seededNoise(i) {
@@ -71,13 +68,22 @@ export class FlightScene {
     this.shocks = [];
     this.cameraPulse = 0;
     this.hurtPulse = 0;
-    const keyList = new Set([...regular, flight.run.ship, flight.stage.boss, `env-${flight.stage.environment}`]);
-    if (flight.stage.environment === 'breach') keyList.add('vesper-playfield');
+    const environment = flight.stage.environment;
+    this.illustration = `${playfields[environment]}-playfield`;
+    const fallback = `env-${environment}`;
+    const keyList = new Set([...regular, flight.run.ship, flight.stage.boss, this.illustration]);
     if (flight.endless) for (const stage of STAGES) keyList.add(stage.boss);
+    for (const key of this.sprites.keys()) {
+      if (!keyList.has(key) && key !== fallback) this.sprites.delete(key);
+    }
     await Promise.all([...keyList].filter((key) => !this.sprites.has(key)).map(async (key) => {
       const image = await loadSprite(key);
       if (image) this.sprites.set(key, image);
     }));
+    if (!this.sprites.has(this.illustration) && !this.sprites.has(fallback) && fallbackEnvironments.has(environment)) {
+      const image = await loadSprite(fallback);
+      if (image) this.sprites.set(fallback, image);
+    }
   }
 
   resize() {
@@ -100,6 +106,7 @@ export class FlightScene {
           this.burst(e.x, e.y, '#a1fff1', 16, 182, .57);
           break;
         case 'unlinked': this.explode(e.x, e.y, '#90ead9', 7, 11); break;
+        case 'escortExposed': this.explode(e.x, e.y, '#86c8ff', 11, 19); break;
         case 'moduleDown': this.explode(e.x, e.y, '#ffd478', 25, 21); break;
         case 'bossDown':
           this.explode(e.x, e.y, '#ffa257', 58, 49);
@@ -189,19 +196,24 @@ export class FlightScene {
 
   background(flight, reduce) {
     const c = this.ctx;
-    const illustrated = flight.stage.environment === 'breach' && this.sprites.get('vesper-playfield');
+    const illustrated = this.sprites.get(this.illustration);
     const env = illustrated || this.sprites.get(`env-${flight.stage.environment}`);
     const t = reduce ? 0 : flight.elapsed;
     c.fillStyle = '#040811';
     c.fillRect(0, 0, WIDTH, HEIGHT);
     if (env) {
-      c.drawImage(env, 0, 0, WIDTH, HEIGHT);
+      if (illustrated) {
+        const ratio = this.canvas.width / this.canvas.height;
+        const width = Math.min(env.width, env.height * ratio);
+        const height = Math.min(env.height, env.width / ratio);
+        c.drawImage(env, (env.width - width) * .5, (env.height - height) * .24, width, height, 0, 0, WIDTH, HEIGHT);
+      } else c.drawImage(env, 0, 0, WIDTH, HEIGHT);
       if (illustrated && this.fullStrengthBackground !== true) {
         if (!this.grade) {
           this.grade = c.createLinearGradient(0, 0, WIDTH, HEIGHT * .61);
-          this.grade.addColorStop(0, '#02091263');
+          this.grade.addColorStop(0, '#02091266');
           this.grade.addColorStop(.49, '#0209129e');
-          this.grade.addColorStop(1, '#020912aa');
+          this.grade.addColorStop(1, '#0209129e');
         }
         c.fillStyle = this.grade;
         c.fillRect(0, 0, WIDTH, HEIGHT);
@@ -357,41 +369,52 @@ export class FlightScene {
   }
 
   warning(w, prefs) {
+    if (w.age < 0) return;
     const c = this.ctx;
     const solid = w.age >= w.windup;
     const color = prefs.contrast ? '#fff4b7' : '#ffae63';
     c.save();
     if (w.kind === 'rail') {
       const left = w.x - w.width / 2;
+      const start = w.y;
       c.globalAlpha = solid ? .7 : .17;
       c.fillStyle = solid ? '#ff702c' : color;
-      c.fillRect(left, 125, w.width, HEIGHT - 125);
+      c.fillRect(left, start, w.width, HEIGHT - start);
       c.globalAlpha = 1;
       if (solid) {
-        line(c, w.x, 125, 0, HEIGHT - 125, '#fffdf1', w.width * .32);
+        line(c, w.x, start, 0, HEIGHT - start, '#fffdf1', w.width * .32);
       } else {
         c.beginPath();
-        c.rect(left, 125, w.width, HEIGHT - 125);
+        c.rect(left, start, w.width, HEIGHT - start);
         c.clip();
-        for (let y = 136; y < HEIGHT + 25; y += 24) line(c, left, y, w.width, -w.width * .76, color, 1.2);
-        line(c, left, 125, 0, HEIGHT - 125, color, 2.5);
-        line(c, left + w.width, 125, 0, HEIGHT - 125, color, 2.5);
+        for (let y = start + 11; y < HEIGHT + 25; y += 24) line(c, left, y, w.width, -w.width * .76, color, 1.4);
+        line(c, left, start, 0, HEIGHT - start, color, 2.7);
+        line(c, left + w.width, start, 0, HEIGHT - start, color, 2.7);
       }
     } else if (w.kind === 'wall' && !solid) {
       const l = w.x - w.width / 2;
       const r = w.x + w.width / 2;
-      line(c, 0, 118, l, 0, color, 2.1);
-      line(c, r, 118, WIDTH - r, 0, color, 2.1);
+      const y = 352;
+      line(c, 0, y, l - 5, 0, color, 2.4);
+      line(c, r + 5, y, WIDTH - r, 0, color, 2.4);
       for (const [x, sign] of [[l, 1], [r, -1]]) {
-        line(c, x, 127, 9 * sign, 8, '#b1ffea', 2);
-        line(c, x, 143, 9 * sign, -8, '#b1ffea', 2);
+        line(c, x, y - 10, 11 * sign, 10, '#b1ffea', 2.5);
+        line(c, x, y + 10, 11 * sign, -10, '#b1ffea', 2.5);
       }
     } else if (w.kind === 'pull') {
-      c.globalAlpha = solid ? .56 : .3;
-      for (let y = 213; y < HEIGHT; y += 54) {
-        const shift = 13 + (solid ? Math.sin(y * .10 - w.age * 6) * 5 : 0);
-        line(c, w.x - shift, y, 9, -10, '#cbacfe', 2);
-        line(c, w.x + shift, y, -9, -10, '#cbacfe', 2);
+      c.globalAlpha = solid ? .12 : .07;
+      c.fillStyle = '#b395f9';
+      c.fillRect(w.x - w.width/2, w.y, w.width, HEIGHT - w.y);
+      c.globalAlpha = solid ? .80 : .52;
+      for (const side of [-1,1]) {
+        const edge = w.x + side * w.width / 2;
+        line(c, edge, w.y, 0, HEIGHT - w.y, '#cbacfe', 1);
+        for (let y = w.y + 26; y < HEIGHT; y += 52) {
+          const drift = solid && !prefs.reduced ? Math.sin(y * .07 - w.age * 6) * 4 : 0;
+          const x = edge - side * (19 + drift);
+          line(c, x, y - 8, -side * 9, 8, '#e2d0ff', 2.4);
+          line(c, x, y + 8, -side * 9, -8, '#e2d0ff', 2.4);
+        }
       }
     }
     c.restore();

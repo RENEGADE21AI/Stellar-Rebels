@@ -9,7 +9,8 @@ Originality, silhouette and role recognition 25%, modeling and proportion 15%, m
 | Batch | Candidate and evidence | Dispatch and report | Findings, correction and verification |
 | --- | --- | --- | --- |
 | Stage 1 vertical slice | `a7e66200ba87f27dfd9b1fc19021273ca40d10f1`, individual alpha sprites, legacy comparisons and 320 × 568 / 390 × 844 Chromium captures | Art critic 1, `art_slice`, FIXES REQUIRED, 66/100 | ART-S1-01–05. See corrections and verification below. |
-| Inner route and revised opening | Stage 1 corrections, Interceptor, Harrow, Relay Carrier, Escort and Sweeper | Pending independent review | Matched phone-scale treatments and boss captures are available. |
+| Revised opening verification | `cd22e945fc8f92df817041818daaf53883794655`, matched treatments, Vesper boss and inner fleet | Same critic, targeted retest, FIXES REQUIRED, 77/100 | Verified Vesper overlays, uniform scaling and cover consistency. Kept finish and linked anchors open. Added ART-V3-01 and ART-V3-02. |
+| Full route, revised materials and outer fleet | All six stages, three player ships, six bosses and finished graded plates | Pending independent review | New sculpted pressure glass, stronger finish at close and phone scales, synchronized fleet source. |
 
 ## Opening discovery and corrections
 
@@ -22,3 +23,7 @@ Originality, silhouette and role recognition 25%, modeling and proportion 15%, m
 | ART-S1-05 · Material | The title uses an oblique render of the same Fighter model over a new atmospheric plate. The opening environment has a graded playfield version. |
 
 The critic reproduced 13 out of 13 sprite renders with Blender 5.2.1 from the Stage 1 pipeline at 32 samples. Four texture images were packed into the source. Original Star Strike RUSH art served as the finish reference. Its detailed ships exposed the early render's flatter materials and sparser silhouettes. The revised treatment is inspected in motion and at its actual displayed size.
+
+The V3 retest found that linked Gunner fire still used its old center origin. Both modes now share the rotated rail hardpoints. ART-V3-01 moved Harrow's seam cue clear of the compact boss meter and split the paired warning into sequential cues. ART-V3-02 fixed material drift between the generator and fleet workbench by regenerating and saving all Blender batches and corresponding exports from the same source. The revised pressure shell is curved and uses a coated low-roughness surface. The original cover showed flat opaque-looking geometry.
+
+New backgrounds are derived from two horizon-only ImageGen atlases. The playfield renderer crops without stretching and grades the plates beneath the live combat layer. Reuse the illustrated width and reduced contrast away from the edges. Keep bright solid fills, distinct leading silhouettes and separate halo shape for enemy fire, friendly fire and equipment.

@@ -1,5 +1,5 @@
 import { BOSSES, WIDTH, HEIGHT } from './catalog.mjs';
-import { harrow, relayCarrier } from './boss-patterns.mjs';
+import { flagship, gravityPlatform, harrow, railShip, relayCarrier } from './boss-patterns.mjs';
 
 export function launchBoss(flight, kind) {
   const spec = BOSSES[kind];
@@ -28,12 +28,9 @@ function gatekeeperAttack(flight, boss, phase) {
   boss.timer = phase ? 1.59 : 2.12;
 }
 
-function baseAttack(flight, boss, phase) {
-  flight.fan(boss.x, boss.y + 26, Math.PI/2, 7 + phase * 2, .18, 154, 'seed');
-  boss.timer = 1.9;
-}
-
-const attacks = { gatekeeper: gatekeeperAttack, warden: harrow, matron: relayCarrier };
+const attacks = {
+  gatekeeper: gatekeeperAttack, warden: harrow, matron: relayCarrier, tyrant: railShip, siphon: gravityPlatform, crown: flagship
+};
 
 export function advanceBoss(flight, dt) {
   const b = flight.boss;
@@ -47,13 +44,15 @@ export function advanceBoss(flight, dt) {
   b.timer -= dt;
   if (b.age < b.entryTime || b.timer > 0) return;
   b.attack++;
-  (attacks[b.kind] ?? baseAttack)(flight, b, Number(b.hull <= b.spec.hull * .47));
+  attacks[b.kind](flight, b, Number(b.hull <= b.spec.hull * .47));
   flight.signal('bossFire', b.x, b.y + 23);
 }
 
 export function operatorWarnings(flight, dt) {
   for (const warning of flight.hazards) {
+    const delayed = warning.age < 0;
     warning.age += dt;
+    if (delayed && warning.age >= 0) flight.signal('charge', warning.x, warning.y);
     if (warning.age < warning.windup) continue;
     if (!warning.triggered) {
       warning.triggered = true;
@@ -65,8 +64,14 @@ export function operatorWarnings(flight, dt) {
         }
       }
     }
-    if (warning.kind === 'rail' && Math.abs(flight.player.x - warning.x) < warning.width / 2 + flight.ship.hit) {
+    if (warning.kind === 'rail' && flight.player.y >= warning.y - flight.ship.hit &&
+      Math.abs(flight.player.x - warning.x) < warning.width / 2 + flight.ship.hit) {
       flight.damage(warning.x, HEIGHT * .55);
+    }
+    if (warning.kind === 'pull' && flight.player.y >= warning.y) {
+      const offset = warning.x - flight.player.x;
+      const falloff = 1 - Math.abs(offset) / (warning.width / 2);
+      if (falloff > 0) flight.drag(Math.sign(offset) * Math.min(Math.abs(offset), (48 + 60 * falloff) * dt), 0);
     }
   }
   flight.hazards = flight.hazards.filter((warning) => warning.age < warning.windup + warning.live);

@@ -10,16 +10,16 @@ Select the next stage or replay a favorite. Drag, aim through positioning, learn
 
 ## Stage intent and replay
 
-The first stage and its mastery objective are playable. Later rows describe the candidate scope and should survive only if testing finds meaningful differences.
+All six stages, both earnable ships and six optional mastery objectives are playable in the candidate. The first clear of each stage pays a total of 757 Salvage across the route. Installing all four upgrades costs 500, so reaching the finale is enough to buy every upgrade without replaying for currency.
 
 | Stage | Interest and lesson | What a clear earns | Why revisit |
 | --- | --- | --- | --- |
-| **Vesper Orbit** | A bright planetary blockade introduces lateral aim, aimed lances, and one readable linked attack. the Warden’s turrets can be removed individually. | Access deeper into the route and enough first-clear Salvage to afford the first weapon upgrade. | **Disarm the Warden.** Destroy both turrets before the hull, or optimize score by spending less time on the side modules. |
+| **Vesper Orbit** | A planetary blockade introduces lateral aim, aimed lances, and linked attacks. The Warden’s turrets can be removed individually. | Access to Asteroid Belt and enough first-clear Salvage to afford the first weapon upgrade. | **Disarm the Warden.** Destroy both turrets before the hull. |
 | **Asteroid Belt** | Sweep and dive patterns pull away from easy lanes. The Harrow telegraphs the opening in each wall. | Interceptor becomes available. Its rapid lane changes and narrow weapon reward different approach angles. | Defeat The Harrow with hull untouched during the boss fight. Try short deliberate crossing moves. |
-| **Relay Station** | Shield links make killing the most visible ship a questionable first move. Attack a leader, then sweep exposed escorts. | A satisfying first-arc resolution and, if the route expands, access to the outer campaign. | Clear the boss encounter cleanly or beat a personal record through earlier target selection. |
-| **Red Sun** | Rail Ship locks an old player position. Bait the aim and move early, then return to the damage lane. | A distinct encounter at higher pressure and Gunship if the final free offering provides another earnable route to it. | Clean boss objective rewards leaving the beam just in time to keep landing shots. |
+| **Relay Station** | Attack a Command Ship, then sweep exposed escorts. The Relay Carrier shields its main hull until both nodes are down. | The relay goes offline and the route opens to Red Sun. | Keep hull intact through the boss or improve a score with earlier target selection. |
+| **Red Sun** | Rail Ship locks an old player position. Bait the aim and move early, then return to the damage lane. | Gunship unlocks and Outer Orbit becomes available. | Clean boss objective rewards leaving the beam in time to keep landing shots. |
 | **Outer Orbit** | Crossfire and the gravity platform’s pull make short corrections matter. | Advance to the fleet finale. | Master entering the exposed side during the attack rotation and improve score with a different ship footprint. |
-| **The Flagship** | the flagship combines patterns previously learned separately, with enough warning and room for Gunship to respond. | Campaign completion and access to every earned replay. | Disarm the boss and clear. Then compare personal scores using the documented ship and loadout context. |
+| **The Flagship** | The shielded hull mixes rail locks, debris seams and converging spreads. | Campaign completion and access to every earned replay. | Clear without losing hull during the boss. Compare runs using the recorded ship and installed upgrades. |
 
 ## Five illustrative sessions
 
@@ -39,6 +39,6 @@ The starting damage and movement are balanced on their own. Rails should cross a
 
 ## Business decision and evidence
 
-The [monetization decision](STELLAR_REBELS_MONETIZATION.md) compares A, B and C, covers the current preference for generous free-to-start and one permanent purchase, and describes a conditional AdMob test after launch. Keep the development build free and leave the first release ad-free. If the eventual paid content is slight, favor the complete free launch. No initial prices, stage split, native build, paid feature or advertising SDK are approved by this design document. The project budget is US $15.
+The six-stage candidate uses the complete free core. The [monetization decision](STELLAR_REBELS_MONETIZATION.md) compares three approaches and describes a future permanent expansion hypothesis. Ads and checkout are absent from the candidate. The project budget is US $15.
 
 Prioritize stock and max-loadout clears, attack recognition after a real defeat, voluntary retries, visible pickup value, first-clear satisfaction and earned-ship handling. Look for interesting choices after the last upgrade. Before selecting a paid variant, test authentic clips of finished free and paid content with representative players. Record what they found worth paying for and what they understood of the offer. Verify real purchase restoration, failure behavior and offline entitlements only if purchase scope is selected. Author play, simulations and independent art reviews provide different evidence. None establishes retention or willingness to pay.

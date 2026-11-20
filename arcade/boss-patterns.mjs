@@ -2,11 +2,22 @@ import { WIDTH } from './catalog.mjs';
 
 export function markWall(flight, slot, options = {}) {
   const gap = globalThis.debrisSafeGap(slot, { slots:5, width:WIDTH, asteroidRadius:12, playerRadius:flight.ship.hit, margin:8 });
+  const delay = options.delay ?? 0;
   flight.hazards.push({
-    kind:'wall', x:gap.center, y:111, width:Math.max(94, gap.width), age:0, windup:options.windup ?? 1.12,
+    kind:'wall', x:gap.center, y:111, width:Math.max(94, gap.width), age:-delay, windup:1.12,
     live:0.10, speed:options.speed ?? 141
   });
-  flight.signal('bossFire', gap.center, 112);
+  if (!delay) flight.signal('charge', gap.center, 112);
+}
+
+export function markRail(flight, x, width = 38, y = 105) {
+  flight.hazards.push({ kind:'rail', x, y, width, age:0, windup:1.22, live:.24 });
+  flight.signal('charge', x, y);
+}
+
+export function markPull(flight, x, y = 111) {
+  flight.hazards.push({ kind:'pull', x, y, width:152, age:0, windup:.96, live:1.66 });
+  flight.signal('charge', x, y);
 }
 
 const gapOrder = [1, 2, 3, 2, 1, 2, 3];
@@ -16,12 +27,12 @@ export function harrow(flight, boss, phase) {
   const gap = gapOrder[turn % gapOrder.length];
   const lighter = turn % 3 === 1;
   if (lighter) {
-    flight.fan(boss.x - 54, boss.y + 25, 1.16, 4, .14, 134 + phase * 19, 'seed');
-    flight.fan(boss.x + 54, boss.y + 25, 1.98, 4, .14, 134 + phase * 19, 'seed');
+    flight.fan(boss.x - 85, boss.y + 20, 1.16, 4, .14, 134 + phase * 19, 'seed');
+    flight.fan(boss.x + 85, boss.y + 20, 1.98, 4, .14, 134 + phase * 19, 'seed');
   } else {
     const speed = globalThis.debrisWardenRowSpeed(boss.hull / boss.spec.hull, 'wall') * 60;
     markWall(flight, gap, { speed });
-    if (phase && turn % 2 === 0) markWall(flight, gapOrder[(turn + 1) % gapOrder.length], { speed, windup:2.12 });
+    if (phase && turn % 2 === 0) markWall(flight, gapOrder[(turn + 1) % gapOrder.length], { speed, delay:1.25 });
   }
   boss.timer = lighter ? 2.32 : phase ? 3.25 : 3.75;
 }
@@ -41,5 +52,67 @@ export function relayCarrier(flight, boss, phase) {
     flight.fan(boss.x, boss.y + 26, direction, phase ? 11 : 8, .154, phase ? 172 : 146, 'blade');
     if (phase) flight.fan(boss.x, boss.y + 31, flight.angleToPilot(boss.x, boss.y + 31), 3, .23, 214, 'pulse');
     boss.timer = phase ? 1.77 : 2.21;
+  }
+}
+
+export function railShip(flight, boss, phase) {
+  const y = boss.y + 52;
+  const lockedX = flight.player.x;
+  if (boss.attack % 3 !== 0) {
+    markRail(flight, lockedX, phase ? 44 : 36, y);
+    if (phase && boss.attack % 3 === 2) {
+      const reserve = lockedX < WIDTH / 2 ? WIDTH - 59 : 59;
+      markRail(flight, reserve, 27, y);
+    }
+    boss.timer = 2.43;
+    return;
+  }
+  for (const side of [-1, 1]) {
+    const x = boss.x + side * 42;
+    flight.fan(x, y - 16, Math.PI/2 + side * .27, phase ? 5 : 3, .16, phase ? 189 : 169, 'lance');
+  }
+  boss.timer = phase ? 1.63 : 1.92;
+}
+
+export function gravityPlatform(flight, boss, phase) {
+  const y = boss.y + 17;
+  const offset = Math.sin(boss.attack * 1.10);
+  flight.fan(boss.x, y, Math.PI/2 + .56 * offset, phase ? 9 : 7, .122, 144 + phase * 26, 'blade');
+  if (boss.attack % 2 === 1) {
+    const lock = Math.min(WIDTH - 57, Math.max(57, flight.player.x));
+    markPull(flight, lock, y);
+  } else if (phase) {
+    const secondX = boss.x - 61 * Math.sign(offset);
+    flight.fan(secondX, boss.y - 29, Math.PI/2 - .53 * offset, 4, .18, 187, 'pulse');
+  }
+  boss.timer = phase ? 1.82 : 2.13;
+}
+
+export function flagship(flight, boss, phase) {
+  const active = boss.parts.filter((part) => part.hull > 0);
+  if (active.length > 0) {
+    for (const part of active) {
+      const x = boss.x + part.dx;
+      flight.fan(x, boss.y + part.dy + 14, Math.PI/2 + Math.sign(part.dx) * .38, 4, .128, 177, 'lance');
+    }
+    if (boss.attack % 2 === 0) markWall(flight, gapOrder[boss.attack % gapOrder.length], { speed:147 });
+    boss.timer = 2.64;
+    return;
+  }
+  const turn = boss.attack % 3;
+  const y = boss.y + 32;
+  if (turn === 0) {
+    markWall(flight, gapOrder[(boss.attack + 1) % gapOrder.length], { speed:161 + phase * 16 });
+    boss.timer = 2.50;
+  } else if (turn === 1) {
+    const x = flight.player.x;
+    markRail(flight, x, 41, y);
+    flight.fan(boss.x, y, Math.PI/2, 6, .19, 150, 'pulse');
+    boss.timer = 2.42;
+  } else {
+    for (const side of [-1, 1]) {
+      flight.fan(boss.x + side * 55, y - 7, Math.PI/2 - side * .47, phase ? 6 : 4, .14, 165 + phase * 21, 'blade');
+    }
+    boss.timer = phase ? 1.72 : 2.10;
   }
 }

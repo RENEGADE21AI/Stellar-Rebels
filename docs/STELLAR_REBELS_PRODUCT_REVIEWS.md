@@ -5,10 +5,10 @@ Mode EXACT. Three comprehensive independent assignments across the project. The 
 | Slot | Candidate | Dispatched | Completed report | Findings, changes and verification |
 | --- | --- | --- | --- | --- |
 | 1 | `71ab835d661516ac0bae72dc9cc5ab4d034b1d3c` design and actual concepts | Nov 19, product-critic `product_design` | FIXES REQUIRED | SR-D01–08. See discovery and verification below. |
-| 2 | Playable three-stage candidate | Pending | Pending | Pending |
+| 2 | `cd22e945fc8f92df817041818daaf53883794655`, pack `b76c478691596d2`, frozen three-stage browser artifact | Nov 19, product-critic `product_three_stages` | FIXES REQUIRED | SR2-01–06 below. Targeted corrections in the six-stage candidate. |
 | 3 | Complete release candidate | Pending | Pending | Pending |
 
-Remaining allowance is **2**. A dispatched assignment consumes its slot. Same-critic targeted verification stays within the designated slot.
+Remaining allowance is **1**. A dispatched assignment consumes its slot. Same-critic targeted verification stays within the designated slot.
 
 ## Fixed product rubric
 
@@ -42,3 +42,18 @@ The critic withheld a complete weighted product score because implementation and
 | SR-D08 · Material | Inherited mobile QA thresholds tolerate near-total dropped frames. | Added provisional p95/frame-drop and transfer/texture targets for named phone classes. Collect host and device evidence separately. |
 
 The first critic returned for targeted verification of the revised concepts, source and first playable stage. The remaining save-origin and Hosting wording was corrected in the production plan after the review. The separate live-build round covers runtime journeys and observed frame behavior.
+
+## Review 2 discovery and disposition
+
+An independent reviewer used the clean artifact in Chromium with compact and tall touch contexts. The scope included both stage and Endless play, a natural defeat and retry, reward settlement, Interceptor, Rails, all four pickups, local writes, accessibility settings and service worker recovery. The critic withheld a complete score because measured target-device performance was unavailable. The scored 90% of the rubric averaged 7.0/10. Host cold title transfer was about 0.49 MiB. Isolated 600-frame p95 estimates were 16.8 ms at 320 × 568 and 16.7 ms at 390 × 844. A short tall sample running concurrently reached 33.4 ms.
+
+| Finding | Changes |
+| --- | --- |
+| SR2-01 · High | Harrow's warning boundaries and seam chevrons moved into open play space. A paired pattern warns and fires in sequence so each gap is independently readable. |
+| SR2-02 · High | Temporary-save notice appears above Play and the stage list. Storage recovery reads the actual committed receipt and unlocks from the recovered profile. The browser regression covers an existing profile and promotion into an empty store. |
+| SR2-03 · Medium | The HUD reports repaired hull and whether the wing volley stopped or enemies were jammed. |
+| SR2-04 · Medium | Relay Station teaches the actual shield relationship. Losing the last Command Ship visibly breaks the escorts' shields. Flight School distinguishes blue shield links from the bracketed wing-burst hardware. |
+| SR2-05 · Medium | Entering Settings refreshes the worker's pack inventory with a visible intermediate label. The browser test removes a part and verifies that a reload repairs it. |
+| SR2-06 · Medium | A clear with a purchasable upgrade offers direct access to Upgrades and returns to the result. Records show installed item names. |
+
+A separate stock run of this exact checkpoint played Vesper Orbit at normal time in Chromium using 938 touch-move events and read-only pilot telemetry. It finished in 176.7 game seconds with 27,264 score, Warden mastery and 78 Salvage. Host p95 was 16.7 ms across 10,600 measured intervals. This run establishes one mechanically reachable full playthrough at phone scale. Human difficulty and target-device measurements remain separate.

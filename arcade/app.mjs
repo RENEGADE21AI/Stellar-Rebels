@@ -21,7 +21,7 @@ const renderer = new FlightScene(sky);
 const state = {
   pilot: null, view: 'home', mode: 'menu', hangarTab: 'ships', inspected: 'kestrel', hangarBack: 'home',
   helpBack: 'home', upgrade: null, flight: null, pending: null, last: null, busy: false,
-  pointer: null, keys: new Set(), input: 'touch', support: '', controlled: false, installed: false, resumeAt: 0, finishAt: 0
+  pointer: null, keys: new Set(), input: 'touch', support: '', pack: 'waiting', packCheck: 0, installed: false, resumeAt: 0, finishAt: 0
 };
 
 const icons = {
@@ -55,10 +55,15 @@ function action(label, method, style = 'quiet', glyph = 'next', attributes = '')
   return `<button type="button" class="${style}" data-action="${method}" ${attributes}><span>${label}</span>${glyph ? icon(glyph) : ''}</button>`;
 }
 
+function saveNotice() {
+  return store.temporary ? `<aside class="notice save-notice"><span role="status">Progress is temporary until device saving returns.</span>
+    <button class="toggle" data-action="recover">Retry storage</button></aside>` : '';
+}
+
 function screen(title, back, content, end = '') {
   return `<article class="screen"><header class="screen-header"><div class="topline">
     <button type="button" class="back" data-action="view:${back}">${icon('back')} Back</button>${end}</div>
-    <h1 tabindex="-1">${title}</h1></header>${content}</article>`;
+    <h1 tabindex="-1">${title}</h1></header>${saveNotice()}${content}</article>`;
 }
 
 function wallet() {
@@ -68,7 +73,7 @@ function wallet() {
 function home() {
   return `<article class="title-screen"><h1 tabindex="-1" class="brand-lockup"><img src="${media('brand/stacked-light.svg')}" alt="Stellar Rebels" width="336" height="201"></h1>
     <img class="title-craft" alt="" src="${media('environment/title-craft.webp')}" width="720" height="720">
-    <div class="title-actions">${action('Play', 'view:stages', 'primary', 'play')}
+    <div class="title-actions">${saveNotice()}${action('Play', 'view:stages', 'primary', 'play')}
       <nav class="home-links" aria-label="Hangar and records">
         <button class="home-link" data-action="hangar:home">${icon('ship')} Hangar</button>
         <button class="home-link" data-action="view:records">${icon('score')} Records</button>
@@ -142,7 +147,7 @@ function recordContext(record) {
   if (record.assistance.reduced) assistance.push('Reduced motion');
   if (record.assistance.contrast) assistance.push('High contrast');
   if (['gentle', 'direct'].includes(record.assistance.sensitivity)) assistance.push(`${record.assistance.sensitivity} drag`);
-  const mods = record.equipment.length ? `${record.equipment.length} upgrades` : 'Stock';
+  const mods = record.equipment.flatMap((key) => Object.hasOwn(UPGRADES, key) ? [UPGRADES[key].name] : []).join(', ') || 'Stock';
   return `${SHIPS[record.ship]?.name ?? 'Fighter'} · ${mods}${assistance.length ? ` · ${assistance.join(', ')}` : ''}`;
 }
 
@@ -168,11 +173,9 @@ function settingsView() {
   const prefs = state.pilot.settings;
   const switches = Object.entries(settings).map(([key, [label, copy]]) => `<div class="setting"><span><strong>${label}</strong><small>${copy}</small></span>
     <button class="toggle" data-action="toggle:${key}" aria-label="${label}" aria-pressed="${prefs[key]}">${prefs[key] ? 'On' : 'Off'}</button></div>`).join('');
-  const pack = state.controlled ? (navigator.onLine ? 'Offline flight pack ready.' : 'Offline. Flight pack available.') :
-    navigator.onLine ? 'Offline access will be ready after the flight pack downloads.' : 'Flight pack unavailable. Reconnect and reopen the game.';
   return screen('Settings', 'home', `${switches}<div class="setting"><div><strong>Drag sensitivity</strong><small>Changes how far the ship follows a swipe</small></div>
     <select class="toggle" id="sensitivity" aria-label="Drag sensitivity"><option value="gentle" ${prefs.sensitivity === 'gentle' ? 'selected' : ''}>Gentle</option><option value="standard" ${prefs.sensitivity === 'standard' ? 'selected' : ''}>Standard</option><option value="direct" ${prefs.sensitivity === 'direct' ? 'selected' : ''}>Direct</option></select></div>
-    <div class="notice" role="status">${pack}</div>${state.installed ? '' : '<p class="subtle">Install from your browser menu or Add to Home Screen in Safari.</p>'}
+    <div class="notice" id="pack-status" role="status">${packCopy()}</div>${state.installed ? '' : '<p class="subtle">Install from your browser menu or Add to Home Screen in Safari.</p>'}
     ${action('Flight school', 'help:settings', 'quiet')}${state.support ? `<p class="notice">${state.support}</p>` : ''}`);
 }
 
@@ -183,6 +186,7 @@ function helpView() {
     ['Read the warning', 'Leave striped beam lanes. Fly through the marked open seam in a debris wall.'],
     ['Break the modules', 'Shoot hardpoints framed by corner brackets. A crossed-out module is offline.'],
     ['Break a formation', 'Target the bracketed command relay. Stop its volley and hit the exposed wing before it recovers.'],
+    ['Expose shielded escorts', 'Follow the solid blue links to the Command Ship. Destroy it to drop the escorts’ shields.'],
     ...Object.values(PICKUPS).map((drop) => [drop.name, drop.hint])
   ];
   return screen('Flight school', state.helpBack, rows.map(([title, text]) => `<div class="info"><strong>${title}</strong><p class="subtle">${text}</p></div>`).join(''));
@@ -203,16 +207,21 @@ function results() {
   const progression = !isEndless && p.receipt ? `<div class="result-reward">${icon('salvage')} ${p.receipt.award ? `+${num(p.receipt.award)} Salvage ${store.temporary ? 'this session' : 'banked'}` : '0 Salvage earned'}${p.receipt.first ? ' · First clear' : ''}</div>` : '';
   const unlocked = p.receipt?.newStage ? `<div class="unlock">${stageById(p.receipt.newStage).name} unlocked</div>` : '';
   const ship = p.receipt?.newShip ? action(`${SHIPS[p.receipt.newShip].name} unlocked`, `unlocked:${p.receipt.newShip}`, 'quiet', 'ship') : '';
-  const pendingCopy = !p.receipt ? `<p class="result-reward warning">${p.error || 'Saving flight…'}</p>` : '';
-  const primary = !p.receipt ? (p.error ? action('Retry saving', 'settle', 'primary', 'check') : '')
+  const pendingCopy = p.discarded ? '<p class="result-reward warning">This flight was temporary. Your existing device save is active.</p>'
+    : !p.receipt ? `<p class="result-reward warning">${p.error || 'Saving flight…'}</p>` : '';
+  const buyable = p.receipt && clear && Object.entries(UPGRADES).some(([key,item]) =>
+    !state.pilot.equipment.includes(key) && (!item.needs || state.pilot.equipment.includes(item.needs)) && state.pilot.salvage >= item.cost);
+  const primary = p.discarded ? action('Return to stages', 'view:stages', 'primary')
+    : !p.receipt ? (p.error ? action('Retry saving', 'settle', 'primary', 'check') : '')
     : next ? action(`Next · ${next.name}`, `fly:${next.id}`, 'primary') : finale ? action('Return to stages', 'view:stages', 'primary') : action(repeat, retry, 'primary');
   const mastery = p.receipt && clear && stage?.mastery ? `<p class="subtle">${state.pilot.mastery?.[stage.id] ? 'Mastered · ' + stage.mastery.name : stage.mastery.detail}</p>` : '';
-  return `<article class="screen result-screen"><div class="result-card"><span class="caption">${finale ? 'Campaign complete' : isEndless ? 'Endless' : stage.name}</span>
-    <h1 tabindex="-1">${title}</h1>${finale ? '<p class="subtle">The enemy fleet has fallen. Every completed stage is open for replay.</p>' : ''}
-    <div class="result-facts"><div><span class="caption">Score</span><strong>${num(report.score)}</strong></div><div><span class="caption">Flight time</span><strong>${time(report.duration)}</strong></div></div>
+  return `<article class="screen result-screen"><div class="result-card">${saveNotice()}<span class="caption">${finale ? 'Campaign complete' : isEndless ? 'Endless' : stage.name}</span>
+    <h1 tabindex="-1">${title}</h1>${finale && p.receipt ? '<p class="subtle">The enemy fleet has fallen. Every completed stage is open for replay.</p>' : ''}
+    <div class="result-facts"><div><span class="caption">${!isEndless && p.receipt?.best && report.score > 0 ? 'Personal best' : 'Score'}</span><strong>${num(report.score)}</strong></div><div><span class="caption">Flight time</span><strong>${time(report.duration)}</strong></div></div>
     ${mastery}${progression}${pendingCopy}${unlocked}${primary}${ship}<div class="result-secondary">
     ${p.receipt && (next || finale) ? action(repeat, retry, 'quiet', '') : p.receipt ? action('Hangar', 'hangar:result', 'quiet', '') : p.error ? action('Leave unsaved', 'discard', 'quiet', '') : ''}
-    ${p.receipt ? action('Stages', 'view:stages', 'quiet', '') : ''}</div></div></article>`;
+    ${p.receipt && !finale ? action('Stages', 'view:stages', 'quiet', '') : ''}
+    ${buyable ? action('Upgrades', 'shop:result', 'quiet', '') : ''}</div></div></article>`;
 }
 
 const views = { home, stages, hangar, upgrade: upgradeView, records, settings: settingsView, help: helpView, result: results };
@@ -225,16 +234,16 @@ function show(view, focus = true) {
   state.view = view;
   field.hidden = true;
   menu.hidden = false;
-  const warning = store.temporary ? `<aside class="notice" role="status"><span>Device saving is unavailable. Progress is limited to this session.</span><button class="toggle" data-action="recover">Retry storage</button></aside>` : '';
-  menu.innerHTML = views[view]() + warning;
+  menu.innerHTML = views[view]();
   menu.scrollTop = 0;
   if (focus) menu.querySelector('h1')?.focus({ preventScroll: true });
+  if (view === 'settings') checkPack();
   audio.play('hangar');
 }
 
-function showHangar(from, selection = state.pilot.ship) {
+function showHangar(from, selection = state.pilot.ship, tab = 'ships') {
   state.hangarBack = from;
-  state.hangarTab = 'ships';
+  state.hangarTab = tab;
   state.inspected = selection;
   show('hangar');
 }
@@ -331,7 +340,7 @@ function refreshHud(restart = false) {
   content('clock', time(f.elapsed));
   content('flight-score', num(f.score));
   const meters = activeBoss ? '' : f.endless ? 'Survival' : `${Math.min(100, Math.floor(f.elapsed / f.stage.bossAt * 100))}% to boss`;
-  content('flight-progress', message?.kind === 'pickup' ? message.title || message.copy : meters);
+  content('flight-progress', message?.kind === 'pickup' ? message.brief : meters);
   content('chain', f.combo >= 2 ? `${f.combo} chain` : '');
   content('hull', Array.from({ length: p.maxHull }, (_, i) => `<i class="segment ${i < p.hull ? 'full' : ''}" aria-hidden="true"></i>`).join(''), true);
   $('hull').setAttribute('aria-valuemax', p.maxHull);
@@ -358,7 +367,7 @@ function refreshHud(restart = false) {
     callout.querySelector('strong').textContent = message.title;
     callout.querySelector('span').textContent = message.copy;
     callout.querySelector('strong').hidden = !message.title;
-    if (['warning', 'pickup', 'tactic'].includes(message.kind)) announce(`${message.title}. ${message.copy}`);
+    if (['warning', 'pickup', 'tactic'].includes(message.kind)) announce([message.title,message.copy].filter(Boolean).join('. '));
   }
 }
 
@@ -395,6 +404,7 @@ async function handle(command) {
   audio.effect('ui');
   if (type === 'view') { show(value); return; }
   if (type === 'hangar') { showHangar(value); return; }
+  if (type === 'shop') { showHangar(value, state.pilot.ship, 'upgrades'); return; }
   if (type === 'unlocked') { showHangar('result', value); return; }
   if (type === 'help') { state.helpBack = value; show('help'); return; }
   if (type === 'fly') { await start(value); return; }
@@ -433,7 +443,13 @@ async function handle(command) {
   }
   if (type === 'recover') {
     state.pilot = await store.open();
-    announce('Device saving restored. Existing saved progress takes precedence.');
+    const p = state.pending;
+    if (p) {
+      p.receipt = state.pilot.receipts[p.run.id] ?? null;
+      p.discarded = !p.receipt;
+      p.error = '';
+    }
+    announce(p?.discarded ? 'Existing device save restored. The temporary result was replaced.' : 'Device saving restored.');
     audio.reflect(state.pilot.settings);
     show(state.view);
   }
@@ -560,6 +576,38 @@ function loop(timestamp) {
   requestAnimationFrame(loop);
 }
 
+function packCopy() {
+  if (state.pack === 'waiting') return 'Checking the offline flight pack…';
+  if (state.pack === 'ready') return navigator.onLine ? 'Offline flight pack ready.' : 'Offline. Flight pack available.';
+  if (!navigator.onLine) return 'Flight pack unavailable. Reconnect and reopen the game.';
+  return state.pack === 'missing' ? 'Offline flight pack incomplete. Reload to download missing files.'
+    : 'Offline access will be ready after the flight pack downloads.';
+}
+
+function checkPack() {
+  const worker = navigator.serviceWorker?.controller;
+  const check = ++state.packCheck;
+  const update = (status) => {
+    if (check !== state.packCheck) return;
+    state.pack = status;
+    const label = $('pack-status');
+    if (label) label.textContent = packCopy();
+  };
+  update(worker ? 'waiting' : 'downloading');
+  if (!worker) return;
+  const probe = new MessageChannel();
+  const timeout = setTimeout(() => {
+    probe.port1.close();
+    update('missing');
+  }, 1500);
+  probe.port1.onmessage = (reply) => {
+    clearTimeout(timeout);
+    probe.port1.close();
+    update(reply.data?.ready === true ? 'ready' : 'missing');
+  };
+  worker.postMessage('stellar-pack-status', [probe.port2]);
+}
+
 async function boot() {
   try { state.pilot = await store.open(); }
   catch { state.pilot = store.useTemporary(); }
@@ -567,25 +615,11 @@ async function boot() {
   show('home', false);
   void loadSprite('kestrel');
   if (navigator.serviceWorker && document.documentElement.dataset.pack === 'true') {
-    const update = () => {
-      const worker = navigator.serviceWorker.controller;
-      state.controlled = false;
-      if (!worker) return;
-      const verify = new MessageChannel();
-      const timeout = setTimeout(() => verify.port1.close(), 1500);
-      verify.port1.onmessage = (reply) => {
-        clearTimeout(timeout);
-        state.controlled = reply.data?.ready === true;
-        verify.port1.close();
-        if (state.view === 'settings' && state.mode === 'menu') show('settings', false);
-      };
-      worker.postMessage('stellar-pack-status', [verify.port2]);
-    };
-    navigator.serviceWorker.addEventListener('controllerchange', update);
-    window.addEventListener('offline', update);
-    window.addEventListener('online', update);
-    navigator.serviceWorker.register('/sw.js').then(update).catch(() => {});
-    update();
+    navigator.serviceWorker.addEventListener('controllerchange', checkPack);
+    window.addEventListener('offline', checkPack);
+    window.addEventListener('online', checkPack);
+    navigator.serviceWorker.register('/sw.js').then(checkPack).catch(() => {});
+    checkPack();
   }
   state.installed = matchMedia('(display-mode: standalone)').matches;
   requestAnimationFrame(loop);

@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const { chooseFlightPath } = require('../scripts/stellar-qa-pilot.js');
 require('../src/00-runtime.js');
 require('../src/00-gameplay-rules.js');
 require('../src/00-asset-manifest.js');
@@ -11,75 +12,16 @@ function context(which = 1, equipment = []) {
   return { id: 'test-flight', mode: 'arcade', stage: which, ship: 'kestrel', equipment, assistance: {} };
 }
 
-function proximitySquared(dx, dy, vx, vy, width) {
-  const velocity = vx * vx + vy * vy;
-  const time = velocity ? Math.max(0, Math.min(width, -(dx * vx + dy * vy) / velocity)) : 0;
-  return (dx + vx * time) ** 2 + (dy + vy * time) ** 2;
-}
-
-function routeRisk(player, ship, target, threat, buffer) {
-  const travel = Math.hypot(target.x - player.x, target.y - player.y);
-  const moving = Math.min(.88, travel / ship.speed);
-  const ux = travel > .1 ? (target.x - player.x) * ship.speed / travel : 0;
-  const uy = travel > .1 ? (target.y - player.y) * ship.speed / travel : 0;
-  const dx = player.x - threat.x;
-  const dy = player.y - threat.y;
-  let distance = proximitySquared(dx, dy, ux - threat.vx, uy - threat.vy, moving);
-  if (moving < .88) {
-    distance = Math.min(distance, proximitySquared(target.x - threat.x - moving * threat.vx,
-      target.y - threat.y - moving * threat.vy, -threat.vx, -threat.vy, .88 - moving));
-  }
-  const pad = threat.radius + ship.hit + buffer;
-  return distance < pad * pad ? 15 + Math.max(0, pad - Math.sqrt(distance)) * 20 : 0;
-}
-
-// The same simple pilot evaluates paths every five frames. It avoids predicted
-// projectile positions and aims ahead of a priority target using legal movement.
-function steer(f, bounds) {
-  const p = f.player;
-  const b = f.boss;
-  const timeToTarget = (p.y - (b?.y ?? 120)) / 685;
-  const rootX = b ? 192 + b.spec.motion * Math.sin(Math.max(0, b.age + timeToTarget - b.entryTime) * .78) : 192;
-  const module = b?.parts.filter((part) => part.hull > 0).sort((a, c) => Math.abs(rootX + a.dx - p.x) - Math.abs(rootX + c.dx - p.x))[0];
-  const enemy = f.enemies.filter((e) => !e.retreat && e.y > 18 && e.y < p.y - 38).sort((a, c) => {
-    const priority = (e) => Math.abs(e.x - p.x) - (e.vane > 0 ? 105 : e.kind === 'relay' ? 53 : 0);
-    return priority(a) - priority(c);
-  })[0];
-  let targetX = b ? rootX + (module?.dx ?? 0) : enemy ? enemy.x + (enemy.vane > 0 ? enemy.side * 30 : 0) : 192;
-  const pickup = f.pickups.find((d) => d.kind === 'repair' && p.hull < p.maxHull - 1 && Math.abs(p.y - d.y) < 65);
-  if (pickup) targetX = pickup.x;
-
-  const chargedHazard = f.hazards.find((w) => w.kind === 'rail' && w.age > w.windup - .30);
-  const optionsX = [p.x, targetX, ...Array.from({ length: 22 }, (_, i) => bounds.left + 15 + i * 15.2)];
-  const optionsY = [p.y, 530, 599, 668, 710];
-  const divers = f.enemies.filter((e) => e.dive && e.hull > 0).map((e) => ({
-    x: e.x, y: e.y, vx: Math.cos(e.vector) * 225, vy: Math.max(.55, Math.sin(e.vector)) * 225, radius: e.spec.hit
-  }));
-  const threats = [...f.hostile, ...divers];
-  let best;
-  for (const rawX of optionsX) {
-    const x = Math.min(bounds.right - 4, Math.max(bounds.left + 4, rawX));
-    for (const y of optionsY) {
-      const travel = Math.hypot(x - p.x, y - p.y);
-      let cost = Math.abs(x - targetX) * .29 + travel * .20 + Math.abs(y - (pickup?.y ?? 594)) * .07;
-      if (chargedHazard && Math.abs(x - chargedHazard.x) < chargedHazard.width / 2 + f.ship.hit + 6) cost += 180;
-      for (const s of threats) {
-        if (s.y > Math.max(p.y, y) + 22 || s.y + s.vy * 1.08 < Math.min(p.y, y) - 34) continue;
-        cost += routeRisk(p, f.ship, { x, y }, s, 7);
-      }
-      if (!best || cost < best.cost) best = { x, y, cost };
-    }
-  }
-  f.drag(best.x - f.xIntent, best.y - f.yIntent);
-}
-
-test('stock and fully upgraded Kestrel can clear every authored Standard stage', async () => {
+test('stock and fully upgraded Fighter can clear every authored Standard stage', async () => {
   const [{ Flight, bounds }, , { STAGES }] = await load;
   for (const stage of STAGES) {
     for (const equipment of [[], ['rails','chamber','cells','hull']]) {
       const f = new Flight(context(stage.id, equipment));
       while (f.status === 'active' && f.elapsed < stage.bossAt + 110) {
-        if (Math.round(f.elapsed * 60) % 5 === 0) steer(f, bounds);
+        if (Math.round(f.elapsed * 60) % 5 === 0) {
+          const target = chooseFlightPath(f, bounds);
+          f.drag(target.x - f.xIntent, target.y - f.yIntent);
+        }
         f.step(step);
         f.takeEvents();
       }
@@ -88,6 +30,25 @@ test('stock and fully upgraded Kestrel can clear every authored Standard stage',
       assert.equal(f.status, 'clear', note);
       assert.ok(f.elapsed > stage.bossAt + 7, 'the boss remains an encounter with fully upgraded weapons');
     }
+  }
+});
+
+test('each earned ship can beat the finale with its stock loadout', async () => {
+  const [{ Flight, bounds }, , { STAGES }] = await load;
+  const final = STAGES.at(-1);
+  for (const ship of ['needle','bastion']) {
+    const f = new Flight({ ...context(final.id), ship });
+    while (f.status === 'active' && f.elapsed < final.bossAt + 112) {
+      if (Math.round(f.elapsed * 60) % 5 === 0) {
+        const target = chooseFlightPath(f, bounds, true);
+        f.drag(target.x - f.xIntent, target.y - f.yIntent);
+      }
+      f.step(step);
+      f.takeEvents();
+    }
+    const note = `${ship} · ${f.status} · ${f.elapsed.toFixed(1)}s · ${f.player.hull} hull`;
+    console.log(note);
+    assert.equal(f.status,'clear',note);
   }
 });
 
@@ -154,6 +115,48 @@ test('touch intent clamps, reanchors, and moves consistently at different render
   }
   assert.deepEqual(run(30), run(60));
   assert.deepEqual(run(120), run(60));
+});
+
+test('rail and gravity lanes take effect only at the marked place and time', async () => {
+  const [{ Flight }, , , { operatorWarnings }] = await load;
+  const { markPull, markRail, markWall } = await import('../arcade/boss-patterns.mjs');
+  const f = new Flight(context(5));
+  f.player.guard = 0;
+  markRail(f, f.player.x, 36);
+  operatorWarnings(f, 1.18);
+  assert.equal(f.player.hull, 5);
+  operatorWarnings(f, .05);
+  assert.equal(f.player.hull, 4);
+
+  f.hazards.length = 0;
+  f.xIntent = f.player.x;
+  markPull(f, f.player.x + 35);
+  operatorWarnings(f, .95);
+  assert.equal(f.xIntent, f.player.x);
+  operatorWarnings(f, .03);
+  assert.ok(f.xIntent > f.player.x);
+  const before = f.xIntent;
+  f.player.x = 35;
+  operatorWarnings(f, .13);
+  assert.equal(f.xIntent, before);
+
+  f.hazards.length = 0;
+  markWall(f, 1, { delay:1.25 });
+  operatorWarnings(f, 1.18);
+  assert.equal(f.hostile.length, 0);
+  operatorWarnings(f, 1.20);
+  assert.ok(f.hostile.length > 0);
+  assert.ok(f.hostile.every((shot) => Math.abs(shot.x - f.hazards[0].x) >= f.hazards[0].width/2+11));
+});
+
+test('linked Gunners launch from both rotated hardware mounts', async () => {
+  const [{ Flight }, , { GUNNER_MUZZLES, hardpointAt }] = await load;
+  const { linkedVolley } = await import('../arcade/formations.mjs');
+  const f = new Flight(context());
+  const wing = { kind:'lancer', x:104, y:150, turn:.13, hull:5, group:1 };
+  f.enemies.push(wing);
+  linkedVolley(f, { x:162, y:120, group:1 });
+  assert.deepEqual(f.hostile.map(({ x,y }) => ({ x,y })), GUNNER_MUZZLES.map(([dx,dy]) => hardpointAt(wing,dx,dy,wing.turn)));
 });
 
 test('legacy decoding preserves all device save keys and reads nested historical records', async () => {

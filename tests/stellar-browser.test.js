@@ -75,11 +75,23 @@ test('production web artifact uses touch, atomic saves, and a recoverable offlin
     await page.getByRole('button', { name:'Play', exact:true }).waitFor();
     await page.getByRole('button', { name:'Settings', exact:true }).tap();
     await page.getByText('Offline flight pack ready.').waitFor();
+    await page.getByRole('button', { name:'Back' }).tap();
+    await page.evaluate(async () => {
+      const key = (await caches.keys()).find((name) => name.startsWith('stellar-flight-'));
+      const cache = await caches.open(key);
+      const part = (await cache.keys()).find((file) => file.url.endsWith('/gatekeeper.png'));
+      await cache.delete(part);
+    });
+    await page.getByRole('button', { name:'Settings', exact:true }).tap();
+    await page.getByText('Offline flight pack incomplete. Reload to download missing files.').waitFor();
+    await page.reload();
+    await page.getByRole('button', { name:'Settings', exact:true }).tap();
+    await page.getByText('Offline flight pack ready.').waitFor();
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
 
-test('mobile WebKit can steer, pause and resume the production artifact', { skip: !origin, timeout: 60000 }, async () => {
+test('mobile WebKit can launch, pause and resume the production artifact', { skip: !origin, timeout: 60000 }, async () => {
   const browser = await webkit.launch();
   try {
     const page = await browser.newPage({ viewport:{ width:390, height:844 }, isMobile:true, hasTouch:true, deviceScaleFactor:1 });
@@ -93,5 +105,63 @@ test('mobile WebKit can steer, pause and resume the production artifact', { skip
     await page.getByRole('button', { name:'Resume', exact:true }).tap();
     await page.locator('#flight-modal').waitFor({ state:'hidden' });
     assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});
+
+test('restoring IndexedDB reconciles temporary results with the actual saved receipt', { skip: !origin, timeout:60000 }, async () => {
+  const browser = await chromium.launch();
+  try {
+    for (const existing of [true,false]) {
+      const context = await browser.newContext({ viewport:{ width:320, height:568 }, isMobile:true, hasTouch:true, serviceWorkers:'block' });
+      try {
+        const page = await context.newPage();
+        await page.route(/\/app\.mjs(\?|$)/, async (route) => {
+          const response = await route.fetch();
+          await route.fulfill({response, body:(await response.text())+'\nwindow.storageFixture = state;'});
+        });
+        if (existing) {
+          await page.goto(origin);
+          await page.getByRole('button', { name:'Play', exact:true }).waitFor();
+        }
+        await page.addInitScript(() => {
+          const open = indexedDB.open.bind(indexedDB);
+          window.failOpen = sessionStorage.getItem('fixture-storage-restored') !== 'yes';
+          indexedDB.open = (...args) => {
+            if (window.failOpen) throw Error('IndexedDB test fixture');
+            return open(...args);
+          };
+        });
+        await page.goto(origin);
+        const banner = page.getByText('Progress is temporary until device saving returns.');
+        const play = page.getByRole('button', { name:'Play', exact:true });
+        await play.waitFor();
+        for (const state of ['home','stages']) {
+          if (state === 'stages') await play.tap();
+          const box = await banner.boundingBox();
+          assert.ok(box.y >= 0 && box.y + box.height < 568, JSON.stringify(box));
+        }
+        await page.getByRole('button', { name:/01 Vesper Orbit/ }).tap();
+        await page.getByRole('button', { name:'Pause', exact:true }).waitFor();
+        // Only the storage path is under test here. The real campaign tests clear by play.
+        await page.evaluate(() => { window.storageFixture.flight.status = 'clear'; });
+        await page.getByText(/78 Salvage this session/).waitFor();
+        await page.evaluate(() => {
+          window.failOpen = false;
+          sessionStorage.setItem('fixture-storage-restored','yes');
+        });
+        await page.getByRole('button', { name:'Retry storage', exact:true }).tap();
+        if (existing) {
+          await page.getByText('This flight was temporary. Your existing device save is active.').waitFor();
+          assert.equal(await page.getByText(/Salvage banked|Asteroid Belt unlocked/).count(),0);
+        } else {
+          await page.getByText(/78 Salvage banked/).waitFor();
+          await page.getByText('Asteroid Belt unlocked').waitFor();
+        }
+        await page.reload();
+        await page.getByRole('button', { name:'Play', exact:true }).tap();
+        assert.equal(await page.getByRole('button', {name:/02 Asteroid Belt/}).isEnabled(), !existing);
+        await page.getByText(existing ? '0 Salvage' : '78 Salvage', {exact:true}).waitFor();
+      } finally { await context.close(); }
+    }
   } finally { await browser.close(); }
 });

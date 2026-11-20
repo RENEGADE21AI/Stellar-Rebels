@@ -1,8 +1,9 @@
-import { innerRoute } from './routes.mjs';
+import { innerRoute, outerRoute } from './routes.mjs';
 
 export const WIDTH = 384;
 export const HEIGHT = 768;
 export const RULES_VERSION = 'arcade-1';
+export const GUNNER_MUZZLES = [[-9.1,19.7],[9.1,19.7]];
 
 export const SHIPS = {
   kestrel: {
@@ -20,7 +21,7 @@ export const SHIPS = {
   bastion: {
     name: 'Gunship', role: 'Gunship', clearance: 4, hull: 6, speed: 258, interval: .30,
     size: 68, hit: 9.2, engines: [[-18, 13], [0, 19], [18, 13]],
-    guns: [[-19, -6, -.21, .8], [-10, -13, -.09, .95], [10, -13, .09, .95], [19, -6, .21, .8]],
+    guns: [[-19, -6, -.21, .8], [-10, -13, -.055, .95], [10, -13, .055, .95], [19, -6, .21, .8]],
     description: 'A broad four-gun salvo and reinforced hull. Move early and dominate the approach lanes.'
   }
 };
@@ -61,7 +62,9 @@ const formations = {
   escort: [['escort', .39], ['escort', .61], ['relay', .50], ['scout', .2], ['scout', .80]],
   break: [['diver', .19], ['sweeper', .54], ['lancer', .80], ['scout', .37], ['diver', .72]],
   trap: [['relay', .26], ['escort', .33], ['lancer', .78], ['diver', .57], ['scout', .88]],
-  surge: [['sweeper', .18], ['diver', .32], ['relay', .52], ['escort', .59], ['lancer', .84], ['diver', .74]]
+  surge: [['sweeper', .18], ['diver', .32], ['relay', .52], ['escort', .59], ['lancer', .84], ['diver', .74]],
+  ladder: [['lancer', .17], ['scout', .27], ['lancer', .46], ['scout', .56], ['lancer', .77], ['diver', .86]],
+  pinch: [['sweeper', .22], ['sweeper', .78], ['diver', .40], ['diver', .60], ['escort', .50]]
 };
 
 export function formation(name, flipped = false) {
@@ -76,7 +79,8 @@ export const STAGES = [
     drops: [[18,'power',.51],[43,'barrier',.67],[79,'repair',.37],[110,'power',.56],[138,'overdrive',.5]],
     mastery: { name: 'Disarm the Warden', detail: 'Destroy both turrets before the main hull.', condition: 'parts' }
   },
-  ...innerRoute
+  ...innerRoute,
+  ...outerRoute
 ];
 
 export const BOSSES = {

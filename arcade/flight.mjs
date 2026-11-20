@@ -1,6 +1,6 @@
-import { ENEMIES, HEIGHT, PICKUPS, SHIPS, STAGES, WIDTH, formation, hardpointAt, stageById, weaponStats } from './catalog.mjs';
+import { ENEMIES, GUNNER_MUZZLES, HEIGHT, PICKUPS, SHIPS, STAGES, WIDTH, formation, hardpointAt, stageById, weaponStats } from './catalog.mjs';
 import { advanceBoss, bossPartPosition, launchBoss, operatorWarnings } from './bosses.mjs';
-import { markWall } from './boss-patterns.mjs';
+import { markPull, markRail, markWall } from './boss-patterns.mjs';
 import { VANE_HULL, breakFormation, linkedVolley, vanePosition } from './formations.mjs';
 
 export const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -88,8 +88,8 @@ export class Flight {
     this.events.push({ type, x, y, detail });
   }
 
-  message(copy, time = 2, kind = 'note', title = '') {
-    this.notice = { copy, time, kind, title };
+  message(copy, time = 2, kind = 'note', title = '', brief = title || copy) {
+    this.notice = { copy, time, kind, title, brief };
   }
 
   takeEvents() {
@@ -105,7 +105,7 @@ export class Flight {
       p.barrier--;
       p.guard = .58;
       this.signal('barrier', p.x, p.y);
-      if (!p.barrier) this.message('Barrier depleted.');
+      if (!p.barrier) this.message('Barrier depleted', 2, 'pickup');
       return true;
     }
     p.hull--;
@@ -136,7 +136,7 @@ export class Flight {
     else if (drop.kind === 'repair') {
       const add = Math.min(type.hull, p.maxHull - p.hull);
       p.hull += add;
-      this.message(add ? `+${add} hull restored` : 'Hull already full', 2, 'pickup', type.name);
+      this.message(add ? `+${add} hull restored` : 'Hull already full', 2, 'pickup', type.name, add ? `+${add} hull` : 'Hull full');
     } else p[drop.kind] = type.duration;
     if (drop.kind !== 'repair') this.message(type.hint, 2.2, 'pickup', type.name);
     this.signal('pickup', p.x, p.y, drop.kind);
@@ -197,10 +197,17 @@ export class Flight {
         this.pickup(drop[1], drop[2]);
         this.dropIndex++;
       }
-      const wall = this.stage.terrain?.[this.terrainIndex];
-      if (wall && this.elapsed >= wall[0]) {
-        markWall(this, wall[1]);
-        if (this.terrainIndex === 0) this.message('Follow the open seam.', 3.0, 'tactic', 'Debris ahead');
+      const terrain = this.stage.terrain?.[this.terrainIndex];
+      if (terrain && this.elapsed >= terrain[0]) {
+        const [, kind, lane] = terrain;
+        if (kind === 'wall') markWall(this, lane);
+        if (kind === 'rail') markRail(this, this.player.x, 34);
+        if (kind === 'pull') markPull(this, WIDTH * lane);
+        if (this.terrainIndex === 0) {
+          const cue = { wall:['Follow the open seam.', 'Debris ahead'], rail:['Leave the striped lane.', 'Rail lock'],
+            pull:['Move clear of the arrows.', 'Gravity lane'] }[kind];
+          this.message(cue[0], 1.8, 'tactic', cue[1]);
+        }
         this.terrainIndex++;
       }
       if (!this.boss && this.elapsed >= this.stage.bossAt) {
@@ -266,9 +273,9 @@ export class Flight {
     e.volley++;
     switch (e.kind) {
       case 'lancer':
-        for (const side of [-1, 1]) {
-          const muzzle = hardpointAt(e, side * 9.1, 19.7, e.turn);
-          this.projectile(muzzle.x, muzzle.y, this.angleToPilot(muzzle.x, muzzle.y) + side * .095, 207, 'lance');
+        for (const [dx, dy] of GUNNER_MUZZLES) {
+          const muzzle = hardpointAt(e, dx, dy, e.turn);
+          this.projectile(muzzle.x, muzzle.y, this.angleToPilot(muzzle.x, muzzle.y) + Math.sign(dx) * .095, 207, 'lance');
         }
         break;
       case 'sweeper': this.fan(e.x, y, Math.PI / 2 + Math.sin(e.volley * 1.52) * .49, 5, .20, 162, 'blade'); break;
@@ -334,14 +341,25 @@ export class Flight {
     this.score += Math.round(value * (1 + Math.min(8, this.combo - 1) * .08));
   }
 
+  escortProtected(enemy) {
+    return enemy.kind === 'escort' && this.enemies.some((ally) =>
+      ally.kind === 'relay' && ally.hull > 0 && !ally.retreat && Math.hypot(enemy.x-ally.x, enemy.y-ally.y) < 144);
+  }
+
   hitEnemy(e, s) {
-    const protectedEscort = e.kind === 'escort' && this.enemies.some((ally) => ally.kind === 'relay' && ally.hull > 0 && Math.hypot(e.x-ally.x, e.y-ally.y) < 144);
+    const protectedEscort = this.escortProtected(e);
     e.hull -= s.strength * (protectedEscort ? .27 : e.jam > 0 ? 1.54 : 1);
     e.flash = .075;
     this.signal(protectedEscort ? 'shieldHit' : 'hit', s.x, s.y);
     if (e.hull <= 0) {
       this.scoreKill(e.spec.value + (e.jam > 0 ? 125 : 0));
       this.signal('enemyDown', e.x, e.y, e.kind);
+      if (e.kind === 'relay') {
+        const exposed = this.enemies.filter((wing) => wing.kind === 'escort' && wing.hull > 0 && !wing.retreat &&
+          Math.hypot(e.x-wing.x, e.y-wing.y) < 144 && !this.escortProtected(wing));
+        for (const wing of exposed) this.signal('escortExposed', wing.x, wing.y);
+        if (exposed.length) this.message('Escorts are exposed.', 2.1, 'pickup', 'Shields down');
+      }
     }
   }
 

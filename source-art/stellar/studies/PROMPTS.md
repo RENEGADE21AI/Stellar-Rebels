@@ -32,3 +32,7 @@ Create a portrait sci-fi navigational space environment for Stellar Rebels game 
 
 `vesper-playfield.jpg` is an empty environment plate with a copper planetary limb on the left, atmosphere and cloud relief near the edge, and a quiet deep-blue combat lane on the right. Color grading is applied behind the live scene. The stronger illustration is kept as a comparison baseline.
 
+## Campaign environment atlases
+
+`inner-orbit-atlas.jpg` places the Asteroid Belt's lavender rock walls, Relay Station's radio dish and icy crescent, and Red Sun's stellar plasma in three independent vertical panels. `outer-orbit-atlas.jpg` contains a ringed gas giant for Outer Orbit and a dark orbital shipyard for The Flagship. The center and lower field in every panel are intentionally dark with little close detail. `scripts/stellar-environment.py` removes the atlas divider and exports the five runtime WebP portraits. The combat renderer crops the artwork proportionally and grades it behind the live world.
+

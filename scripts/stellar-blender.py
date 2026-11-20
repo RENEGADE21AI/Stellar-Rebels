@@ -15,7 +15,7 @@ OUT = ROOT / 'arcade' / 'media' / 'sprites'
 SOURCE.mkdir(parents=True, exist_ok=True)
 OUT.mkdir(parents=True, exist_ok=True)
 parser = argparse.ArgumentParser()
-parser.add_argument('--batch', choices=('slice', 'fleet', 'cover'), default='slice')
+parser.add_argument('--batch', choices=('slice', 'fleet', 'outer', 'cover'), default='slice')
 parser.add_argument('--samples', type=int, default=20)
 args = parser.parse_args(sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else [])
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -30,17 +30,17 @@ def surface_map(mat, shader, category):
     grain.inputs['Detail'].default_value = 3
     links.new(coords.outputs['Object'], grain.inputs['Vector'])
     bump = nodes.new('ShaderNodeBump')
-    bump.inputs['Strength'].default_value = .055 if category == 'glass' else .15 if category == 'ivory' else .25
-    bump.inputs['Distance'].default_value = .009 if category == 'glass' else .027 if category == 'ivory' else .038
+    bump.inputs['Strength'].default_value = .032 if category == 'glass' else .12 if category == 'ivory' else .19
+    bump.inputs['Distance'].default_value = .006 if category == 'glass' else .019 if category == 'ivory' else .027
     links.new(grain.outputs['Fac'], bump.inputs['Height'])
     links.new(bump.outputs['Normal'], shader.inputs['Normal'])
     range_node = nodes.new('ShaderNodeMapRange')
     roughness = shader.inputs['Roughness'].default_value
-    range_node.inputs['To Min'].default_value = .095 if category == 'glass' else max(.12, roughness - .16)
-    range_node.inputs['To Max'].default_value = .235 if category == 'glass' else roughness + .20
+    range_node.inputs['To Min'].default_value = .075 if category == 'glass' else max(.12, roughness - .13)
+    range_node.inputs['To Max'].default_value = .162 if category == 'glass' else roughness + .15
     if category == 'glass':
-        shader.inputs['Coat Weight'].default_value = .58
-        shader.inputs['Coat Roughness'].default_value = .12
+        shader.inputs['Coat Weight'].default_value = .72
+        shader.inputs['Coat Roughness'].default_value = .095
     links.new(grain.outputs['Fac'], range_node.inputs['Value'])
     links.new(range_node.outputs['Result'], shader.inputs['Roughness'])
 
@@ -59,7 +59,7 @@ def surface_map(mat, shader, category):
     links.new(mapping.outputs['Vector'], tex.inputs['Vector'])
     blend = nodes.new('ShaderNodeMixRGB')
     blend.blend_type = 'MIX'
-    blend.inputs[0].default_value = .30 if category == 'glass' else .64
+    blend.inputs[0].default_value = .20 if category == 'glass' else .45
     blend.inputs[1].default_value = shader.inputs['Base Color'].default_value
     links.new(tex.outputs['Color'], blend.inputs[2])
     links.new(blend.outputs[0], shader.inputs['Base Color'])
@@ -98,7 +98,7 @@ EMBER = material('Paint / flight orange', (.52, .096, .025), .42, .32)
 COPPER = material('Alloy / hot cast copper', (.20, .056, .031), .73, .33)
 CARMINE = material('Enamel / Dominion oxide', (.24, .028, .026), .52, .32)
 BRASS = material('Alloy / signal brass', (.38, .20, .07), .68, .28)
-CANOPY = material('Optics / blue polarized', (.035, .15, .235), .76, .22)
+CANOPY = material('Optics / blue polarized', (.024, .115, .19), .43, .15)
 TURQUOISE = material('Reactor / ion cyan', (.015, .66, .78), .26, .25, 2.5)
 ALERT = material('Reactor / coral red', (.96, .052, .014), .20, .25, 2.0)
 AMBER = material('Reactor / amber', (.96, .27, .02), .25, .23, 1.95)
@@ -264,9 +264,30 @@ def engine(x, y, width, reactor=TURQUOISE):
     tile('Notched drive strip', x, y-.26, width*.42, .095, .278, .07, reactor, taper=.025, bevel=.02)
 
 
+def domed_surface(name, points, z, rise, mat):
+    if sum(a[0]*b[1] - b[0]*a[1] for a, b in zip(points, (*points[1:], points[0]))) < 0:
+        points = tuple(reversed(points))
+    cx = sum(x for x,y in points)/len(points)
+    cy = sum(y for x,y in points)/len(points)
+    layers = [(1,0),(.86,.47),(.56,.80),(.23,.98)]
+    vertices = [((cx+(x-cx)*scale)*facing,(cy+(y-cy)*scale)*facing,z+height*rise)
+                for scale,height in layers for x,y in points]
+    vertices.append((cx*facing,cy*facing,z+rise))
+    n = len(points)
+    faces = [(layer*n+i,layer*n+(i+1)%n,(layer+1)*n+(i+1)%n,(layer+1)*n+i)
+             for layer in range(3) for i in range(n)]
+    faces.extend((3*n+i,3*n+(i+1)%n,4*n) for i in range(n))
+    obj = object_mesh(name,vertices,faces,mat)
+    for face in obj.data.polygons:
+        face.use_smooth = True
+    repair = obj.modifiers.new('Pressure shell surface', 'SUBSURF')
+    repair.levels = 1
+    repair.render_levels = 2
+
+
 def canopy(points, z=.46):
-    armor('Pressure glazing', points, z, .19, CANOPY, JOINT, bevel=.055)
-    tile('Canopy spine', 0, .25, .038, .50, z+.012, .028, JOINT, bevel=.008)
+    armor('Machined canopy surround', points, z-.025, .15, JOINT, DARK, bevel=.029)
+    domed_surface('Coated compound glazing', tuple((x*.948,y*.961) for x,y in points), z-.021, .145, CANOPY)
 
 
 def kestrel(cover=False):
@@ -277,7 +298,8 @@ def kestrel(cover=False):
         aim(c, (0, 0, .22))
         c.rotation_mode = 'QUATERNION'
         c.rotation_quaternion = c.rotation_euler.to_quaternion() @ Quaternion((0, 0, 1), -.43)
-        light('Sunset reflection',(-7,2.4,1.6),580,(1,.34,.14),4)
+        light('Sunset reflection',(-5.2,2.4,2.8),730,(1,.34,.14),3.2)
+        light('Canopy soft reflection',(-3.75,1.6,6.2),310,(.52,.83,1),2.1)
     armor('Kestrel central fuselage', ((0,1.84),(.32,1.24),(.53,.41),(.44,-1.21),(.20,-1.55),(-.20,-1.55),(-.44,-1.21),(-.53,.41),(-.32,1.24)), .34,.43, IVORY,TITAN)
     armor('Underframe spine', ((0,1.73),(.22,1.23),(.30,.55),(.42,.23),(.35,-1.62),(-.35,-1.62),(-.42,.23),(-.30,.55),(-.22,1.23)),.255,.51,DARK,TITAN,.065)
     for side in (-1,1):
@@ -303,6 +325,9 @@ def kestrel(cover=False):
     tile('Nose flight stripe',0,1.25,.15,.63,.365,.039,EMBER,.024,bevel=.014)
     canopy(((0,1.02),(.24,.66),(.25,.13),(.15,-.33),(-.15,-.33),(-.25,.13),(-.24,.66)), .53)
     armor('Raised forward armor',((0,1.78),(.24,1.17),(.22,.83),(.12,.72),(-.12,.72),(-.22,.83),(-.24,1.17)),.386,.22,IVORY,TITAN,.033)
+    for side in (-1,1):
+        armor('Chamfered cheek plate',mirror(((.25,.56),(.43,.31),(.39,-.66),(.23,-.54),(.29,-.14)),side),.394,.12,PALE,JOINT,.031)
+        armor('Scarf joint beside glazing',mirror(((.27,.76),(.35,.54),(.33,.24),(.27,.25)),side),.431,.071,JOINT,DARK,.024)
     tile('Recessed nose array',0,1.32,.093,.40,.405,.083,JOINT,taper=.019,bevel=.018)
     tile('Nose alignment light',0,1.45,.022,.24,.414,.028,TURQUOISE,.005,.009)
     armor('Center service cover', ((-.15,-.46),(.15,-.46),(.16,-1.21),(-.16,-1.21)), .40,.09,PALE,JOINT)
@@ -399,10 +424,11 @@ def gatekeeper():
     armor('Reactor bowl',circle(0,.13,1.05,20),.65,.34,TITAN,DARK,.065)
     loop('Amber reactor collar',0,.13,.88,.092,.72,AMBER)
     loop('Machined reactor flange',0,.13,.67,.11,.79,JOINT)
-    armor('Reactor iris',circle(0,.13,.46,16),.81,.16,ALERT,BRASS,.038)
-    loop('Inner luminous capacitor',0,.13,.39,.049,.907,AMBER,32)
-    loop('Inner indented copper seal',0,.13,.29,.05,.922,DARK,24)
-    armor('Central cap',circle(0,.13,.21,8),.89,.16,BRASS,JOINT,.022)
+    armor('Reactor iris dish',circle(0,.13,.53,18),.811,.16,BRASS,JOINT,.038)
+    loop('Inner luminous capacitor',0,.13,.46,.043,.870,AMBER,32)
+    loop('Induction chamber bevel',0,.13,.40,.125,.884,DARK,24)
+    domed_surface('Heated induction core',circle(0,.13,.28,24),.889,.165,ALERT)
+    loop('Retaining collar',0,.13,.304,.027,.911,JOINT,24)
     for i in range(8):
         theta = i*pi/4
         tile('Fastening lug',cos(theta)*.98,.13+sin(theta)*.98,.18,.23,.81,.1,JOINT,bevel=.028)
@@ -593,6 +619,97 @@ def carrier():
     engine(0,-1.45,.90,ICE)
 
 
+def gunship():
+    begin('bastion',4.54,416)
+    armor('Gunship central armored cradle',((-.54,1.46),(.54,1.46),(.87,.80),(.83,-1.27),(.43,-1.72),(-.43,-1.72),(-.83,-1.27),(-.87,.8)),.40,.62,TITAN,JOINT,.072)
+    armor('Stepped interceptor-resistant glacis',((-.39,1.55),(.39,1.55),(.59,.83),(.53,-.08),(.36,-.75),(-.36,-.75),(-.53,-.08),(-.59,.83)),.56,.33,IVORY,DARK,.071)
+    for side in (-1,1):
+        rim=((.68,.65),(1.11,.94),(1.74,.87),(1.94,.52),(2.0,-.53),(1.61,-1.43),(.91,-1.27),(.84,-.68),(1.15,-.27),(1.25,.26))
+        armor('Armored outboard nacelle',mirror(rim,side),.346,.52,TITAN,JOINT,.067)
+        shell=((.89,.66),(1.42,.83),(1.77,.59),(1.83,.06),(1.64,-.73),(1.38,-1.12),(1.11,-.90),(1.28,-.52),(1.46,.29))
+        armor('Nacelle ceramic plate',mirror(shell,side),.458,.28,IVORY,DARK,.054)
+        armor('Orange identification band',mirror(((1.43,-.41),(1.75,-.25),(1.69,-.58),(1.30,-.76)),side),.493,.068,EMBER,JOINT,.021)
+        tile('Blast shutter',1.13*side,.13,.18,.94,.477,.23,JOINT,.039)
+        for x,y in ((1.28,.40),(.66,.88)):
+            pipe('Forward gun sleeve',(side*x,y-.37,.28),(side*x,y,.29),.114,.072,DARK,TURQUOISE)
+            tile('Weapon mask collar',side*x,y-.17,.28,.21,.385,.26,PALE,bevel=.026)
+        engine(1.20*side,-.77,.49)
+        tile('Wide drive running light',1.51*side,-.67,.043,.33,.511,.06,TURQUOISE,.01,.017)
+        fasteners(mirror(((1.71,.49),(1.76,-.08),(1.49,-.91),(.82,.58),(.54,-.54)),side),.488,.047,DARK)
+    engine(0,-1.00,.83)
+    canopy(((0,1.31),(.29,1.05),(.29,.53),(.20,.32),(-.20,.32),(-.29,.53),(-.29,1.05)),.63)
+    vents(0,-.62,.32,.50,3,DARK)
+
+
+def rail_ship():
+    begin('tyrant',8.8,440,enemy=True)
+    main=((-2.91,-1.78),(-.69,-2.47),(1.47,-2.16),(2.96,-1.54),(2.77,-.54),(1.70,.77),(1.35,1.61),(-.78,1.54),(-1.64,.56),(-2.98,-.01))
+    armor('Rail weapon suspension truss',main,.38,.79,TITAN,DARK,.12)
+    armor('Offset cooling wing',((-2.97,-.42),(-2.83,-1.54),(-1.93,-2.08),(-1.01,-1.84),(-.97,-.34),(-1.58,.22),(-2.38,.28)),.64,.40,COPPER,JOINT,.098)
+    vents(-2.05,-1.32,1.07,.68,9,DARK)
+    armor('Station keeping boom',((.99,-1.87),(2.13,-1.71),(2.78,-1.37),(2.97,-.30),(2.22,.87),(1.59,.95),(1.55,-.65)),.58,.43,DARK,JOINT,.10)
+    for side in (-1,1):
+        arm=((.35,-1.29),(1.00,-.95),(1.43,.02),(1.41,1.60),(1.09,2.58),(.62,3.05),(.57,2.38),(.71,1.46),(.42,.43))
+        armor('Rail field clamp',mirror(arm,side),.68,.58,TITAN,JOINT,.095)
+        armor('Copper clamp contact',mirror(((.56,.73),(.94,.79),(1.22,1.49),(.98,2.41),(.72,2.66),(.67,2.23),(.84,1.64),(.78,1.09)),side),.751,.19,COPPER,DARK,.047)
+        pipe('Rail field lifter',(side*.51,.42,.29),(side*.64,2.51,.34),.23,.13,JOINT,AMBER,18)
+        for y in (.91,1.49,2.04):
+            tile('Pulsed rail insulator',.90*side,y,.31,.18,.789,.24,PALE,taper=.024,bevel=.043)
+        engine(side*.64,-1.58,.67,ALERT)
+    armor('Heavy rail spine',((-.42,-1.58),(.38,-1.58),(.49,-.23),(.30,1.91),(-.30,1.91),(-.49,-.23)),.74,.50,DARK,TITAN,.091)
+    tile('Long charge bus',0,.23,.184,2.82,.791,.092,AMBER,taper=.049,bevel=.03)
+    for x in (-.14,.14):
+        pipe('Rail nose closure', (x,1.12,.40),(x,2.29,.40),.112,.061,COPPER,ALERT)
+
+
+def gravity_platform():
+    begin('siphon',8.65,440,enemy=True)
+    for index in range(3):
+        a = pi/2 + index * 2*pi/3
+        def swing(points):
+            return tuple((x*sin(a)+y*cos(a),y*sin(a)-x*cos(a)) for x,y in points)
+        arm=((-1.00,1.04),(-1.49,1.88),(-1.43,2.77),(-.79,3.67),(.33,3.90),(1.34,3.17),(1.61,2.28),(.92,1.45),(.66,1.13))
+        armor('Triangular station truss',swing(arm),.42,.52,TITAN,DARK,.094)
+        armor('Swept gravity coil shield',swing(((-1.34,2.33),(-.76,3.49),(.29,3.63),(1.17,3.06),(1.27,2.36),(.54,2.58),(.35,2.95),(-.37,2.91),(-.71,2.29))),.64,.37,PLUM,DARK,.082)
+        (x,y), = swing(((0,2.48),))
+        armor('Field mirror dish',circle(x,y,.77,16),.61,.38,DARK,JOINT,.059)
+        loop('Gravity coil crown',x,y,.67,.13,.686,ICE)
+        loop('Induction coil inner rim',x,y,.45,.11,.733,VIOLET)
+        domed_surface('Field focus optics',circle(x,y,.28,16),.73,.12,CANOPY)
+        fasteners(swing(((-.78,2.81),(.73,2.77),(.4,3.32))),.681,.073,JOINT)
+    armor('Axial induction joint',circle(0,0,1.44,13),.49,.62,TITAN,DARK,.096)
+    armor('Raised rotating coil housing',circle(0,0,1.21,12),.68,.35,PLUM,JOINT,.065)
+    loop('Outer rotating vane',0,0,1.085,.13,.755,VIOLET)
+    loop('Inner ceramic crescent',0,0,.81,.165,.780,JOINT)
+    domed_surface('Visible gravity core',circle(0,0,.52,20),.763,.24,ICE)
+
+
+def flagship_model():
+    begin('crown',8.68,460,enemy=True)
+    root=((-1.23,-2.44),(1.23,-2.44),(1.70,-1.80),(1.73,.32),(1.29,1.09),(.81,2.25),(0,2.95),(-.81,2.25),(-1.29,1.09),(-1.73,.32),(-1.70,-1.8))
+    armor('Flagship deep double hull',root,.57,.94,DARK,TITAN,.114)
+    for side in (-1,1):
+        wing=((.98,-1.82),(2.41,-1.84),(3.61,-1.63),(4.02,-.76),(3.88,-.13),(3.44,.20),(3.44,1.08),(3.14,1.66),(2.54,1.94),(2.15,1.37),(1.92,.33),(1.21,.23))
+        armor('Twin deck support wing',mirror(wing,side),.48,.71,TITAN,DARK,.11)
+        armor('Copper radiator edge',mirror(((2.50,-1.62),(3.52,-1.46),(3.84,-.72),(3.49,-.37),(2.96,-.71),(2.57,-.89)),side),.66,.32,COPPER,DARK,.067)
+        armor('Spaced deck breastwork',mirror(((1.47,-.56),(2.05,-.94),(2.99,-.78),(3.37,-.28),(3.29,.49),(2.83,1.14),(2.35,1.38),(2.30,.62),(2.57,.35),(2.45,-.24),(1.58,-.37)),side),.68,.34,JOINT,DARK,.079)
+        armor('Forward armor baffle',mirror(((2.70,-.24),(3.10,-.16),(3.30,.54),(2.94,1.28),(2.56,1.58),(2.63,1.02),(2.79,.47)),side),.746,.271,TITAN,JOINT,.057)
+        armor('Pylon rotation flange',circle(side*2.48,.27,.50,12),.59,.41,BRASS,DARK,.069)
+        loop('Pylon power sleeve',side*2.48,.27,.40,.063,.651,AMBER,20)
+        pipe('Exposed coolant crossover',(side*1.84,-.92,.33),(side*2.61,-.72,.37),.126,.082,COPPER,DARK)
+        armor('Armored skirt terminal',mirror(((1.24,1.13),(1.41,.82),(1.48,-.42),(1.23,-.91),(1.09,-.76),(1.2,-.13)),side),.76,.38,TITAN,JOINT,.053)
+        engine(side*.87,-1.91,.67,AMBER)
+        for x,y in ((2.34,-.46),(3.05,-.47),(2.95,.62),(2.84,1.12)):
+            tile('Amber deck terminal',side*x,y,.068,.22,.786,.12,AMBER,bevel=.017)
+        fasteners(mirror(((1.82,-.57),(2.13,-1.49),(3.27,-1.38),(3.56,-.89),(3.17,.15),(2.71,1.54)),side),.707,.056,JOINT)
+    armor('Tiered flight deck',((-.69,-1.83),(.69,-1.83),(1.16,-.88),(.95,.66),(.61,1.76),(0,2.32),(-.61,1.76),(-.95,.66),(-1.16,-.88)),.722,.50,COPPER,DARK,.096)
+    armor('Forward armored spine',((0,2.22),(.38,1.71),(.65,.75),(.66,-.62),(.28,-1.13),(-.28,-1.13),(-.66,-.62),(-.65,.75),(-.38,1.71)),.86,.43,TITAN,JOINT,.083)
+    armor('Central threefold reactor',circle(0,.19,.62,12),.920,.24,JOINT,DARK,.066)
+    loop('Armored reactor slot',0,.19,.52,.095,.975,AMBER,32)
+    domed_surface('Visible command reactor',circle(0,.19,.34,16),.986,.15,ALERT)
+    engine(0,-2.04,.83,ALERT)
+
+
 def inner_fleet():
     interceptor()
     sweeper()
@@ -607,8 +724,13 @@ if args.batch == 'slice':
     slice_models()
 elif args.batch == 'cover':
     kestrel(cover=True)
-else:
+elif args.batch == 'fleet':
     inner_fleet()
+else:
+    gunship()
+    rail_ship()
+    gravity_platform()
+    flagship_model()
 
 bpy.context.window.scene = renders[0][1]
 for name, target in renders:

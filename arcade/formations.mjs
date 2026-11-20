@@ -1,3 +1,5 @@
+import { GUNNER_MUZZLES, hardpointAt } from './catalog.mjs';
+
 export const VANE_HULL = 4.1;
 
 export function vanePosition(command) {
@@ -11,10 +13,14 @@ export function commandCharge(command) {
 export function linkedVolley(flight, command) {
   const line = flight.enemies.filter((e) => e.group === command.group && e.hull > 0 && e.y > 37);
   for (const wing of line) {
-    const y = wing.y + 12;
     const off = Math.sign(wing.x - command.x) * .11;
     const direction = Math.PI / 2 + off;
-    flight.fan(wing.x, y, direction, wing.kind === 'lancer' ? 3 : 1, .15, 195, 'pulse');
+    if (wing.kind === 'lancer') {
+      for (const [dx, dy] of GUNNER_MUZZLES) {
+        const { x, y } = hardpointAt(wing, dx, dy, wing.turn);
+        flight.projectile(x, y, direction + Math.sign(dx) * .13, 195, 'pulse');
+      }
+    } else flight.projectile(wing.x, wing.y + 12, direction, 195, 'pulse');
   }
   flight.signal('linkedFire', command.x, command.y);
 }
@@ -33,5 +39,6 @@ export function breakFormation(flight, command) {
     flight.signal('unlinked', e.x, e.y);
   }
   flight.signal('formationBreak', vane.x, vane.y, { charging: duringCharge, wing: wing.length });
-  flight.message(duringCharge ? 'Volley stopped · Wing ships exposed' : 'Wing ships jammed · Sweep the formation', 2.7, 'pickup', 'Formation Break');
+  flight.message(duringCharge ? 'Volley stopped · Wing ships exposed' : 'Wing ships jammed · Sweep the formation', 2.7, 'pickup',
+    'Formation Break', duringCharge ? 'Volley stopped' : 'Wings jammed');
 }

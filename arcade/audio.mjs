@@ -9,6 +9,7 @@ const effects = {
   hurt: [98, 42, .25, .19, 'square'],
   barrier: [1000, 280, .19, .12, 'sine'],
   bossFire: [119, 67, .28, .10, 'triangle'],
+  charge: [187, 397, .31, .10, 'triangle'],
   hazard: [190, 83, .38, .16, 'sawtooth'],
   boss: [96, 104, .6, .13, 'triangle'],
   dash: [470, 240, .105, .035, 'triangle'],
