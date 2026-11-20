@@ -227,6 +227,7 @@ test('mobile WebKit can launch, pause and resume the production artifact', { ski
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(origin);
     await page.getByRole('button', { name:'Play', exact:true }).tap();
+    await page.getByRole('button', { name:'Skip training', exact:true }).tap();
     await page.getByRole('button', { name:'Pause', exact:true }).tap();
     await page.getByRole('heading', { name:'Paused' }).waitFor();
     await page.getByRole('button', { name:'Resume', exact:true }).tap();
@@ -268,6 +269,7 @@ test('restoring IndexedDB reconciles temporary results with the actual saved rec
           assert.ok(box.y >= 0 && box.y + box.height < 568, JSON.stringify(box));
         }
         await page.getByRole('button', { name:/01 Vesper Orbit/ }).tap();
+        await page.getByRole('button', { name:'Skip training', exact:true }).tap();
         await page.getByRole('button', { name:'Pause', exact:true }).waitFor();
         // Only the storage path is under test here. The real campaign tests clear by play.
         await page.evaluate(() => { window.storageFixture.flight.status = 'clear'; });
@@ -322,6 +324,7 @@ test('flight instructions stay in the HUD during real touch and a rail strike', 
         await page.goto(origin);
         await page.getByRole('button',{name:'Arcade',exact:true}).tap();
         await page.getByRole('button',{name:/01 Vesper Orbit/}).tap();
+        await page.getByRole('button', { name:'Skip training', exact:true }).tap();
         await page.getByText('Fight through the blockade.',{exact:true}).waitFor();
         await page.keyboard.down('ArrowDown');
         await page.waitForFunction(() => window.hudProbe.state.flight.player.y >= 729);
@@ -423,7 +426,7 @@ test('Space activates Pause on focus and uses the indicated ability from the pla
         }));
 
         await page.reload();
-        await button('Stage Select').tap();
+        await button('Arcade').tap();
         await button(/^05 Outer Orbit/).tap();
         await playing();
         await page.evaluate(() => {
