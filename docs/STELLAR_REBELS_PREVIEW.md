@@ -16,3 +16,5 @@ node scripts/serve-static.js dist-stellar 4183
 ```
 
 `/version.json` records the source commit and whether the package was assembled from a modified tree. The Firebase site `stellar-rebels.web.app` is provisioned in the existing project `star-strike-rush`. Public deployment and Expo EAS mobile builds require explicit owner approval. This browser preview uses device-local data. The old site retains its existing account and saves.
+
+The browser artifact contains all six stages, complete free progression, offline play after pack download, and the secondary Endless mode. At 320 × 568 and 390 × 844, Chromium exercised the opening combat, each boss with named fixtures, both unlocked ships, upgrade purchases, maximum-loadout replay and records after reload. A wall-clock touch run finished the original Stage 1 checkpoint. WebKit launch, pause and resume are also covered. Hardware touch and sustained physical-device performance require device testing.

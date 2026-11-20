@@ -11,7 +11,10 @@ The legacy **Wraith** is the reference for tone. Its name matches a spectral att
 | Opening boss | **Warden** | A fixed-defense vessel that controls the approach with removable paired turrets. |
 | Debris stage | **Asteroid Belt** | The location itself is the obstacle and needs no lore. |
 | Debris boss | **Harrow** | A ship that drags debris into parallel lanes. Keep this only if the final silhouette and attack sell the action. |
-| Later places | **Relay Station**, **Red Sun**, **Outer Orbit**, **The Flagship** | Working location labels. Finalize after those encounters are playable and visually distinct. |
+| Relay stage and boss | **Relay Station** and **Relay Carrier** | The distant radio dish identifies the location. The carrier powers two shield nodes and gives up its protection when they fall. |
+| Solar stage and boss | **Red Sun** and **Rail Ship** | Bright plasma fills the edge of the sky. The asymmetric ship aims its long rail and locks that firing lane before striking. |
+| Outer stage and boss | **Outer Orbit** and **Gravity Platform** | The distant rings place the fight beyond the inner planets. Three visible coil housings make the platform's field role clear. |
+| Finale | **The Flagship** and **Flagship** | The last approach is to the command ship. Its broad plated hull and removable pylons identify it as the fleet's center. |
 | Ordinary enemies | **Scout**, **Gunner**, **Diver**, **Sweeper**, **Escort**, **Command Ship** | Describes the first thing a player needs to recognize. |
 
-Use **Wraith** only where the visual and attack behavior deserve it. Additional boss callsigns stay provisional until the encounters are built. Player-facing strings can change without moving save data or changing asset IDs.
+**Wraith** remains the name of the legacy spectral boss. The six-stage roster uses the labels above while the names await review. Text can change without moving save data or changing asset IDs.

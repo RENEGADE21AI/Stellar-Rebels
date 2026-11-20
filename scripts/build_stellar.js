@@ -10,8 +10,12 @@ const release = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding
 const dirty = Boolean(execFileSync('git', ['status', '--porcelain=v1', '--untracked-files=all'], { cwd: root, encoding: 'utf8' }).trim());
 const files = new Map();
 
+function readText(file) {
+  return fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+}
+
 function walk(directory) {
-  return fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name)).flatMap((entry) => {
+  return fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0).flatMap((entry) => {
     const full = path.join(directory, entry.name);
     if (entry.isFile()) return [full];
     if (entry.isDirectory()) return walk(full);
@@ -24,14 +28,14 @@ for (const file of walk(source)) {
   if (local === 'index.html') continue;
   if (!local.startsWith('media/') && !/^[a-z-]+\.(?:mjs|css)$/.test(local)) throw Error(`Unexpected runtime file: ${local}`);
   if (!/\.(mjs|css|png|webp|svg|woff2|txt)$/.test(local)) throw Error(`Unsupported build asset: ${local}`);
-  files.set(local, fs.readFileSync(file));
+  files.set(local, /\.(mjs|css|svg|txt)$/.test(local) ? readText(file) : fs.readFileSync(file));
 }
 const shared = ['00-runtime.js', '00-input-actions.js', '00-gameplay-rules.js', '00-asset-manifest.js'];
-for (const name of shared) files.set(`shared/${name}`, fs.readFileSync(path.join(root, 'src', name)));
+for (const name of shared) files.set(`shared/${name}`, readText(path.join(root, 'src', name)));
 const audio = ['hangar-bay-seven.mp3', 'gravitys-edge.mp3'];
 for (const name of audio) files.set(`audio/${name}`, fs.readFileSync(path.join(root, 'assets', 'audio', name)));
-const template = fs.readFileSync(path.join(source, 'index.html'), 'utf8');
-const workerTemplate = fs.readFileSync(path.join(__dirname, 'stellar-worker.template.js'), 'utf8');
+const template = readText(path.join(source, 'index.html'));
+const workerTemplate = readText(path.join(__dirname, 'stellar-worker.template.js'));
 const hash = crypto.createHash('sha256').update(template).update(workerTemplate);
 for (const [name, body] of files) hash.update(name).update(body);
 const fingerprint = hash.digest('hex');

@@ -6,7 +6,9 @@ const { chooseFlightPath } = require('./stellar-qa-pilot.js');
 
 const origin = process.argv[2] ?? 'http://127.0.0.1:4185/';
 const output = path.resolve(process.argv[3] ?? 'test-artifacts/stellar/full-flight');
-const stages = Number(process.argv[4]) || 1;
+const endless = process.argv.includes('--endless');
+const stages = endless ? 1 : Number(process.argv[4]) || 1;
+const requestedSurvival = 300;
 const viewport = { width:390, height:844 };
 const stepWait = 77;
 
@@ -53,7 +55,7 @@ async function main() {
     const manifest = await (await page.request.get(new URL('/version.json', origin).href)).json();
     await page.goto(origin);
     await page.getByRole('button',{name:'Play',exact:true}).tap();
-    await page.getByRole('button',{name:/01 Vesper Orbit/}).tap();
+    await page.getByRole('button',{name:endless ? 'Endless' : /01 Vesper Orbit/}).tap();
     const report = [];
     for (let stage = 1; stage <= stages; stage++) {
       await page.waitForFunction((id) => window.fullFlight.state.mode === 'playing' && window.fullFlight.state.flight.stage.id === id, stage);
@@ -67,7 +69,7 @@ async function main() {
       const marks = [];
       const started = Date.now();
       await dispatch('touchStart', finger);
-      while (Date.now() - started < 260000) {
+      while (Date.now() - started < (endless ? 350000 : 260000)) {
         const current = await sample();
         if (current.status && current.status !== 'active') break;
         assert.equal(current.mode,'playing',JSON.stringify(current));
@@ -81,6 +83,7 @@ async function main() {
           await shot(`stage-${stage}-first-boss-volley`);
           firstBoss = true;
         }
+        if (endless && current.elapsed >= requestedSurvival) break;
         if (Math.hypot(current.dx, current.dy) > 1) {
           const move = { x:finger.x+current.dx, y:finger.y+current.dy };
           if (move.x < 9 || move.x > viewport.width-9 || move.y < 135 || move.y > viewport.height-9) {
@@ -97,20 +100,24 @@ async function main() {
         await new Promise((resolve) => setTimeout(resolve, stepWait));
       }
       await dispatch('touchEnd');
-      await page.locator('.result-card').waitFor({timeout:6000});
+      if (!endless) await page.locator('.result-card').waitFor({timeout:6000});
       const result = await page.evaluate(() => {
         const { state, intervals } = window.fullFlight;
         const sorted = intervals.slice().sort((a,b) => a-b);
-        return { terminal:state.pending.terminal, receipt:state.pending.receipt, hull:state.flight.player.hull,
+        return { terminal:state.pending?.terminal, receipt:state.pending?.receipt, hull:state.flight.player.hull,
+          elapsed:state.flight.elapsed, currentScore:state.flight.score,
           frames:{ count:sorted.length, p50:sorted[Math.floor(sorted.length*.5)], p95:sorted[Math.floor(sorted.length*.95)],
             over34:sorted.filter(v=>v>34).length } };
       });
-      await shot(`stage-${stage}-result`);
+      await shot(endless ? 'endless-soak' : `stage-${stage}-result`);
       report.push({ stage, wallMs:Date.now()-started, moves, reanchors, supplies:[...supplies], marks, ...result });
       fs.writeFileSync(path.join(output,'flight.json'),JSON.stringify({origin,manifest,viewport,report,
         coverage:'Stock runs at wall-clock speed in the running browser. Strategy read telemetry and sent Chromium touch inputs. No game state injection, seeking, artificial clock or assigned result.'},null,2));
-      assert.equal(result.terminal.status,'clear',JSON.stringify(result));
-      assert.ok(moves > 80 && result.receipt?.award > 0);
+      if (endless) assert.ok(result.elapsed >= requestedSurvival && result.hull > 0, JSON.stringify(result));
+      else {
+        assert.equal(result.terminal.status,'clear',JSON.stringify(result));
+        assert.ok(moves > 80 && result.receipt?.award > 0);
+      }
       if (stage < stages) await page.getByRole('button',{name:/^Next ·/}).tap();
     }
     assert.deepEqual(errors,[]);
