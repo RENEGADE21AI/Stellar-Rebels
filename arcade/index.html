@@ -36,9 +36,10 @@
           </div>
           <button id="pause" class="icon-button" type="button" aria-label="Pause"></button>
         </div>
-        <div class="run-line"><span id="flight-score">0</span><span id="flight-progress"></span><span id="chain"></span></div>
+        <div class="run-line"><span id="flight-score">0</span><div class="run-status">
+          <span id="flight-progress"></span><p id="flight-help" hidden>Drag to steer · Auto-fire</p><div id="field-effects" hidden></div>
+        </div><span id="chain"></span></div>
         <div id="boss-meter" class="boss-hud" hidden><span id="boss-name"></span><div id="boss-track" role="meter" aria-label="Boss hull" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><div id="boss-value"></div></div></div>
-        <div class="flight-footer"><div id="field-effects"></div><p id="flight-help">Drag to steer · Auto-fire</p></div>
       </div>
       <dialog id="flight-modal" aria-labelledby="pause-title"></dialog>
     </section>

@@ -422,12 +422,16 @@ function refreshHud(restart = false) {
   const flags = [];
   if (p.barrier) flags.push(`Barrier ×${p.barrier}`);
   if (p.power) flags.push(`Power ${Math.ceil(p.power)}s`);
-  if (p.overdrive) flags.push(`Overdrive ${Math.ceil(p.overdrive)}s`);
+  if (p.overdrive) flags.push(`Boost ${Math.ceil(p.overdrive)}s`);
   content('field-effects', flags.map((flag) => `<span class="field-chip">${flag}</span>`).join(''), true);
   const ghostLesson = !f.endless && f.stage.id === 1 && f.shiftReady && !f.usedShift && f.elapsed < 27;
-  $('flight-help').hidden = !ghostLesson && (f.elapsed > 8.5 || (f.endless && f.elapsed > 4.5));
+  const showHelp = !flags.length && (ghostLesson || f.elapsed <= (f.endless ? 4.5 : 8.5));
+  $('flight-help').hidden = !showHelp;
+  $('field-effects').hidden = !flags.length;
+  $('flight-progress').hidden = showHelp || Boolean(flags.length);
+  $('chain').hidden = Boolean(flags.length);
   const keyboard = state.input === 'keyboard';
-  content('flight-help', ghostLesson ? `${keyboard ? 'Space' : 'Tap Shift'} to pass through fire` : keyboard ? 'Arrows / WASD to steer · Auto-fire' : 'Drag to steer · Auto-fire');
+  content('flight-help', ghostLesson ? `${keyboard ? 'Space' : 'Tap Shift'} to phase` : keyboard ? 'Arrows / WASD · Auto-fire' : 'Drag to steer · Auto-fire');
   if (message && (lastHud.message !== message || restart)) {
     lastHud.message = message;
     if (['warning', 'pickup', 'tactic'].includes(message.kind)) announce([message.title,message.copy].filter(Boolean).join('. '));

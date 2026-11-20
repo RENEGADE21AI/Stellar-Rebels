@@ -222,7 +222,7 @@ test('Ghost Shift spends earned charge and phases through physical danger withou
 test('Wraith realm hops alternate actual vulnerability and a charged volley keeps its telegraphed target', async () => {
   const [{ Flight }, , { GHOST }] = await load;
   const { launchBoss } = await import('../arcade/bosses.mjs');
-  const { advanceWraith, WRAITH_WINGS } = await import('../arcade/wraith.mjs');
+  const { advanceWraith, WRAITH_ARMOR } = await import('../arcade/wraith.mjs');
   const f = new Flight(context(5));
   const p = f.player;
   launchBoss(f, 'wraith');
@@ -257,13 +257,14 @@ test('Wraith realm hops alternate actual vulnerability and a charged volley keep
   assert.equal(b.hull, b.spec.hull - 4);
   for (const realm of ['physical', 'ghost']) {
     b.realm = realm;
-    const [dx, dy] = WRAITH_WINGS[0];
-    const wing = { ...hit, realm, x:b.x + dx, px:b.x + dx, y:b.y + dy };
     f.takeEvents();
-    assert.equal(f.hitBoss(wing), true);
-    assert.equal(f.hitBoss({ ...wing, realm:realm === 'physical' ? 'ghost' : 'physical' }), false);
+    for (const [dx, dy] of WRAITH_ARMOR) {
+      const wing = { ...hit, realm, x:b.x + dx, px:b.x + dx, y:b.y + dy };
+      assert.equal(f.hitBoss(wing), true);
+      assert.equal(f.hitBoss({ ...wing, realm:realm === 'physical' ? 'ghost' : 'physical' }), false);
+    }
     assert.equal(b.hull, b.spec.hull - 4);
-    assert.deepEqual(f.takeEvents().map((event) => event.type), ['shieldHit']);
+    assert.deepEqual(f.takeEvents().map((event) => event.type), WRAITH_ARMOR.map(() => 'shieldHit'));
   }
 });
 

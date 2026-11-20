@@ -202,8 +202,21 @@ test('flight instructions stay in the HUD during real touch and a rail strike', 
         await page.getByRole('button',{name:'Play',exact:true}).tap();
         await page.getByRole('button',{name:/01 Vesper Orbit/}).tap();
         await page.getByText('Fight through the blockade.',{exact:true}).waitFor();
+        await page.keyboard.down('ArrowDown');
+        await page.waitForFunction(() => window.hudProbe.state.flight.player.y >= 729);
+        await page.keyboard.up('ArrowDown');
+        const help = await page.locator('#flight-help').boundingBox();
+        assert.ok(help && help.y + help.height < viewport.height * .25);
         await dragHigh();
         await verifyClearance();
+        await page.evaluate(() => {
+          const f = window.hudProbe.state.flight;
+          for (const kind of ['barrier', 'power', 'overdrive']) f.collect({ kind });
+        });
+        const effects = page.locator('#field-effects');
+        await effects.getByText('Barrier ×2').waitFor();
+        const effectsBox = await effects.boundingBox();
+        assert.ok(effectsBox.y + effectsBox.height < viewport.height * .25);
         await page.evaluate(async () => {
           await window.hudProbe.store.change((pilot) => { pilot.clears = {1:1,2:1,3:1,4:1}; });
         });

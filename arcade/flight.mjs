@@ -2,7 +2,7 @@ import { AIM_PRECISION, ENDLESS_BOSSES, ENEMIES, GHOST, GUNNER_MUZZLES, HEIGHT, 
 import { advanceBoss, bossPartPosition, launchBoss, operatorWarnings } from './bosses.mjs';
 import { markPull, markRail, markWall } from './boss-patterns.mjs';
 import { VANE_HULL, breakFormation, linkedVolley, vanePosition } from './formations.mjs';
-import { PHYSICAL, SPECTRAL, WRAITH_WINGS, otherRealm, realmLabel } from './wraith.mjs';
+import { PHYSICAL, SPECTRAL, WRAITH_ARMOR, otherRealm, realmLabel } from './wraith.mjs';
 import { flightRandom } from './seed.mjs';
 import { advanceCruiser, launchCruiser } from './cruiser.mjs';
 
@@ -524,7 +524,7 @@ export class Flight {
         this.signal('veilHit', s.x, s.y, b.realm);
         return true;
       }
-      if (!hitsCore && sameRealm && WRAITH_WINGS.some(([dx, dy]) => shotHits(s, b.x + dx, b.y + dy, 17))) {
+      if (!hitsCore && sameRealm && WRAITH_ARMOR.some(([dx, dy]) => shotHits(s, b.x + dx, b.y + dy, 18))) {
         this.signal('shieldHit', s.x, s.y);
         return true;
       }

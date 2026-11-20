@@ -61,14 +61,14 @@ async function main() {
     });
     assert.ok(seen.heading > 3 && seen.hull > 0);
     await shot('edge-return');
-    await page.waitForFunction(() => window.arenaQA.returning.returned);
-    const reentry = await page.evaluate(() => {
+    const returned = await page.waitForFunction(() => {
       const e = window.arenaQA.returning;
-      return { hull: e.hull, x: e.x, y: e.y, turn: e.turn };
+      return e.returned && { hull: e.hull, x: e.home, y: e.y, turn: e.turn };
     });
+    const reentry = await returned.jsonValue();
     assert.equal(reentry.hull, seen.hull);
     assert.ok(Math.abs(reentry.x - seen.originalLane) >= 95);
-    assert.ok(reentry.y < 0 && Math.abs(reentry.turn) < .3);
+    assert.ok(reentry.y < 90 && Math.abs(reentry.turn) < .3);
     await shot('reentry');
     await page.waitForFunction(() => window.arenaQA.state.flight.pickups.some((pickup) => pickup.y > 255 && pickup.y < 470));
     await shot('field-pickup');

@@ -1,6 +1,6 @@
 export const PHYSICAL = 'physical';
 export const SPECTRAL = 'ghost';
-export const WRAITH_WINGS = [[-72, -5], [72, -5]];
+export const WRAITH_ARMOR = [[-74, -5], [-48, 0], [48, 0], [74, -5]];
 export const WRAITH_EMITTER = 26;
 export const otherRealm = (realm) => realm === PHYSICAL ? SPECTRAL : PHYSICAL;
 export const realmTint = (realm) => realm === SPECTRAL ? '#d3b6ff' : '#ffb887';
