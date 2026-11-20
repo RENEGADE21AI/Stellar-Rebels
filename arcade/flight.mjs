@@ -2,7 +2,7 @@ import { ENDLESS_BOSSES, ENEMIES, GHOST, GUNNER_MUZZLES, HEIGHT, PICKUPS, SHIPS,
 import { advanceBoss, bossPartPosition, launchBoss, operatorWarnings } from './bosses.mjs';
 import { markPull, markRail, markWall } from './boss-patterns.mjs';
 import { VANE_HULL, breakFormation, linkedVolley, vanePosition } from './formations.mjs';
-import { PHYSICAL, SPECTRAL, otherRealm, realmLabel } from './wraith.mjs';
+import { PHYSICAL, SPECTRAL, WRAITH_WINGS, otherRealm, realmLabel } from './wraith.mjs';
 
 export const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 export const bounds = { left: 17, right: WIDTH - 17, top: 235, bottom: HEIGHT - 37 };
@@ -430,11 +430,19 @@ export class Flight {
       }
       return true;
     }
-    if (!shotHits(s, b.x, b.y + 4, b.spec.hit)) return false;
-    if (b.kind === 'wraith' && b.realm !== (s.realm ?? PHYSICAL)) {
-      this.signal('veilHit', s.x, s.y, b.realm);
-      return true;
+    const hitsCore = shotHits(s, b.x, b.y + 4, b.spec.hit);
+    if (b.kind === 'wraith') {
+      const sameRealm = b.realm === (s.realm ?? PHYSICAL);
+      if (hitsCore && !sameRealm) {
+        this.signal('veilHit', s.x, s.y, b.realm);
+        return true;
+      }
+      if (!hitsCore && sameRealm && WRAITH_WINGS.some(([dx, dy]) => shotHits(s, b.x + dx, b.y + dy, 21))) {
+        this.signal('shieldHit', s.x, s.y);
+        return true;
+      }
     }
+    if (!hitsCore) return false;
     const shielding = b.parts.some((p) => p.hull > 0);
     const protectedCore = (b.kind === 'matron' || b.kind === 'crown') && shielding;
     const factor = protectedCore ? 0 : b.kind === 'gatekeeper' && shielding ? .69 : 1;

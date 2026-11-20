@@ -378,7 +378,7 @@ export class FlightScene {
     const ghost = b.realm === SPECTRAL;
     const look = ghost ? 'wraith-ghost' : b.kind;
     this.sprite(look, b.x, b.y, b.spec.size, 0, b.hull > 0 ? 1 : .35, ghost ? '#8262e3' : '');
-    if (b.kind === 'wraith' && b.hull > 0) this.wraithCue(b, prefs);
+    if (b.kind === 'wraith' && b.hull > 0 && b.age >= b.entryTime - .25) this.wraithCue(b, prefs);
     const hasShields = b.kind === 'matron' || b.kind === 'crown';
     for (const part of b.parts) {
       const { x, y, radius } = bossPartPosition(b, part);
@@ -403,10 +403,27 @@ export class FlightScene {
 
   wraithCue(b, prefs) {
     const c = this.ctx;
+    const tint = realmTint(b.realm);
+    for (const side of [-1, 1]) {
+      for (const end of [-1, 1]) {
+        const x = b.x + side * 25;
+        const y = b.y + end * 26;
+        c.beginPath();
+        c.moveTo(x - side * 6, y);
+        c.lineTo(x, y);
+        c.lineTo(x, y - end * 8);
+        c.strokeStyle = '#140c1d';
+        c.lineWidth = 4;
+        c.stroke();
+        c.strokeStyle = prefs.contrast ? '#fff5df' : tint;
+        c.lineWidth = 1.6;
+        c.stroke();
+      }
+    }
     if (b.shifting) {
-      const tint = realmTint(otherRealm(b.realm));
+      const incoming = realmTint(otherRealm(b.realm));
       const amount = Math.max(0, 1 - (b.shiftAt - b.age) / 1.06);
-      for (const side of [-1, 1]) line(c, b.x + side * 117, b.y + 41, -24 * side * amount, 0, tint, 2.4);
+      for (const side of [-1, 1]) line(c, b.x + side * 117, b.y + 41, -24 * side * amount, 0, incoming, 2.4);
     }
     if (!b.charge) return;
     const y = b.y + 28;

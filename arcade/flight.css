@@ -155,6 +155,11 @@ dialog::backdrop{background:#040911a6}
 .result-secondary .quiet{font-size:19px}
 .unlock{background:#1f3a43eb;border:1px solid #527580;color:#c2fff0;padding:7px 9px;font-size:.82rem}
 @media(max-height:650px){.screen{gap:8px}.screen-header{padding-bottom:8px}.screen h1{font-size:41px}.stage{padding-block:4px;min-height:45px}.stage-list{gap:6px}.stage-note{font-size:.69rem}.turntable{min-height:125px;flex-basis:130px}.title-screen{padding-top:7dvh}.brand-lockup{width:min(55%,240px)}.result-card{gap:8px;padding:14px}.result-card h1{font-size:36px}.result-facts{padding-block:7px}.shop-card{min-height:62px}}
-@media(max-height:650px){.boss-hud{grid-template-columns:auto 1fr;align-items:center;min-height:28px;gap:10px}}
+@media(max-height:650px){
+  .flight-ui{gap:2px;padding-top:calc(env(safe-area-inset-top) + 5px)}
+  .instrument{min-height:50px;padding-block:2px}
+  .run-line{padding-block:1px}
+  .boss-hud{grid-template-columns:auto 1fr;align-items:center;min-height:22px;gap:8px;padding-block:2px;font-size:16px}
+}
 @media(min-aspect-ratio:10/11){.frame{border-inline:1px solid #667b8630}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}

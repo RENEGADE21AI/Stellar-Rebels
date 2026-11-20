@@ -255,6 +255,15 @@ test('Wraith realm hops alternate actual vulnerability and a charged volley keep
   assert.equal(b.realm, 'ghost');
   assert.equal(f.hitBoss(hit), true);
   assert.equal(b.hull, b.spec.hull - 4);
+  for (const realm of ['physical', 'ghost']) {
+    b.realm = realm;
+    const wing = { ...hit, realm, x:b.x - 102, px:b.x - 102, y:b.y - 7 };
+    f.takeEvents();
+    assert.equal(f.hitBoss(wing), true);
+    assert.equal(f.hitBoss({ ...wing, realm:realm === 'physical' ? 'ghost' : 'physical' }), false);
+    assert.equal(b.hull, b.spec.hull - 4);
+    assert.deepEqual(f.takeEvents().map((event) => event.type), ['shieldHit']);
+  }
 });
 
 test('a returning Outer Orbit pilot keeps the original mastery and earns Wraith mastery separately', async () => {

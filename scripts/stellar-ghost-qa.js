@@ -46,7 +46,18 @@ async function verify() {
     // Expose a test observer. The literal HTML and all other modules come from the running artifact.
     await page.route(/\/app\.mjs(\?|$)/, async (route) => {
       const source = await route.fetch();
-      await route.fulfill({ response: source, body: (await source.text()) + '\nwindow.ghostQA={state,renderer,audio,store};' });
+      const observer = `
+        window.ghostQA={state,renderer,audio,store};
+        function captureCharge(event) {
+          const ghostButton = event.target.closest?.('#ghost-shift');
+          if ((ghostButton && (event.type === 'click' || !event.isPrimary) || event.key === ' ') &&
+              state.mode === 'playing' && state.flight.shiftReady) {
+            window.ghostQA.chargeAtInput = Math.floor(state.flight.player.ghostEnergy);
+          }
+        }
+        for (const event of ['pointerdown','click','keydown']) window.addEventListener(event, captureCharge, true);
+      `;
+      await route.fulfill({ response: source, body: (await source.text()) + observer });
     });
     const touch = await context.newCDPSession(page);
     await page.goto(origin);
@@ -73,12 +84,12 @@ async function verify() {
     const finger = { x: viewport.width / 2, y: Math.round(viewport.height * .733), id: 1 };
     await driveOpening(page, touch, finger);
     await ready();
-    const charging = await amount();
     const beforeShift = await page.evaluate(() => ({ hull: window.ghostQA.state.flight.player.hull,
       eliminated: window.ghostQA.state.flight.kills, bank: window.ghostQA.state.flight.player.bank }));
     await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [finger,
       { x: layout.x + layout.width / 2, y: layout.y + layout.height / 2, id: 2 }] });
     await active();
+    const charging = await page.evaluate(() => window.ghostQA.chargeAtInput);
     assert.equal(await amount(), charging - 38);
     assert.equal(await page.evaluate(() => window.ghostQA.state.pointer !== null), true);
     await shot('ordinary-shift');
@@ -208,9 +219,9 @@ async function verify() {
     await driveOpening(page, touch, secondFinger);
     await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await ready();
-    const endlessCharge = await amount();
     await button('Ghost Shift').tap();
     await active();
+    const endlessCharge = await page.evaluate(() => window.ghostQA.chargeAtInput);
     assert.equal(await amount(), endlessCharge - 38);
     await shot('endless-shift');
     report.endless = { ship: 'Gunship', charge: endlessCharge, spent: 38 };

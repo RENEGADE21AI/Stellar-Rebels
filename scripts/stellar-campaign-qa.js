@@ -9,16 +9,54 @@ const folder = path.resolve(process.argv[3] ?? 'test-artifacts/stellar/campaign'
 const viewport = process.argv[4] === 'compact' ? {width:320,height:568} : {width:390,height:844};
 const highContrast = process.argv.includes('--high-contrast');
 
+async function bossHeadroom(page, entry = false) {
+  return page.evaluate((useEntryPosition) => {
+    const { state, renderer } = window.campaign;
+    const b = state.flight.boss;
+    const image = renderer.sprites.get(b.realm === 'ghost' ? 'wraith-ghost' : b.kind);
+    const mask = new OffscreenCanvas(image.naturalWidth, image.naturalHeight).getContext('2d');
+    mask.drawImage(image, 0, 0);
+    const pixels = mask.getImageData(0, 0, image.naturalWidth, image.naturalHeight).data;
+    const firstOpaque = pixels.findIndex((value, index) => index % 4 === 3 && value >= 180);
+    const spriteTop = Math.floor(firstOpaque / 4 / image.naturalWidth) / image.naturalHeight;
+    const sky = renderer.canvas.getBoundingClientRect();
+    const y = useEntryPosition ? b.y : (b.spec.arrivalY ?? 230) - 7;
+    const bobbingTop = y + (spriteTop - .5) * b.spec.size;
+    const canvasTop = sky.top + (sky.height - renderer.unit * 768) / 2;
+    return Math.round(canvasTop + bobbingTop * renderer.unit - document.getElementById('boss-meter').getBoundingClientRect().bottom);
+  }, entry);
+}
+
+async function seekBossEntry(page) {
+  await page.evaluate(async () => {
+    const { state } = window.campaign;
+    const f = state.flight;
+    if (f.endless) {
+      const { ENDLESS_BOSSES } = await import(new URL('catalog.mjs', document.baseURI).href);
+      f.endlessBossCount = ENDLESS_BOSSES.indexOf('siphon');
+      f.elapsed = f.nextEndlessBoss - .009;
+    } else {
+      f.elapsed = f.stage.bossAt - .009;
+      f.waveIndex = f.stage.waves.length;
+      f.dropIndex = f.stage.drops.length;
+      f.terrainIndex = f.stage.terrain?.length ?? 0;
+    }
+    for (let i = 0; i < 130 && f.status === 'active'; i++) {
+      if (f.boss && f.boss.age >= f.boss.entryTime - .25) return;
+      f.step(1 / 60);
+    }
+    throw Error('The boss did not enter its hittable window');
+  });
+  await page.locator('#boss-meter').waitFor();
+  return bossHeadroom(page, true);
+}
+
 async function clearBossOnly(page) {
   // Exercise the real boss in the page after seeking the wave timer. No hull,
   // loadout, score, damage or terminal result is assigned by this fixture.
   return page.evaluate(async () => {
     const { state, pilot } = window.campaign;
     const f = state.flight;
-    f.elapsed = f.stage.bossAt - .009;
-    f.waveIndex = f.stage.waves.length;
-    f.dropIndex = f.stage.drops.length;
-    f.terrainIndex = f.stage.terrain?.length ?? 0;
     let commands = 0;
     const frame = 1/60;
     const cue = {2:'wall',4:'rail',5:'realm',6:'wall'}[f.stage.id];
@@ -92,15 +130,20 @@ async function verify() {
       await page.keyboard.up(i%2?'ArrowLeft':'ArrowRight');
       await page.waitForTimeout(2760);
       await shot(`${i}-opening`);
+      const entryHeadroom = await seekBossEntry(page);
+      assert.ok(entryHeadroom >= 6, `Stage ${i}: hittable boss hull has ${entryHeadroom}px beneath its introductory HUD`);
+      if (i === 2) await shot('2-boss-entry');
       const seek=await clearBossOnly(page);
       assert.equal(seek.status,'sample-ready');
       await shot(`${i}-boss-fixture`);
+      const headroom = await bossHeadroom(page);
+      assert.ok(headroom >= 6, `Stage ${i}: steady-state boss hull has ${headroom}px between it and the HUD`);
       const finished=await finishFixture(page);
       assert.equal(finished.status,'clear', JSON.stringify(finished));
       await page.locator('.result-card').waitFor();
       await page.getByText(/Salvage banked/).waitFor();
       await shot(`${i}-clear`);
-      report.push({stage:i,cue:seek.cue,...finished});
+      report.push({stage:i,cue:seek.cue,entryHeadroom,headroom,...finished});
       if (i === 1) {
         await page.getByRole('button',{name:'Upgrades',exact:true}).tap();
         assert.equal(await page.getByRole('button',{name:'Upgrades',exact:true}).getAttribute('aria-pressed'),'true');
@@ -138,8 +181,20 @@ async function verify() {
     await page.getByRole('button',{name:'Records',exact:true}).tap();
     await page.getByLabel('Stellar Rebels').getByText('Vesper Orbit', { exact:true }).waitFor();
     await shot('records');
+    await page.getByRole('button',{name:'Back',exact:true}).tap();
+    await page.getByRole('button',{name:'Play',exact:true}).tap();
+    await page.getByRole('button',{name:'Endless',exact:true}).tap();
+    await page.waitForFunction(() => window.campaign.state.mode === 'playing' && window.campaign.state.flight.endless);
+    const gravityEntry = await seekBossEntry(page);
+    assert.ok(gravityEntry >= 6, `Gravity Platform has ${gravityEntry}px between its hittable hull and the introductory HUD`);
+    await page.getByText('Gravity Platform', { exact:true }).waitFor();
+    await shot('endless-gravity-entry');
+    await page.waitForFunction(() => window.campaign.state.flight.boss.age >= 4.3);
+    const gravityHeadroom = await bossHeadroom(page);
+    assert.ok(gravityHeadroom >= 6, `Gravity Platform has ${gravityHeadroom}px between its hull and the HUD`);
+    await shot('endless-gravity');
     assert.deepEqual(errors,[]);
-    fs.writeFileSync(path.join(folder,'playthrough.json'),JSON.stringify({origin,viewport,highContrast,wallet,report,
+    fs.writeFileSync(path.join(folder,'playthrough.json'),JSON.stringify({origin,viewport,highContrast,wallet,report,gravityHeadroom,gravityEntry,
       coverage:'Actual title and keyboard inputs through the stage openings. The wave timer is advanced for deterministic boss fixtures. Damage, clearing, settlements, equip, upgrade, Next and records run through their normal paths.'},null,2));
     console.log(JSON.stringify(report));
   } finally { await browser.close(); }

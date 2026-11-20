@@ -24,3 +24,10 @@ Run `python scripts/prepare-stellar-2d.py` with Pillow to reproduce the runtime 
 Review mode is until ready, scoped to the completed art batch, within the US $15 project ceiling. The separate three comprehensive product reviews were used on the original campaign milestones. Review the real transparent exports against the best legacy art and inspect actual browser gameplay and motion at 320 × 568 and 390 × 844. Core gates are clear silhouettes, cohesive finish, usable attacks and pickups, aligned live and destroyed components, and no foreground/background readability defect that interferes with play.
 
 Score weights stay fixed through the loop. Craft and silhouettes 25%, materials and lighting 20%, cohesion 15%, phone readability in motion 25%, and functional alignment 15%. Review evidence belongs outside the public flight pack.
+
+### Independent round 1
+
+Commit `b3f3ab396ab5934f892d267132297eb8e39be324`, pack `41eb2a09ccceddb`. Verdict **fixes required**, 8.15/10. Craft 8.8, materials 8.6, cohesion 8.4, phone readability 7.5 and functional alignment 7.3. The reviewer inspected exact exports and legacy art, sampled both motion recordings, and exercised both sizes, all sprites and attack families. All six movable boss units detached from their sockets. The off-axis rail cue connected to the painted emitter. Both Wraith plates shared the same alpha mask.
+
+1. At 320 × 568 the meter covered about 19 CSS px of Harrow, 14 of Gravity Platform, and 2 of Warden at their highest steady position. Wrapped introductory text compounded it at the first hittable frame. The compact HUD now keeps a tighter vertical layout and the three introductory cues fit comfortably. The browser fixture measures clearance before and during combat for all seven bosses.
+2. A same-realm shot through the Wraith's outer discs had no contact feedback. Core brackets now mark the vulnerable point in both realms. A matched-realm shot deflects on an outboard disc without damaging the boss or generating energy. The intro and Flight School identify the target, and model QA checks the core and wing response in both realms.

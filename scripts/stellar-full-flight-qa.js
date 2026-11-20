@@ -8,6 +8,7 @@ const origin = process.argv[2] ?? 'http://127.0.0.1:4185/';
 const output = path.resolve(process.argv[3] ?? 'test-artifacts/stellar/full-flight');
 const endless = process.argv.includes('--endless');
 const stages = endless ? 1 : Number(process.argv[4]) || 1;
+const firstStage = Number(process.argv.find((arg) => arg.startsWith('--stage='))?.slice(8) ?? 1);
 const requestedSurvival = 300;
 const viewport = { width:390, height:844 };
 const stepWait = 77;
@@ -54,10 +55,22 @@ async function main() {
   try {
     const manifest = await (await page.request.get(new URL('/version.json', origin).href)).json();
     await page.goto(origin);
+    if (!endless && firstStage > 1) {
+      await page.getByRole('button', { name:'Play', exact:true }).waitFor();
+      await page.evaluate(async (target) => {
+        const main = document.querySelector('script[type=module]').src;
+        const { PilotStore } = await import(new URL('pilot.mjs', main));
+        const pilot = new PilotStore(indexedDB);
+        await pilot.open();
+        await pilot.change((saved) => { for (let i = 1; i < target; i++) saved.clears[i] = 1; });
+        pilot.db.close();
+      }, firstStage);
+      await page.reload();
+    }
     await page.getByRole('button',{name:'Play',exact:true}).tap();
-    await page.getByRole('button',{name:endless ? 'Endless' : /01 Vesper Orbit/}).tap();
+    await page.getByRole('button',{name:endless ? 'Endless' : new RegExp(`^${String(firstStage).padStart(2, '0')} `)}).tap();
     const report = [];
-    for (let stage = 1; stage <= stages; stage++) {
+    for (let stage = firstStage; stage < firstStage + stages; stage++) {
       await page.waitForFunction((id) => window.fullFlight.state.mode === 'playing' && window.fullFlight.state.flight.stage.id === id, stage);
       await page.evaluate(() => { window.fullFlight.intervals = []; });
       let finger = { x:195, y:567 };
@@ -112,13 +125,13 @@ async function main() {
       await shot(endless ? 'endless-soak' : `stage-${stage}-result`);
       report.push({ stage, wallMs:Date.now()-started, moves, reanchors, supplies:[...supplies], marks, ...result });
       fs.writeFileSync(path.join(output,'flight.json'),JSON.stringify({origin,manifest,viewport,report,
-        coverage:'Stock runs at wall-clock speed in the running browser. Strategy read telemetry and sent Chromium touch inputs. No game state injection, seeking, artificial clock or assigned result.'},null,2));
+        coverage:'Stock runs at wall-clock speed in the running browser. Strategy read telemetry and sent Chromium touch inputs. Earlier clears are preloaded only when selecting a later entry stage. The chosen flight uses the natural clock, damage and result.'},null,2));
       if (endless) assert.ok(result.elapsed >= requestedSurvival && result.hull > 0, JSON.stringify(result));
       else {
         assert.equal(result.terminal.status,'clear',JSON.stringify(result));
         assert.ok(moves > 80 && result.receipt?.award > 0);
       }
-      if (stage < stages) await page.getByRole('button',{name:/^Next ·/}).tap();
+      if (stage + 1 < firstStage + stages) await page.getByRole('button',{name:/^Next ·/}).tap();
     }
     assert.deepEqual(errors,[]);
   } finally { await browser.close(); }
