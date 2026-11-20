@@ -1,5 +1,7 @@
 # Firebase Release Workflow
 
+This workflow applies to the legacy Star Strike RUSH site. StageBackendPreview modifies shared live Functions and Firestore Rules. It requires `-BackendApprovalFile` with boolean `approved`, the exact `commitSha`, project ID `star-strike-rush`, and scope `shared-backend-stage`. Keep actual owner approval outside version control. The separately configured Stellar Rebels web artifact targets only `stellar` through `firebase.stellar.json`.
+
 Star Strike RUSH uses Node.js 22 and the locked repository Firebase CLI. The
 release model is `automatic_best_account_or_device`. Whole-save automatic
 account/device replacement is enabled. World Record publication, Weekly Leagues, and run-progression

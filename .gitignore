@@ -8,6 +8,7 @@ test-artifacts/
 outputs/
 tmp/
 release-approval.local.json
+backend-approval.local.json
 release-evidence/
 dist/
 dist-stellar/

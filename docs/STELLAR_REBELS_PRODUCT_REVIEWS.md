@@ -40,3 +40,5 @@ The critic withheld a complete weighted product score because implementation and
 | SR-D06 · Material | Missing defeat cap, prerequisites, stacking, timing bounds and early affordability. | Documented the six-stage reward table, upgrade ordering, pickup refresh and boss reaction baselines. Verify base clears and payout per active minute. |
 | SR-D07 · Material | Pause in compact art was smaller than 44 CSS px. Small statuses and an action-like Overdrive chevron obscured HUD. | Increased Pause drawing to 44 and replaced status button with read-only treatment. Verify DOM targets, focus, type and reduced motion. |
 | SR-D08 · Material | Inherited mobile QA thresholds tolerate near-total dropped frames. | Added provisional p95/frame-drop and transfer/texture targets for named phone classes. Collect host and device evidence separately. |
+
+The first critic returned for targeted verification of the revised concepts, source and first playable stage. The remaining save-origin and Hosting wording was corrected in the production plan after the review. The separate live-build round covers runtime journeys and observed frame behavior.

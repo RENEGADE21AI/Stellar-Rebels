@@ -1,5 +1,6 @@
-import { BOSSES, ENEMIES, HEIGHT, PICKUPS, SHIPS, STAGES, WIDTH, formation, stageById, weaponStats } from './catalog.mjs';
+import { ENEMIES, HEIGHT, PICKUPS, SHIPS, STAGES, WIDTH, formation, hardpointAt, stageById, weaponStats } from './catalog.mjs';
 import { advanceBoss, bossPartPosition, launchBoss, operatorWarnings } from './bosses.mjs';
+import { markWall } from './boss-patterns.mjs';
 import { VANE_HULL, breakFormation, linkedVolley, vanePosition } from './formations.mjs';
 
 export const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -37,6 +38,7 @@ export class Flight {
     this.comboTime = 0;
     this.waveIndex = 0;
     this.dropIndex = 0;
+    this.terrainIndex = 0;
     this.fireTimer = .25;
     this.spawns = [];
     this.pickups = [];
@@ -159,7 +161,7 @@ export class Flight {
     const group = name === 'linked' && this.linkedCombat ? this.elapsed : 0;
     if (group && !this.taughtFormation) {
       this.taughtFormation = true;
-      this.message('Shoot the bracketed relay to scatter the wing.', 3.7, 'tactic', 'Break their link');
+      this.message('Shoot the bracketed relay to scatter the wing.', 2.5, 'tactic', 'Break their link');
     }
     for (const e of formation(name, flip)) this.spawns.push({ ...e, group, at: this.elapsed + e.after });
   }
@@ -194,6 +196,12 @@ export class Flight {
       if (drop && this.elapsed >= drop[0]) {
         this.pickup(drop[1], drop[2]);
         this.dropIndex++;
+      }
+      const wall = this.stage.terrain?.[this.terrainIndex];
+      if (wall && this.elapsed >= wall[0]) {
+        markWall(this, wall[1]);
+        if (this.terrainIndex === 0) this.message('Follow the open seam.', 3.0, 'tactic', 'Debris ahead');
+        this.terrainIndex++;
       }
       if (!this.boss && this.elapsed >= this.stage.bossAt) {
         for (const e of this.enemies) e.retreat = true;
@@ -239,8 +247,7 @@ export class Flight {
     const boosted = p.overdrive > 0;
     this.fireTimer += Math.max(.095, this.ship.interval / this.stats.rate / (boosted ? 1.56 : 1));
     const emit = ([dx, dy, angle, value], powered = false) => {
-      const x = p.x + dx;
-      const y = p.y + dy;
+      const { x, y } = hardpointAt(p, dx, dy, this.run.assistance.reduced ? 0 : p.bank);
       const speed = this.run.ship === 'needle' ? 782 : 685;
       this.friendly.push({ x, y, px: x, py: y, vx: Math.sin(angle) * speed, vy: -Math.cos(angle) * speed,
         strength: value * this.stats.damage * (boosted ? 1.21 : 1), powered, live: true });
@@ -258,7 +265,12 @@ export class Flight {
     const aim = this.angleToPilot(e.x, y);
     e.volley++;
     switch (e.kind) {
-      case 'lancer': this.fan(e.x, y + 8, aim, 3, .15, 215, 'lance'); break;
+      case 'lancer':
+        for (const side of [-1, 1]) {
+          const muzzle = hardpointAt(e, side * 9.1, 19.7, e.turn);
+          this.projectile(muzzle.x, muzzle.y, this.angleToPilot(muzzle.x, muzzle.y) + side * .095, 207, 'lance');
+        }
+        break;
       case 'sweeper': this.fan(e.x, y, Math.PI / 2 + Math.sin(e.volley * 1.52) * .49, 5, .20, 162, 'blade'); break;
       case 'escort': this.fan(e.x, y, Math.PI / 2, 3, .29, 136, 'seed'); break;
       case 'relay': this.fan(e.x, y, aim, 2, .27, 157, 'pulse'); break;
@@ -282,7 +294,7 @@ export class Flight {
         continue;
       }
       const { speed, y: target, drift, cadence } = e.spec;
-      const live = e.y > 47;
+      const live = e.y > 102;
       if (e.kind === 'diver' && e.age > 2.35 && !e.dive) {
         e.dive = true;
         e.vector = this.angleToPilot(e.x, e.y);

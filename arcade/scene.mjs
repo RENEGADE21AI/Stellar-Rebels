@@ -1,4 +1,4 @@
-import { HEIGHT, PICKUPS, WIDTH } from './catalog.mjs';
+import { ENEMIES, HEIGHT, PICKUPS, STAGES, WIDTH, hardpointAt } from './catalog.mjs';
 import { bossPartPosition } from './bosses.mjs';
 import { commandCharge, vanePosition } from './formations.mjs';
 
@@ -9,19 +9,20 @@ export function spriteUrl(key) {
 const assets = new Map();
 
 export function loadSprite(key) {
-  const resource = assets.get(key);
+  const url = key === 'vesper-playfield' ? new URL('./media/environment/vesper-playfield.webp', import.meta.url).href : spriteUrl(key);
+  const resource = assets.get(url);
   if (resource) return resource;
   const image = new Image();
   const promise = new Promise((resolve) => {
     image.onload = () => resolve(image);
-    image.onerror = () => { assets.delete(key); resolve(null); };
+    image.onerror = () => { assets.delete(url); resolve(null); };
   });
-  assets.set(key, promise);
-  image.src = spriteUrl(key);
+  assets.set(url, promise);
+  image.src = url;
   return promise;
 }
 
-const regular = ['scout', 'lancer', 'diver', 'relay', 'turret', 'rock', ...Object.keys(PICKUPS).map((name) => `pickup-${name}`)];
+const regular = [...Object.keys(ENEMIES), 'turret', 'rock', ...Object.keys(PICKUPS).map((name) => `pickup-${name}`)];
 const lerp = (a, b, t) => a + (b - a) * t;
 
 function seededNoise(i) {
@@ -71,7 +72,8 @@ export class FlightScene {
     this.cameraPulse = 0;
     this.hurtPulse = 0;
     const keyList = new Set([...regular, flight.run.ship, flight.stage.boss, `env-${flight.stage.environment}`]);
-    for (const name of this.optionalSprites ?? []) keyList.add(name);
+    if (flight.stage.environment === 'breach') keyList.add('vesper-playfield');
+    if (flight.endless) for (const stage of STAGES) keyList.add(stage.boss);
     await Promise.all([...keyList].filter((key) => !this.sprites.has(key)).map(async (key) => {
       const image = await loadSprite(key);
       if (image) this.sprites.set(key, image);
@@ -83,6 +85,8 @@ export class FlightScene {
     const dpr = globalThis.effectiveCanvasDpr(clientWidth, clientHeight, window.devicePixelRatio, 1.85, 1_300_000);
     this.canvas.width = Math.max(1, Math.floor(clientWidth * dpr));
     this.canvas.height = Math.max(1, Math.floor(clientHeight * dpr));
+    this.unit = Math.min(clientWidth / WIDTH, clientHeight / HEIGHT) || 1;
+    this.grade = null;
   }
 
   accept(events, reduce) {
@@ -148,6 +152,10 @@ export class FlightScene {
     const c = this.ctx;
     c.setTransform(this.canvas.width / WIDTH, 0, 0, this.canvas.height / HEIGHT, 0, 0);
     this.background(flight, prefs.reduced);
+    const scale = Math.min(this.canvas.width / WIDTH, this.canvas.height / HEIGHT);
+    const left = (this.canvas.width - scale * WIDTH) / 2;
+    const top = (this.canvas.height - scale * HEIGHT) / 2;
+    c.setTransform(scale, 0, 0, scale, left, top);
     c.save();
     if (!prefs.reduced && this.cameraPulse) {
       c.translate(Math.sin(flight.elapsed * 169 + this.cameraPulse * 7) * this.cameraPulse * 3.4,
@@ -181,11 +189,24 @@ export class FlightScene {
 
   background(flight, reduce) {
     const c = this.ctx;
-    const env = this.sprites.get(`env-${flight.stage.environment}`);
+    const illustrated = flight.stage.environment === 'breach' && this.sprites.get('vesper-playfield');
+    const env = illustrated || this.sprites.get(`env-${flight.stage.environment}`);
     const t = reduce ? 0 : flight.elapsed;
     c.fillStyle = '#040811';
     c.fillRect(0, 0, WIDTH, HEIGHT);
-    if (env) c.drawImage(env, 0, 0, WIDTH, HEIGHT);
+    if (env) {
+      c.drawImage(env, 0, 0, WIDTH, HEIGHT);
+      if (illustrated && this.fullStrengthBackground !== true) {
+        if (!this.grade) {
+          this.grade = c.createLinearGradient(0, 0, WIDTH, HEIGHT * .61);
+          this.grade.addColorStop(0, '#02091263');
+          this.grade.addColorStop(.49, '#0209129e');
+          this.grade.addColorStop(1, '#020912aa');
+        }
+        c.fillStyle = this.grade;
+        c.fillRect(0, 0, WIDTH, HEIGHT);
+      }
+    }
     else {
       c.save();
       c.globalAlpha = .08;
@@ -232,8 +253,7 @@ export class FlightScene {
     const p = flight.player;
     const plume = prefs.reduced ? 15 : 13 + (Math.sin(flight.elapsed * 75) + 1) * 2.6;
     for (const [dx, dy] of flight.ship.engines) {
-      const x = p.x + dx;
-      const y = p.y + dy;
+      const { x, y } = hardpointAt(p, dx, dy, prefs.reduced ? 0 : p.bank);
       const color = p.overdrive ? '#ffd478' : '#72ffe6';
       const bloom = c.createLinearGradient(x, y, x, y + plume);
       bloom.addColorStop(0, color);
@@ -257,9 +277,23 @@ export class FlightScene {
   }
 
   enemy(e, clock) {
+    const c = this.ctx;
+    if (e.kind === 'diver' && e.age > 1.95 && !e.retreat) {
+      if (e.dive) {
+        const v = e.vector;
+        line(c, e.x, e.y, -Math.cos(v) * 27, -Math.sin(v) * 27, '#ed875cb3', 2);
+      } else {
+        line(c, e.x - 7, e.y + 16, 7, 7, '#ffd49a', 2);
+        line(c, e.x, e.y + 23, 7, -7, '#ffd49a', 2);
+      }
+    }
     this.sprite(e.kind, e.x, e.y, e.spec.size, e.turn, e.retreat ? .66 : 1);
-    if (e.fireTimer < .26 && e.y > 45 && !e.dive && !e.retreat) {
-      filled(this.ctx, e.x, e.y + 14, 2.2 + Math.sin(clock * 19) * .7, '#fff1c9');
+    if (e.fireTimer < .26 && e.y > 102 && !e.dive && !e.retreat) {
+      const points = e.kind === 'lancer' ? [[-9.1, 19.7], [9.1, 19.7]] : [[0, 14]];
+      for (const [dx, dy] of points) {
+        const muzzle = hardpointAt(e, dx, dy, e.turn);
+        filled(this.ctx, muzzle.x, muzzle.y, 2.2 + Math.sin(clock * 19) * .7, '#fff1c9');
+      }
     }
     if (e.flash > 0) ring(this.ctx, e.x, e.y, 7, '#fff4cf99');
     if (e.jam > 0 && !e.retreat) {
@@ -390,6 +424,13 @@ export class FlightScene {
     c.save();
     c.translate(s.x, s.y);
     c.rotate(Math.atan2(s.vy, s.vx));
+    if (s.kind === 'lance') {
+      line(c, -10, 0, 16, 0, '#431d25', 8);
+      line(c, -7, 0, 13, 0, contrast ? '#ffb684' : '#ff7e4d', 4.5);
+      line(c, -3, 0, 9, 0, '#fff2cd', 1.8);
+      c.restore();
+      return;
+    }
     c.fillStyle = '#34151c';
     c.beginPath();
     c.ellipse(0, 0, s.radius + 2.6, s.radius + 1.0, 0, 0, Math.PI * 2);

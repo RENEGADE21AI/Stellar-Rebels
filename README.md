@@ -1,4 +1,19 @@
-# Star Strike RUSH
+# Stellar Rebels
+
+Stellar Rebels is a portrait arcade shooter. Choose a stage, drag to steer, aim automatic fire and collect field equipment. Personal records and Salvage upgrades stay on the device. Art source and design evidence are under `source-art/stellar` and `docs/`.
+
+## Play locally
+
+Use Node.js 22 and run the web build and loopback server. Open `http://127.0.0.1:4183/`. The local web artifact can be installed through browser controls after it downloads its offline pack.
+
+```powershell
+npm run build:stellar
+node scripts/serve-static.js dist-stellar 4183
+```
+
+`firebase.stellar.json` targets the existing Firebase project's additional site `stellar-rebels.web.app`. The original `star-strike-rush.web.app` account and browser storage remain on that origin. The production plan, progression design, truth record and separate critic ledgers record the verified scope. Expo EAS builds require a release-quality candidate and explicit owner approval.
+
+## Star Strike RUSH archive and tooling
 
 Star Strike RUSH is a portrait-first Canvas 2D arcade shooter. Automatic fire,
 responsive movement, powerup builds, adaptive pressure, achievements, upward
@@ -41,12 +56,10 @@ verifier.
   `DASH`; asteroids remain solid hazards.
 - Touch or pen: use the virtual joystick and ability button. They appear only
   after meaningful touch/pen gameplay input.
-- Pause: the top-left HUD control or Escape. A deliberate standard-run pause
-  costs one Health bar and reports the cost. Every tutorial pause, including
-  automatic focus/visibility pause, is free; every standard-run pause costs one
-  Health, with duplicate browser lifecycle events coalesced into one charge.
-  Gameplay resumes through a short countdown; cancelling that countdown is
-  free. Restart Run and Return to Title require a second explicit confirmation.
+- Pause with the top-left HUD control or Escape. In this source branch, pausing,
+  background interruptions and countdown cancellation preserve Health.
+  Gameplay resumes through a short countdown. Restart Run and Return to Title
+  require a second explicit confirmation.
 - Keyboard navigation: Tab moves through title, panel, pause, reset, and Game
   Over actions; Enter or Space activates the focused control and Escape backs
   out safely. Focus outlines track the matching Canvas control.

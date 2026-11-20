@@ -5,6 +5,7 @@ param(
   [switch]$Production,
   [switch]$AcceptOwnerAccountSmokeWaiver,
   [string]$ApprovalFile = "",
+  [string]$BackendApprovalFile = "",
   [string]$BaselineCommit = "",
   [string]$ExpectedBranch = "main"
 )
@@ -97,6 +98,9 @@ if ($StageBackendPreview) { $modeCount++ }
 if ($Production) { $modeCount++ }
 if ($modeCount -eq 0) { $CheckOnly = $true }
 if ($modeCount -gt 1) { throw "Choose exactly one release mode: -CheckOnly, -StageBackendPreview, or -Production." }
+if ($StageBackendPreview -and -not $BackendApprovalFile) {
+  throw "Shared live Functions and Rules staging requires -BackendApprovalFile for this exact build."
+}
 if ($AcceptOwnerAccountSmokeWaiver -and -not $Production) {
   throw "-AcceptOwnerAccountSmokeWaiver is valid only with -Production."
 }
@@ -106,7 +110,7 @@ Set-Location -LiteralPath $RepositoryRoot
 
 $detectedRoot = Get-GitText -Arguments @("rev-parse", "--show-toplevel")
 if ([IO.Path]::GetFullPath($detectedRoot).TrimEnd("\") -ne [IO.Path]::GetFullPath($RepositoryRoot).TrimEnd("\")) {
-  throw "release.ps1 must run inside the Star Strike RUSH repository."
+  throw "release.ps1 must run inside the Stellar Rebels repository."
 }
 $nodeVersion = (& node --version | Out-String).Trim()
 if ($LASTEXITCODE -ne 0 -or $nodeVersion -notmatch "^v22\.") {
@@ -114,8 +118,8 @@ if ($LASTEXITCODE -ne 0 -or $nodeVersion -notmatch "^v22\.") {
 }
 Write-Host "Verified release Node runtime: $nodeVersion"
 $remote = Get-GitText -Arguments @("remote", "get-url", "origin")
-if ($remote -notmatch "RENEGADE21AI[/:]Star_Strike_RUSH(?:\.git)?$") {
-  throw "origin does not point to RENEGADE21AI/Star_Strike_RUSH: $remote"
+if ($remote -notmatch "RENEGADE21AI[/:](?:Stellar-Rebels|Star_Strike_RUSH)(?:\.git)?$") {
+  throw "origin does not point to RENEGADE21AI/Stellar-Rebels: $remote"
 }
 $dirty = Get-GitText -Arguments @("status", "--porcelain")
 if ($dirty) { throw "Worktree must be clean before release.`n$dirty" }
@@ -135,6 +139,15 @@ if ($localMain -ne $originMain) {
 
 $releaseCommit = Get-GitText -Arguments @("rev-parse", "HEAD")
 Write-Host "Commit being released: $releaseCommit"
+
+if ($StageBackendPreview) {
+  $backendApproval = Get-Content -Raw -LiteralPath $BackendApprovalFile | ConvertFrom-Json
+  if ($backendApproval.approved -isnot [bool] -or -not $backendApproval.approved -or
+      $backendApproval.commitSha -ne $releaseCommit -or $backendApproval.projectId -ne $ExpectedProject -or
+      $backendApproval.scope -ne "shared-backend-stage") {
+    throw "Shared backend approval does not match this project, scope, and exact commit."
+  }
+}
 
 $firebaseConfig = Get-Content -Raw -LiteralPath (Join-Path $RepositoryRoot ".firebaserc") | ConvertFrom-Json
 if ($firebaseConfig.projects.default -ne $ExpectedProject) {

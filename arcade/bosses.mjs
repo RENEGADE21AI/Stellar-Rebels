@@ -1,4 +1,5 @@
 import { BOSSES, WIDTH, HEIGHT } from './catalog.mjs';
+import { harrow, relayCarrier } from './boss-patterns.mjs';
 
 export function launchBoss(flight, kind) {
   const spec = BOSSES[kind];
@@ -7,7 +8,7 @@ export function launchBoss(flight, kind) {
     entryTime: 1.55, hitFlash: 0, parts: spec.parts.map(([dx, dy]) => ({ dx, dy, hull: spec.partHull, flash: 0 }))
   };
   flight.signal('boss', flight.boss.x, 125, spec.name);
-  flight.message(spec.intro, 4.5, 'warning', spec.name);
+  flight.message(spec.intro, 2.25, 'warning', spec.name);
 }
 
 export function bossPartPosition(boss, part) {
@@ -32,7 +33,7 @@ function baseAttack(flight, boss, phase) {
   boss.timer = 1.9;
 }
 
-const attacks = { gatekeeper: gatekeeperAttack };
+const attacks = { gatekeeper: gatekeeperAttack, warden: harrow, matron: relayCarrier };
 
 export function advanceBoss(flight, dt) {
   const b = flight.boss;
@@ -41,7 +42,7 @@ export function advanceBoss(flight, dt) {
   b.hitFlash = Math.max(0, b.hitFlash - dt);
   for (const part of b.parts) part.flash = Math.max(0, part.flash - dt);
   const entry = Math.min(1, b.age / b.entryTime);
-  b.y = -100 + 313 * (1 - (1 - entry) ** 2) + 7 * Math.sin(b.age * 1.1) * entry;
+  b.y = -100 + 330 * (1 - (1 - entry) ** 2) + 7 * Math.sin(b.age * 1.1) * entry;
   b.x = WIDTH / 2 + b.spec.motion * Math.sin(Math.max(0, b.age - b.entryTime) * .78);
   b.timer -= dt;
   if (b.age < b.entryTime || b.timer > 0) return;

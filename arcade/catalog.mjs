@@ -1,3 +1,5 @@
+import { innerRoute } from './routes.mjs';
+
 export const WIDTH = 384;
 export const HEIGHT = 768;
 export const RULES_VERSION = 'arcade-1';
@@ -5,8 +7,8 @@ export const RULES_VERSION = 'arcade-1';
 export const SHIPS = {
   kestrel: {
     name: 'Fighter', role: 'Fighter', clearance: 0, hull: 5, speed: 318, interval: .224,
-    size: 58, hit: 8, engines: [[-11, 13], [11, 13]],
-    guns: [[-9, -10, 0, .89], [9, -10, 0, .89]],
+    size: 58, hit: 8, engines: [[-9.6, 19], [9.6, 19]],
+    guns: [[-9.3, -15, 0, .89], [9.3, -15, 0, .89]],
     description: 'Twin parallel guns and responsive handling. Line both lanes up on large targets.'
   },
   needle: {
@@ -38,12 +40,12 @@ export const PICKUPS = {
 };
 
 export const ENEMIES = {
-  scout: { name: 'Scout', hull: 2.45, y: 105, size: 43, hit: 11, value: 120, cadence: 2.9, speed: 108, drift: 20 },
-  lancer: { name: 'Gunner', hull: 5.4, y: 144, size: 52, hit: 13, value: 240, cadence: 2.6, speed: 95, drift: 8 },
-  diver: { name: 'Diver', hull: 3.35, y: 114, size: 42, hit: 10, value: 220, cadence: 3.25, speed: 119, drift: 10 },
-  sweeper: { name: 'Sweeper', hull: 6.8, y: 131, size: 56, hit: 14, value: 270, cadence: 2.45, speed: 84, drift: 43 },
-  escort: { name: 'Escort', hull: 8.4, y: 181, size: 54, hit: 15, value: 300, cadence: 2.8, speed: 90, drift: 9 },
-  relay: { name: 'Command Ship', hull: 6.6, y: 108, size: 55, hit: 15, value: 390, cadence: 2.9, speed: 91, drift: 20 }
+  scout: { name: 'Scout', hull: 2.45, y: 138, size: 43, hit: 11, value: 120, cadence: 2.9, speed: 108, drift: 20 },
+  lancer: { name: 'Gunner', hull: 5.4, y: 169, size: 52, hit: 13, value: 240, cadence: 2.6, speed: 95, drift: 8 },
+  diver: { name: 'Diver', hull: 3.35, y: 144, size: 42, hit: 10, value: 220, cadence: 3.25, speed: 119, drift: 10 },
+  sweeper: { name: 'Sweeper', hull: 6.8, y: 153, size: 56, hit: 14, value: 270, cadence: 2.45, speed: 84, drift: 43 },
+  escort: { name: 'Escort', hull: 8.4, y: 191, size: 54, hit: 15, value: 300, cadence: 2.8, speed: 90, drift: 9 },
+  relay: { name: 'Command Ship', hull: 6.6, y: 133, size: 55, hit: 15, value: 390, cadence: 2.9, speed: 91, drift: 20 }
 };
 
 // Lanes are normalized fractions. Successive craft arrive at 0.25-second intervals.
@@ -73,11 +75,12 @@ export const STAGES = [
     waves: [[1,'arrow'],[8,'rake'],[15,'linked'],[26,'spear'],[33,'rake',1],[40,'spear',1],[48,'cross'],[55,'hook'],[63,'linked',1],[74,'anvil'],[82,'rake'],[89,'hook',1],[96,'anvil',1],[103,'arrow'],[109,'cross'],[116,'linked'],[127,'anvil'],[134,'hook',1],[140,'cross']],
     drops: [[18,'power',.51],[43,'barrier',.67],[79,'repair',.37],[110,'power',.56],[138,'overdrive',.5]],
     mastery: { name: 'Disarm the Warden', detail: 'Destroy both turrets before the main hull.', condition: 'parts' }
-  }
+  },
+  ...innerRoute
 ];
 
 export const BOSSES = {
-  gatekeeper: { name: 'Warden', intro: 'Destroy the marked turrets to cut their fire.', hull: 164, size: 242, hit: 39, motion: 46, parts: [[-63, 21], [63, 21]], partHull: 27 },
+  gatekeeper: { name: 'Warden', intro: 'Destroy the marked turrets to cut their fire.', hull: 164, size: 267, hit: 41, motion: 43, parts: [[-69, 31], [69, 31]], partHull: 27 },
   warden: { name: 'Harrow', intro: 'Move through the seams in the debris walls.', hull: 186, size: 242, hit: 44, motion: 42, parts: [] },
   matron: { name: 'Relay Carrier', intro: 'Break the linked nodes to expose the core.', hull: 196, size: 246, hit: 37, motion: 42, parts: [[-70, 6], [70, 6]], partHull: 30 },
   tyrant: { name: 'Rail Ship', intro: 'Leave its striped lane before the rail fires.', hull: 238, size: 245, hit: 40, motion: 47, parts: [] },
@@ -95,4 +98,10 @@ export function weaponStats(owned) {
     rate: owned.includes('chamber') ? 1.09 : 1,
     hull: Number(owned.includes('hull'))
   };
+}
+
+export function hardpointAt(body, dx, dy, angle) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return { x: body.x + dx * cos - dy * sin, y: body.y + dx * sin + dy * cos };
 }

@@ -1,6 +1,6 @@
 # Stellar Rebels ImageGen prompt set
 
-Generated with the built-in ImageGen tool. Production gameplay uses live sprites, geometry and HUD, with key art and the navigation plate used only in menus.
+Generated with the built-in ImageGen tool. Production gameplay uses rendered craft, active geometry, authored effects and the live HUD. The cover and Vesper Orbit use separate environmental artwork with role-specific grades.
 
 ## Key art
 
@@ -25,4 +25,10 @@ Portrait vertical 2:3 concept plate for an original arcade sci-fi top-down shoot
 ## navigation-study
 
 Create a portrait sci-fi navigational space environment for Stellar Rebels game menu concepts, no text, no labels or markings, no straight interface lines, no UI elements, logos or watermark. A very dark blue charcoal near-space map with a pale icy blue off-axis crescent world peeking from the upper-right edge, a few tiny star pinpricks, faint mauve dust and a wide subdued rust-orange atmospheric filament curving around the lower-left edge. A hint of miniature orbital communications infrastructure against the crescent. Center of the image remains nearly black and clean for readable cream-white game interface elements, three-quarters of the frame is near black. Mature industrial sci-fi, beautifully restrained, subtle starfield depth, atmospheric realism, gentle dust gradient, no bright center, portrait 2:3 or taller, detailed at the edges.
+
+## Cover composite and Vesper Orbit
+
+`cover-space.jpg` is the ship-free cover plate. The atmosphere crosses the lower half and behind the Blender Fighter, with a quiet upper window for the mark. The ship layer comes from the source `cover.blend` and shares the Fighter's actual mesh.
+
+`vesper-playfield.jpg` is an empty environment plate with a copper planetary limb on the left, atmosphere and cloud relief near the edge, and a quiet deep-blue combat lane on the right. Color grading is applied behind the live scene. The stronger illustration is kept as a comparison baseline.
 

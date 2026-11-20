@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 
 import bpy
-from mathutils import Vector
+from mathutils import Quaternion, Vector
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,7 +15,7 @@ OUT = ROOT / 'arcade' / 'media' / 'sprites'
 SOURCE.mkdir(parents=True, exist_ok=True)
 OUT.mkdir(parents=True, exist_ok=True)
 parser = argparse.ArgumentParser()
-parser.add_argument('--batch', choices=('slice', 'fleet'), default='slice')
+parser.add_argument('--batch', choices=('slice', 'fleet', 'cover'), default='slice')
 parser.add_argument('--samples', type=int, default=20)
 args = parser.parse_args(sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else [])
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -30,14 +30,17 @@ def surface_map(mat, shader, category):
     grain.inputs['Detail'].default_value = 3
     links.new(coords.outputs['Object'], grain.inputs['Vector'])
     bump = nodes.new('ShaderNodeBump')
-    bump.inputs['Strength'].default_value = .25
-    bump.inputs['Distance'].default_value = .038
+    bump.inputs['Strength'].default_value = .055 if category == 'glass' else .15 if category == 'ivory' else .25
+    bump.inputs['Distance'].default_value = .009 if category == 'glass' else .027 if category == 'ivory' else .038
     links.new(grain.outputs['Fac'], bump.inputs['Height'])
     links.new(bump.outputs['Normal'], shader.inputs['Normal'])
     range_node = nodes.new('ShaderNodeMapRange')
     roughness = shader.inputs['Roughness'].default_value
-    range_node.inputs['To Min'].default_value = max(.12, roughness - .17)
-    range_node.inputs['To Max'].default_value = roughness + .23
+    range_node.inputs['To Min'].default_value = .095 if category == 'glass' else max(.12, roughness - .16)
+    range_node.inputs['To Max'].default_value = .235 if category == 'glass' else roughness + .20
+    if category == 'glass':
+        shader.inputs['Coat Weight'].default_value = .58
+        shader.inputs['Coat Roughness'].default_value = .12
     links.new(grain.outputs['Fac'], range_node.inputs['Value'])
     links.new(range_node.outputs['Result'], shader.inputs['Roughness'])
 
@@ -56,7 +59,7 @@ def surface_map(mat, shader, category):
     links.new(mapping.outputs['Vector'], tex.inputs['Vector'])
     blend = nodes.new('ShaderNodeMixRGB')
     blend.blend_type = 'MIX'
-    blend.inputs[0].default_value = .63
+    blend.inputs[0].default_value = .30 if category == 'glass' else .64
     blend.inputs[1].default_value = shader.inputs['Base Color'].default_value
     links.new(tex.outputs['Color'], blend.inputs[2])
     links.new(blend.outputs[0], shader.inputs['Base Color'])
@@ -266,8 +269,15 @@ def canopy(points, z=.46):
     tile('Canopy spine', 0, .25, .038, .50, z+.012, .028, JOINT, bevel=.008)
 
 
-def kestrel():
-    begin('kestrel', 4.24, 420)
+def kestrel(cover=False):
+    begin('title-craft' if cover else 'kestrel', 4.85 if cover else 4.24, 920 if cover else 420)
+    if cover:
+        c = scene.camera
+        c.location = (4.3, 3.4, 7.2)
+        aim(c, (0, 0, .22))
+        c.rotation_mode = 'QUATERNION'
+        c.rotation_quaternion = c.rotation_euler.to_quaternion() @ Quaternion((0, 0, 1), -.43)
+        light('Sunset reflection',(-7,2.4,1.6),580,(1,.34,.14),4)
     armor('Kestrel central fuselage', ((0,1.84),(.32,1.24),(.53,.41),(.44,-1.21),(.20,-1.55),(-.20,-1.55),(-.44,-1.21),(-.53,.41),(-.32,1.24)), .34,.43, IVORY,TITAN)
     armor('Underframe spine', ((0,1.73),(.22,1.23),(.30,.55),(.42,.23),(.35,-1.62),(-.35,-1.62),(-.42,.23),(-.30,.55),(-.22,1.23)),.255,.51,DARK,TITAN,.065)
     for side in (-1,1):
@@ -276,6 +286,8 @@ def kestrel():
         armor('Swept wing / ceramic plate', mirror(((.48,.57),(.98,.42),(1.66,-1.28),(1.53,-1.33),(.87,-.66),(.56,-.76)),side), .22,.19,IVORY,JOINT)
         armor('Wing layered shoulder',mirror(((.57,.57),(.96,.46),(1.24,-.11),(1.01,-.21),(.73,.08),(.53,.17)),side),.292,.18,PALE,DARK,.042)
         armor('Cutaway trailing plate',mirror(((.88,-.64),(1.13,-.67),(1.54,-1.33),(1.41,-1.26),(1.01,-.87)),side),.192,.14,DARK,TITAN,.035)
+        armor('Swept outer edge cap',mirror(((1.14,-.56),(1.36,-.77),(1.76,-1.35),(1.60,-1.53),(1.49,-1.29),(1.38,-1.03)),side),.27,.18,PALE,JOINT,.044)
+        armor('Wing deflection ridge',mirror(((.93,.17),(1.01,.13),(1.34,-.80),(1.26,-.82),(1.06,-.38)),side),.27,.082,TITAN,JOINT,.019)
         armor('Lower heat sink',mirror(((.61,-.56),(.87,-.53),(.97,-1.04),(.80,-1.19),(.56,-.97)),side),.32,.29,TITAN,DARK,.043)
         vents(.72*side,-.99,.15,.343,3,JOINT)
         armor('Wing flight marking', mirror(((.89,-.47),(1.22,-.46),(1.41,-.79),(1.10,-.78)),side), .244,.04,EMBER,bevel=.013)
@@ -292,6 +304,7 @@ def kestrel():
     canopy(((0,1.02),(.24,.66),(.25,.13),(.15,-.33),(-.15,-.33),(-.25,.13),(-.24,.66)), .53)
     armor('Raised forward armor',((0,1.78),(.24,1.17),(.22,.83),(.12,.72),(-.12,.72),(-.22,.83),(-.24,1.17)),.386,.22,IVORY,TITAN,.033)
     tile('Recessed nose array',0,1.32,.093,.40,.405,.083,JOINT,taper=.019,bevel=.018)
+    tile('Nose alignment light',0,1.45,.022,.24,.414,.028,TURQUOISE,.005,.009)
     armor('Center service cover', ((-.15,-.46),(.15,-.46),(.16,-1.21),(-.16,-1.21)), .40,.09,PALE,JOINT)
 
 
@@ -313,14 +326,17 @@ def lancer():
     begin('lancer', 4.15, 250, enemy=True)
     armor('Lancer launch magazine', ((-.73,.47),(.73,.47),(.91,-1.10),(.61,-1.50),(-.62,-1.50),(-.91,-1.12)), .25,.35,DARK,TITAN)
     for side in (-1,1):
-        armor('Pincer rail body', mirror(((.47,-1.24),(1.04,-1.08),(1.08,.49),(.75,1.61),(.45,1.16),(.50,.51)),side), .41,.51,TITAN,JOINT)
-        tile('Exposed cooling array', .78*side,-.45,.43,.96,.49,.19,COPPER,.04)
-        vents(.78*side,-.78,.34,.512,5,TITAN)
+        armor('Pincer rail body', mirror(((.47,-1.24),(.96,-1.11),(1.20,-.72),(1.18,.02),(1.06,.63),(.81,1.49),(.71,1.69),(.54,1.38),(.49,.89),(.58,.35),(.47,.04)),side), .41,.51,TITAN,JOINT,.06)
+        armor('Angular shoulder and coolant flange',mirror(((.81,-1.08),(1.15,-.80),(1.15,-.29),(.95,-.15),(.72,-.46)),side),.527,.232,DARK,JOINT,.052)
+        armor('Forward chrome rail vane',mirror(((.72,.13),(.98,.42),(.81,1.23),(.64,1.36),(.62,1.02)),side),.517,.219,JOINT,TITAN,.039)
+        tile('Exposed cooling array', .84*side,-.54,.33,.68,.550,.19,COPPER,.036)
+        vents(.84*side,-.78,.26,.572,5,DARK)
         tile('Hot shoe rail', .68*side,.89,.11,1.19,.48,.19,ALERT,.02)
         pipe('Rail structural barrel',(.73*side,.28,.25),(.73*side,1.57,.28),.147,.094,DARK,ALERT)
         for y in (.50,.79,1.05):
             tile('Rail mounting boss',.75*side,y,.34,.088,.482,.20,TITAN,bevel=.024)
         tile('Weapon energized contact',.60*side,1.00,.059,.56,.53,.055,ALERT,taper=.012,bevel=.016)
+        pipe('Rail cooling tube',(side*.51,-.93,.29),(side*.47,.33,.31),.063,.04,COPPER,DARK)
         engine(.58*side,-1.17,.37,AMBER)
     tile('Central targeting housing',0,-.15,.63,.84,.50,.36,DARK,.07)
     armor('Triangular targeting element', ((-.20,-.05),(0,.32),(.20,-.05),(0,-.19)),.55,.085,AMBER,bevel=.022)
@@ -354,6 +370,7 @@ def relay():
 def gatekeeper():
     begin('gatekeeper', 8.75, 440, enemy=True)
     armor('Gatekeeper central bulkhead', ((-2.2,-.69),(-.99,-1.50),(1.03,-1.50),(2.22,-.65),(1.86,.79),(1.20,1.53),(-1.18,1.53),(-1.88,.79)), .42,.70,DARK,TITAN,.095)
+    armor('Reinforced reactor spine', ((-1.59,-.68),(-.98,-1.30),(.98,-1.30),(1.59,-.68),(1.26,.77),(.69,1.52),(-.69,1.52),(-1.26,.77)), .557,.63,TITAN,JOINT,.084)
     for side in (-1,1):
         scythe = ((.92,-1.10),(1.59,-1.42),(2.64,-1.03),(3.44,-.28),(3.91,.67),(3.59,1.62),(3.13,2.22),(3.08,1.28),(2.66,.73),(1.92,.47),(1.31,.25))
         armor('Orbital fortress scythe', mirror(scythe, side), .49,.70,COPPER,DARK,.11)
@@ -371,6 +388,9 @@ def gatekeeper():
             armor(f'Stepped armor tile {j+1}',mirror(points,side),.744,.28,TITAN,JOINT,.043)
         pipe('Heavy reactor line', (side*1.39,-.49,.25),(side*1.88,.32,.40),.115,.075,COPPER,DARK)
         pipe('Aft cable bundle', (side*2.30,-.76,.29),(side*2.75,-.11,.35),.095,.060,JOINT,DARK)
+        pipe('Heavy mount piston',(side*2.12,-.14,.10),(side*2.31,1.33,.14),.235,.175,JOINT,DARK,18)
+        pipe('Turret rotation socket',(side*2.28,1.04,.24),(side*2.28,1.04,.42),.325,.245,TITAN,COPPER,16)
+        armor('Vented rear shear layer',mirror(((1.01,-1.17),(1.56,-1.29),(2.33,-1.05),(2.27,-.87),(1.78,-.91),(1.28,-.81)),side),.791,.22,DARK,JOINT,.047)
         fasteners(mirror(((1.56,-.83),(1.97,-.80),(2.37,-.43),(2.72,-.50),(3.12,-.13),(3.44,.35),(3.47,.87),(3.33,1.26)),side),.776,.057,JOINT)
         tile('Turret arm / support', side*2.27, .65, .30,1.55,.14,.38,JOINT,.04)
         tile('Turret arm / collar', side*2.28,1.06,.65,.40,.22,.35,TITAN,.10)
@@ -386,6 +406,9 @@ def gatekeeper():
     for i in range(8):
         theta = i*pi/4
         tile('Fastening lug',cos(theta)*.98,.13+sin(theta)*.98,.18,.23,.81,.1,JOINT,bevel=.028)
+        a,b = theta+.14,theta+.58
+        sector=[(r*cos(angle),.13+r*sin(angle)) for r,angle in ((.94,a),(1.13,a),(1.13,b),(.94,b))]
+        armor('Optical shutter segment',sector,.844,.15,DARK,JOINT,.028)
 
 
 def turret():
@@ -485,15 +508,112 @@ def slice_models():
     planet('breach', ((.037,.012,.025),(.24,.079,.040)), (-4.51,2.3,0), 3.40, (1,.61,.38))
 
 
+def interceptor():
+    begin('needle', 4.58, 392)
+    armor('Interceptor long keel', ((0,2.02),(.19,1.68),(.33,.97),(.41,-.37),(.30,-1.77),(.19,-1.92),(-.19,-1.92),(-.30,-1.77),(-.41,-.37),(-.33,.97),(-.19,1.68)),.37,.49,IVORY,TITAN,.045)
+    for side in (-1,1):
+        armor('Keel flank armour', mirror(((.19,1.42),(.45,.79),(.50,-.45),(.44,-1.59),(.28,-1.77),(.27,-.24)),side),.32,.40,TITAN,JOINT,.042)
+        armor('Clipped control fin',mirror(((.38,.09),(.75,-.43),(.89,-1.28),(.71,-1.53),(.39,-1.39)),side),.11,.18,PALE,JOINT,.036)
+        armor('Fin trailing cap',mirror(((.55,-.41),(.75,-.65),(.86,-1.26),(.72,-1.34),(.66,-.82)),side),.159,.12,EMBER,DARK,.019)
+        pipe('Lance staging heatpipe',(.30*side,-.65,.31),(.26*side,.88,.38),.064,.031,COPPER,DARK,12)
+        tile('Observer running light',.39*side,-.58,.048,.52,.38,.034,TURQUOISE,taper=.009,bevel=.011)
+        fasteners(mirror(((.40,.27),(.41,-.78),(.65,-1.17)),side),.367,.034,JOINT)
+    engine(0,-1.51,.63)
+    canopy(((0,1.15),(.168,.89),(.21,.27),(.16,-.17),(-.16,-.17),(-.21,.27),(-.168,.89)),.53)
+    pipe('Concentrated plasma lance',(0,1.27,.26),(0,1.94,.31),.090,.047,JOINT,TURQUOISE)
+    tile('Nose emitter spine',0,1.55,.064,.49,.402,.035,TURQUOISE,.012,.014)
+
+
+def sweeper():
+    begin('sweeper',4.42,280,enemy=True)
+    armor('Sweeper saddle', ((-.63,.88),(.63,.88),(.91,.42),(.79,-.79),(0,-1.36),(-.79,-.79),(-.91,.42)),.33,.42,PLUM,DARK,.057)
+    for side in (-1,1):
+        wing = ((.55,-.72),(1.16,-.95),(1.97,-.71),(1.82,.09),(1.30,.72),(1.04,.99),(.88,.37),(1.36,-.14),(.83,-.28))
+        armor('Sweeping crescent arm',mirror(wing,side),.30,.37,TITAN,JOINT,.066)
+        armor('Hardened arm inserts',mirror(((1.18,-.74),(1.73,-.67),(1.63,-.28),(1.51,-.01),(1.26,.27),(1.20,-.03),(1.41,-.39)),side),.392,.22,PLUM,JOINT,.047)
+        armor('Focus rails',mirror(((1.58,-.49),(1.71,-.51),(1.55,-.04),(1.28,.32),(1.33,.06)),side),.44,.08,VIOLET,TITAN,.022)
+        engine(side*.62,-.83,.40,VIOLET)
+        pipe('Sweeper plasma output',(1.17*side,-.46,.20),(1.38*side,.07,.21),.115,.075,DARK,VIOLET)
+    armor('Firing prism', ((0,.70),(.37,.25),(0,-.30),(-.37,.25)),.54,.30,VIOLET,TITAN,.063)
+    loop('Accumulation coil',0,.12,.49,.068,.462,JOINT,24)
+
+
+def escort():
+    begin('escort',4.17,270,enemy=True)
+    shield = ((0,1.65),(1.34,1.00),(1.55,.14),(1.16,-1.18),(0,-1.51),(-1.16,-1.18),(-1.55,.14),(-1.34,1.00))
+    armor('Escort shield hull',shield,.40,.65,TITAN,DARK,.081)
+    shell = ((0,1.39),(1.04,.86),(1.23,.11),(.85,-.94),(0,-1.26),(-.85,-.94),(-1.23,.11),(-1.04,.86))
+    armor('Layered deflector ceramic',shell,.56,.34,PALE,DARK,.07)
+    for side in (-1,1):
+        armor('Deflector segment',mirror(((.38,.88),(.86,.73),(1.11,.18),(.85,-.56),(.54,-.77),(.65,-.04)),side),.663,.21,TITAN,JOINT,.049)
+        armor('Field conductor',mirror(((.82,-.63),(.94,-.71),(1.19,.12),(1.10,.40),(1.02,.37),(1.08,.04)),side),.686,.061,ICE,DARK,.014)
+        engine(.50*side,-.92,.38,ICE)
+        fasteners(mirror(((1.18,.42),(.81,.75),(.89,-.83)),side),.66,.054,DARK)
+    armor('Shield transceiver housing',circle(0,.17,.50,6),.70,.26,DARK,JOINT,.063)
+    loop('Shield transceiver',0,.17,.39,.095,.743,JADE,12)
+
+
+def harrow():
+    begin('warden',8.68,434,enemy=True)
+    armor('Harrow mining tug',((-.94,2.03),(.94,2.03),(1.68,1.17),(1.78,-1.17),(.95,-2.13),(-.95,-2.13),(-1.78,-1.17),(-1.68,1.17)),.49,.77,TITAN,DARK,.106)
+    for side in (-1,1):
+        truss = ((1.28,-1.61),(3.60,-1.49),(3.96,-.54),(3.83,.80),(3.47,1.67),(2.38,1.80),(2.23,.92),(2.75,.45),(2.61,-.20),(1.28,-.37))
+        armor('Miner pillared ram',mirror(truss,side),.49,.78,DARK,JOINT,.106)
+        plate = ((1.56,-1.37),(3.40,-1.30),(3.70,-.55),(3.51,.53),(3.13,1.48),(2.52,1.55),(2.51,1.02),(2.86,.73),(3.17,-.45),(2.83,-.81),(1.57,-.90))
+        armor('Heat-treated boom plating',mirror(plate,side),.68,.40,COPPER,DARK,.075)
+        x=side*3.11
+        armor('Projector mounting dish',circle(x,.52,.53,12),.75,.36,TITAN,DARK,.066)
+        loop('Rock field projector',x,.52,.46,.098,.81,AMBER)
+        armor('Recessed mining lens',circle(x,.52,.32,8),.823,.146,DARK,TITAN,.05)
+        tile('Charge marks',x*.943,-.42,.082,.56,.726,.041,AMBER,bevel=.018)
+        pipe('Boom hydraulic strut',(side*1.61,-1.22,.13),(side*3.50,-.87,.22),.17,.11,JOINT,DARK)
+        vents(side*1.04,-1.27,.36,.54,5,JOINT)
+        fasteners(mirror(((1.59,-.89),(2.09,-1.17),(2.72,-1.00),(3.26,-.63),(3.21,1.36)),side),.773,.07,JOINT)
+    armor('Operation enclosure',((-.80,1.38),(.80,1.38),(1.28,.67),(.87,-.59),(-.87,-.59),(-1.28,.67)),.74,.45,JOINT,DARK,.09)
+    tile('Dredge drive core',0,.45,.31,1.05,.78,.089,AMBER,.04,.04)
+    for x in (-.55,.55):
+        engine(x,-1.55,.64,AMBER)
+
+
+def carrier():
+    begin('matron',8.66,440,enemy=True)
+    armor('Relay carrier spine',((0,2.26),(.86,1.57),(1.08,.09),(1.13,-1.15),(.64,-1.94),(-.64,-1.94),(-1.13,-1.15),(-1.08,.09),(-.86,1.57)),.52,.75,TITAN,DARK,.09)
+    for side in (-1,1):
+        shoulder = ((.88,-.96),(2.12,-1.26),(3.69,-.89),(3.98,-.12),(3.80,.85),(3.07,1.65),(2.43,1.44),(2.25,.70),(1.76,.35),(1.26,.72))
+        armor('Shield-tender long pod',mirror(shoulder,side),.47,.62,DARK,TITAN,.107)
+        armor('Outer angled thermo panel',mirror(((1.65,-.81),(2.33,-1.04),(3.56,-.72),(3.72,-.19),(3.51,.54),(3.04,1.28),(2.62,1.24),(2.52,.43),(2.08,-.06)),side),.61,.30,TITAN,JOINT,.075)
+        armor('Blue emitter gallery',mirror(((2.6,-.38),(3.42,-.38),(3.36,.09),(3.14,.51),(2.75,.32)),side),.688,.21,CANOPY,JOINT,.052)
+        tile('Wing capacitor',side*3.15,-.14,.17,.61,.73,.085,ICE,.022,.026)
+        tile('Shield emitter connector',side*2.46,.19,.58,.43,.32,.54,DARK,.084,.034)
+        pipe('Auxiliary power bus',(side*1.19,-.62,.14),(side*2.89,-.70,.31),.114,.08,JOINT,DARK)
+        fasteners(mirror(((1.45,-.63),(1.94,-.90),(2.27,-.79),(3.25,-.55),(3.52,.09),(3.36,.68),(2.94,1.14)),side),.742,.057,JOINT)
+    armor('Carrier command face',((0,2.02),(.59,1.40),(.88,.21),(.72,-.76),(-.72,-.76),(-.88,.21),(-.59,1.4)),.70,.40,PLUM,JOINT,.078)
+    loop('Relay core collar',0,.28,.67,.11,.758,VIOLET,28)
+    armor('Core facet',circle(0,.28,.44,6),.809,.21,ICE,TITAN,.054)
+    engine(0,-1.45,.90,ICE)
+
+
+def inner_fleet():
+    interceptor()
+    sweeper()
+    escort()
+    harrow()
+    carrier()
+    planet('belt',((.016,.014,.043),(.098,.067,.215)),(4.38,2.75,0),3.75,(.69,.67,1),2)
+    planet('relay',((.009,.022,.031),(.064,.181,.192)),(-4.46,-.92,0),3.82,(.49,.86,1),4)
+
+
 if args.batch == 'slice':
     slice_models()
+elif args.batch == 'cover':
+    kestrel(cover=True)
 else:
-    raise SystemExit('The fleet batch is defined with the multi-stage expansion.')
+    inner_fleet()
 
 bpy.context.window.scene = renders[0][1]
 for name, target in renders:
     target.render.filepath = '//' + name + '.png'
 bpy.ops.wm.save_as_mainfile(filepath=str(SOURCE / (args.batch + '.blend')), compress=True)
 for name, target in renders:
-    target.render.filepath = str(OUT / (name + '.png'))
+    target.render.filepath = str((SOURCE if args.batch == 'cover' else OUT) / (name + '.png'))
     bpy.ops.render.render(write_still=True, scene=target.name)

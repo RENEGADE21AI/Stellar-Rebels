@@ -67,6 +67,7 @@ function wallet() {
 
 function home() {
   return `<article class="title-screen"><h1 tabindex="-1" class="brand-lockup"><img src="${media('brand/stacked-light.svg')}" alt="Stellar Rebels" width="336" height="201"></h1>
+    <img class="title-craft" alt="" src="${media('environment/title-craft.webp')}" width="720" height="720">
     <div class="title-actions">${action('Play', 'view:stages', 'primary', 'play')}
       <nav class="home-links" aria-label="Hangar and records">
         <button class="home-link" data-action="hangar:home">${icon('ship')} Hangar</button>
@@ -194,8 +195,9 @@ function results() {
   const isEndless = p.run.mode === 'endless';
   const stage = stageById(p.run.stage);
   const finale = clear && stage?.id === 6;
+  const relayCleared = clear && stage?.id === 3;
   const next = p.receipt && clear && stageById(stage.id + 1);
-  const title = finale ? 'Last Light' : clear ? 'Stage clear' : isEndless ? p.receipt?.best ? 'New survival best' : 'Run complete' : 'Flight lost';
+  const title = finale ? 'Fleet defeated' : relayCleared ? 'Relay offline' : clear ? 'Stage clear' : isEndless ? p.receipt?.best ? 'New survival best' : 'Run complete' : 'Flight lost';
   const repeat = isEndless ? 'Fly again' : clear ? 'Replay stage' : 'Retry stage';
   const retry = `fly:${isEndless ? 'endless' : stage.id}`;
   const progression = !isEndless && p.receipt ? `<div class="result-reward">${icon('salvage')} ${p.receipt.award ? `+${num(p.receipt.award)} Salvage ${store.temporary ? 'this session' : 'banked'}` : '0 Salvage earned'}${p.receipt.first ? ' · First clear' : ''}</div>` : '';
@@ -204,7 +206,7 @@ function results() {
   const pendingCopy = !p.receipt ? `<p class="result-reward warning">${p.error || 'Saving flight…'}</p>` : '';
   const primary = !p.receipt ? (p.error ? action('Retry saving', 'settle', 'primary', 'check') : '')
     : next ? action(`Next · ${next.name}`, `fly:${next.id}`, 'primary') : finale ? action('Return to stages', 'view:stages', 'primary') : action(repeat, retry, 'primary');
-  const mastery = p.receipt && clear && stage?.mastery ? `<p class="subtle">${p.receipt.mastery ? 'Mastered · ' + stage.mastery.name : stage.mastery.detail}</p>` : '';
+  const mastery = p.receipt && clear && stage?.mastery ? `<p class="subtle">${state.pilot.mastery?.[stage.id] ? 'Mastered · ' + stage.mastery.name : stage.mastery.detail}</p>` : '';
   return `<article class="screen result-screen"><div class="result-card"><span class="caption">${finale ? 'Campaign complete' : isEndless ? 'Endless' : stage.name}</span>
     <h1 tabindex="-1">${title}</h1>${finale ? '<p class="subtle">The enemy fleet has fallen. Every completed stage is open for replay.</p>' : ''}
     <div class="result-facts"><div><span class="caption">Score</span><strong>${num(report.score)}</strong></div><div><span class="caption">Flight time</span><strong>${time(report.duration)}</strong></div></div>
@@ -323,11 +325,13 @@ function content(id, value, html = false) {
 function refreshHud(restart = false) {
   const f = state.flight;
   const p = f.player;
-  const activeBoss = f.boss && f.boss.hull > 0;
+  const activeBoss = Boolean(f.boss && f.boss.hull > 0);
+  const message = f.notice?.time > 0 ? f.notice : null;
   content('flight-name', f.endless ? 'Endless' : f.stage.name);
   content('clock', time(f.elapsed));
   content('flight-score', num(f.score));
-  content('flight-progress', activeBoss ? 'Boss' : f.endless ? 'Survival' : `${Math.min(100, Math.floor(f.elapsed / f.stage.bossAt * 100))}% to boss`);
+  const meters = activeBoss ? '' : f.endless ? 'Survival' : `${Math.min(100, Math.floor(f.elapsed / f.stage.bossAt * 100))}% to boss`;
+  content('flight-progress', message?.kind === 'pickup' ? message.title || message.copy : meters);
   content('chain', f.combo >= 2 ? `${f.combo} chain` : '');
   content('hull', Array.from({ length: p.maxHull }, (_, i) => `<i class="segment ${i < p.hull ? 'full' : ''}" aria-hidden="true"></i>`).join(''), true);
   $('hull').setAttribute('aria-valuemax', p.maxHull);
@@ -346,9 +350,8 @@ function refreshHud(restart = false) {
   content('field-effects', flags.map((flag) => `<span class="field-chip">${flag}</span>`).join(''), true);
   $('flight-help').hidden = f.elapsed > 8.5 || (f.endless && f.elapsed > 4.5);
   content('flight-help', state.input === 'keyboard' ? 'Arrows / WASD to steer · Auto-fire' : 'Drag to steer · Weapons fire automatically');
-  const message = f.notice?.time > 0 ? f.notice : null;
   const callout = $('callout');
-  callout.hidden = !message;
+  callout.hidden = !message || message.kind === 'pickup';
   if (message && (lastHud.message !== message || restart)) {
     lastHud.message = message;
     callout.className = `callout ${message.kind}`;
@@ -475,9 +478,8 @@ sky.addEventListener('pointerdown', (event) => {
 sky.addEventListener('pointermove', (event) => {
   const pointer = state.pointer;
   if (!pointer || pointer.id !== event.pointerId || state.mode !== 'playing') return;
-  const rect = sky.getBoundingClientRect();
   const sensitivity = { gentle: .78, standard: 1.12, direct: 1.37 }[state.flight.run.assistance.sensitivity] ?? 1.12;
-  state.flight.drag((event.clientX - pointer.x) * WIDTH / rect.width * sensitivity, (event.clientY - pointer.y) * HEIGHT / rect.height * sensitivity);
+  state.flight.drag((event.clientX - pointer.x) / renderer.unit * sensitivity, (event.clientY - pointer.y) / renderer.unit * sensitivity);
   pointer.x = event.clientX;
   pointer.y = event.clientY;
 });
