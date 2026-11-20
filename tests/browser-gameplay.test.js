@@ -914,8 +914,8 @@ test("a clean browser can start, move, pause, resume, and keep time frozen while
     await page.waitForTimeout(120);
     const paused = await debugSnapshot(page);
     assert.equal(paused.gameState, "paused");
-    assert.equal(paused.player.hp, moved.player.hp - 1, "a deliberate pause must cost exactly one health bar");
-    assert.equal(paused.ui.pauseNotice, "PAUSE COST: 1 HEALTH BAR");
+    assert.equal(paused.player.hp, moved.player.hp, "a deliberate pause must preserve health");
+    assert.equal(paused.ui.pauseNotice, "FLIGHT PAUSED: NO HEALTH COST");
     assert.ok(paused.layout.pause.x < 60, "pause control must be in the top-left");
     assert.ok(paused.layout.hud.energy.y < paused.layout.hud.health.y, "energy must render above health");
     assert.ok(paused.layout.hud.energy.y > 400, "classic status bars must sit in the bottom-left");
@@ -923,7 +923,7 @@ test("a clean browser can start, move, pause, resume, and keep time frozen while
     await page.waitForTimeout(180);
     const stillPaused = await debugSnapshot(page);
     assert.equal(stillPaused.frame, paused.frame, "simulation frames must freeze while paused");
-    assert.equal(stillPaused.player.hp, paused.player.hp, "a paused frame must not charge health again");
+    assert.equal(stillPaused.player.hp, paused.player.hp, "a paused frame must preserve health");
 
     await page.keyboard.press("Escape");
     await page.waitForFunction(() => JSON.parse(document.querySelector("#debugSnapshot").textContent).gameState === "playing");
@@ -934,14 +934,14 @@ test("a clean browser can start, move, pause, resume, and keep time frozen while
     });
     await page.waitForFunction(() => {
       const snapshot = JSON.parse(document.querySelector("#debugSnapshot").textContent);
-      return snapshot.gameState === "gameover"
-        && snapshot.player.hp === 0
-        && snapshot.ui.pauseNotice === "PAUSE COST: 1 HEALTH BAR";
+      return snapshot.gameState === "paused"
+        && snapshot.player.hp === 1
+        && snapshot.ui.pauseNotice === "FLIGHT PAUSED: NO HEALTH COST";
     });
-    const refused = await debugSnapshot(page);
-    assert.equal(refused.gameState, "gameover");
-    assert.equal(refused.player.hp, 0);
-    assert.equal(refused.ui.pauseNotice, "PAUSE COST: 1 HEALTH BAR");
+    const lastHullPause = await debugSnapshot(page);
+    assert.equal(lastHullPause.gameState, "paused");
+    assert.equal(lastHullPause.player.hp, 1);
+    assert.equal(lastHullPause.ui.pauseNotice, "FLIGHT PAUSED: NO HEALTH COST");
 
     const automatic = await page.evaluate(() => {
       state.player.hp = 3;
@@ -970,8 +970,8 @@ test("a clean browser can start, move, pause, resume, and keep time frozen while
       };
     });
     assert.equal(automatic.game.gameState, "paused");
-    assert.equal(automatic.game.player.hp, 2, "one lifecycle interruption must deduct exactly one Health");
-    assert.equal(automatic.game.ui.pauseNotice, "AUTO-PAUSE COST: 1 HEALTH BAR");
+    assert.equal(automatic.game.player.hp, 3, "lifecycle interruption events must preserve health");
+    assert.equal(automatic.game.ui.pauseNotice, "FLIGHT AUTO-PAUSED: NO HEALTH COST");
     assert.equal(automatic.music.hidden, true);
     assert.equal(automatic.music.tracks.gameplay.paused, true);
     assert.equal(automatic.music.tracks.gameplay.volume, 0.17, "hiding pauses immediately without mutating the saved mix level");
@@ -985,7 +985,7 @@ test("a clean browser can start, move, pause, resume, and keep time frozen while
     assert.equal(restoredMusic.tracks.gameplay.paused, false);
     assert.ok(restoredMusic.tracks.gameplay.volume > 0 && restoredMusic.tracks.gameplay.volume <= 0.065, "restore must fade into the paused mix without a volume jump");
 
-    const lethalAutomatic = await page.evaluate(() => {
+    const lastHullAutomatic = await page.evaluate(() => {
       state.gameState = "playing";
       state.player.hp = 1;
       window.__qaDocumentHidden = true;
@@ -993,15 +993,15 @@ test("a clean browser can start, move, pause, resume, and keep time frozen while
       document.dispatchEvent(new Event("visibilitychange"));
       return { hp: state.player.hp, gameState: state.gameState };
     });
-    assert.equal(lethalAutomatic.hp, 0, "automatic pause uses the same one-Health cost at one remaining Health");
-    assert.equal(lethalAutomatic.gameState, "gameover", "a lethal automatic pause ends the standard run deterministically");
+    assert.equal(lastHullAutomatic.hp, 1, "automatic pause preserves the last hull segment");
+    assert.equal(lastHullAutomatic.gameState, "paused", "automatic pause at one hull pauses the standard run");
     assert.deepEqual(errors, []);
   } finally {
     await context.close();
   }
 });
 
-test("resume countdown can be cancelled without hidden actions or an additional health charge", { timeout: 120_000 }, async () => {
+test("resume countdown can be cancelled without hidden actions or health loss", { timeout: 120_000 }, async () => {
   const context = await browser.newContext({ viewport: { width: 375, height: 667 }, hasTouch: true, isMobile: true });
   const { page, errors } = await openGame(context);
   try {
@@ -1013,7 +1013,7 @@ test("resume countdown can be cancelled without hidden actions or an additional 
       return getDebugSnapshot();
     });
     assert.equal(initial.gameState, "paused");
-    assert.equal(initial.player.hp, 3, "the original deliberate pause should charge exactly once");
+    assert.equal(initial.player.hp, 4, "the deliberate pause should preserve health");
 
     const overlay = await page.evaluate(() => {
       resumeGame();
@@ -1044,7 +1044,7 @@ test("resume countdown can be cancelled without hidden actions or an additional 
     await page.waitForTimeout(60);
     let snapshot = await debugSnapshot(page);
     assert.equal(snapshot.gameState, "resuming", "invisible restart and title hit areas must be inert during countdown");
-    assert.equal(snapshot.player.hp, 3);
+    assert.equal(snapshot.player.hp, 4);
 
     await page.dispatchEvent("canvas", "pointerdown", {
       pointerId: 52,
@@ -1063,8 +1063,8 @@ test("resume countdown can be cancelled without hidden actions or an additional 
     await page.waitForFunction(() => state.gameState === "paused");
     snapshot = await page.evaluate(() => getDebugSnapshot());
     assert.equal(snapshot.gameState, "paused", "the visible Stay Paused action should cancel the countdown");
-    assert.equal(snapshot.player.hp, 3);
-    assert.equal(snapshot.ui.pauseNotice, "RESUME CANCELLED — NO ADDITIONAL HEALTH COST");
+    assert.equal(snapshot.player.hp, 4);
+    assert.equal(snapshot.ui.pauseNotice, "RESUME CANCELLED");
 
     await page.evaluate(() => {
       resumeGame();
@@ -1073,7 +1073,7 @@ test("resume countdown can be cancelled without hidden actions or an additional 
     await page.keyboard.press("Escape");
     snapshot = await page.evaluate(() => getDebugSnapshot());
     assert.equal(snapshot.gameState, "paused", "Escape should return to the pause menu");
-    assert.equal(snapshot.player.hp, 3, "cancelling resume must never charge another health bar");
+    assert.equal(snapshot.player.hp, 4, "cancelling resume must preserve health");
     const pauseExplanationBeforeConfirm = snapshot.ui.pauseNotice;
 
     const destructiveRequest = await page.evaluate(() => {
@@ -1085,7 +1085,7 @@ test("resume countdown can be cancelled without hidden actions or an additional 
     snapshot = await page.evaluate(() => getDebugSnapshot());
     assert.equal(snapshot.gameState, "paused", "the first destructive pause action must not discard the run");
     assert.equal(snapshot.ui.pauseConfirmAction, "restart");
-    assert.equal(snapshot.player.hp, 3);
+    assert.equal(snapshot.player.hp, 4);
     await page.keyboard.press("Escape");
     snapshot = await page.evaluate(() => getDebugSnapshot());
     assert.equal(snapshot.gameState, "paused");
@@ -1229,7 +1229,7 @@ test("semantic title, settings, reset, pause, and game-over actions are keyboard
     const resume = page.getByRole("button", { name: "Resume flight" });
     await resume.waitFor({ state: "attached" });
     await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Resume flight");
-    assert.equal((await debugSnapshot(page)).player.hp, 3);
+    assert.equal((await debugSnapshot(page)).player.hp, 4);
     const restartRun = page.getByRole("button", { name: "Restart run" });
     await restartRun.focus();
     await page.keyboard.press("Enter");
@@ -1242,7 +1242,7 @@ test("semantic title, settings, reset, pause, and game-over actions are keyboard
     await page.waitForFunction(() => JSON.parse(document.querySelector("#debugSnapshot").textContent).gameState === "resuming");
     await page.keyboard.press("Escape");
     await page.waitForFunction(() => JSON.parse(document.querySelector("#debugSnapshot").textContent).gameState === "paused");
-    assert.equal((await debugSnapshot(page)).player.hp, 3, "semantic modal Escape must not double-charge pause Health");
+    assert.equal((await debugSnapshot(page)).player.hp, 4, "semantic modal Escape must preserve health");
 
     await page.evaluate(() => {
       setupSession("playing");

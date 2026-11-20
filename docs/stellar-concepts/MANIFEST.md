@@ -10,10 +10,10 @@ The `390x844` and `320x568` folders contain individual portrait targets. The con
 | 04 | Hangar, craft tab | Compare silhouettes, weapons and unlock criteria | Pending |
 | 05 | Hangar, upgrades tab | Read effects, costs, prerequisites and balance | Pending |
 | 06 | Flight HUD at launch | Immediate drag and automatic-fire cue | Pending |
-| 07 | The Breach | First formations, beams and pickup scale | Pending |
-| 08 | Dead Signal | Combine aimed attacks and linked support | Pending |
-| 09 | Gatekeeper | Mark destructible paired hardpoints | Pending |
-| 10 | Rail Tyrant | Telegraph the rail lane in advance | Pending |
+| 07 | Vesper Orbit | First formations, beams and pickup scale | Pending |
+| 08 | Relay Station | Combine aimed attacks and linked support | Pending |
+| 09 | Warden | Mark destructible paired hardpoints | Pending |
+| 10 | Rail Ship | Telegraph the rail lane in advance | Pending |
 | 11 | Power and Barrier | Distinct shield silhouette and intensified fire | Pending |
 | 12 | Hull damage and Repair | Damage segments and readable recovery | Pending |
 | 13 | Pause | Resume intentionally or leave | Pending |
@@ -28,7 +28,8 @@ The `390x844` and `320x568` folders contain individual portrait targets. The con
 | 22 | Flight school | Controls, pickups, telegraphs and early help | Pending |
 | 23 | Settings | Separate audio and readable accessibility controls | Pending |
 | 24 | Storage notice and recovery | Retry preservation if device storage becomes unavailable | Pending |
-| 25 | Crownfall clear | Finish the campaign and offer replay | Pending |
+| 25 | The Flagship clear | Finish the campaign and offer replay | Pending |
 | 26 | Offline-ready state | Distinguish connection loss from blocked device storage | Pending |
+| 27 | Missing offline pack | Explain reconnect and retry when a pack is evicted | Pending |
 
 Install purchases and restoration are excluded from this web release scope. Banked Salvage upgrade purchase is shown in frame 18. At 320 × 568, production stage rows and panels may scroll. Interactive targets retain at least 44 CSS px. The logo studies show Flare, Orbit and Pennant at the same display scale.

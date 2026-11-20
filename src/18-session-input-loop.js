@@ -78,31 +78,11 @@ function pauseGame(reason = "manual") {
   const decision = typeof pauseHealthDecision === "function"
     ? pauseHealthDecision(state.player, reason, state.runMode)
     : { allowed: true, cost: 0, remainingHp: state.player.hp, message: "" };
-  if (!decision.allowed) {
-    state.pauseNotice = decision.message;
-    showMessage(decision.message, 100);
-    return false;
-  }
-  state.player.hp = decision.remainingHp;
   pauseConfirmAction = "";
   pauseConfirmPreviousNotice = "";
   clearGameplayInput();
   state.pausedReason = reason;
   state.pauseNotice = decision.message;
-  if (decision.cost > 0 && state.player.hp <= 0) {
-    if (state.runMode === "tutorial" && typeof recoverTutorialCheckpoint === "function") {
-      recoverTutorialCheckpoint();
-      state.pausedReason = reason;
-      state.pauseNotice = decision.message;
-      state.resumeCountdown = 0;
-      state.gameState = "paused";
-      if (typeof showTutorialPauseAccessibility === "function") showTutorialPauseAccessibility();
-    } else {
-      enterGameOver();
-      state.pauseNotice = decision.message;
-    }
-    return true;
-  }
   state.resumeCountdown = 0;
   state.gameState = "paused";
   if (state.runMode === "tutorial" && typeof showTutorialPauseAccessibility === "function") showTutorialPauseAccessibility();
@@ -126,7 +106,7 @@ function cancelResumeCountdown() {
   pauseConfirmPreviousNotice = "";
   state.resumeCountdown = 0;
   state.pausedReason = "resume_cancelled";
-  state.pauseNotice = "RESUME CANCELLED — NO ADDITIONAL HEALTH COST";
+  state.pauseNotice = "RESUME CANCELLED";
   state.gameState = "paused";
   if (state.runMode === "tutorial" && typeof showTutorialPauseAccessibility === "function") showTutorialPauseAccessibility();
   return true;

@@ -1,13 +1,13 @@
 {
   "projects": {
-    "default": "star-strike-rush"
+    "default": "star-strike-rush",
+    "stellar-rebels": "star-strike-rush"
   },
   "targets": {
     "star-strike-rush": {
       "hosting": {
-        "app": [
-          "star-strike-rush"
-        ]
+        "app": ["star-strike-rush"],
+        "stellar": ["stellar-rebels"]
       }
     }
   }

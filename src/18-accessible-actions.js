@@ -275,11 +275,11 @@ function syncGameAccessibleSurface(force = false) {
       clearGameAccessibleSurface();
       return;
     }
-    const costLabel = state.runMode === "tutorial" ? "Pause training, no health cost" : "Pause flight, costs one health bar";
+    const pauseLabel = state.runMode === "tutorial" ? "Pause training, no health cost" : "Pause flight, no health cost";
     setGameAccessibleSurface({
       mode: "playing",
       label: "Flight controls",
-      actions: [accessibleRectAction("pause", costLabel, getPauseButtonRect(), () => pauseGame("manual"))]
+      actions: [accessibleRectAction("pause", pauseLabel, getPauseButtonRect(), () => pauseGame("manual"))]
     });
     return;
   }

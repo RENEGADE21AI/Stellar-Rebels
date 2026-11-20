@@ -45,6 +45,7 @@ SCREENS = {
     "24-offline-recovery": ("Offline / local-save recovery", "offline"),
     "25-finale": ("Campaign finale", "finale"),
     "26-offline-ready": ("Offline play / pack status", "offline_ready"),
+    "27-offline-pack-missing": ("Offline pack recovery", "offline_pack"),
 }
 
 
@@ -80,7 +81,7 @@ def body(draw, text, x, y, color=MUTED, size=14):
     draw.multiline_text((x, y), text, font=typeface(size), fill=color, spacing=6)
 
 
-def button(frame, text, x, y, w, height=48, primary=True):
+def button(frame, text, x, y, w, height=48, primary=True, arrow=True):
     color = ORANGE if primary else "#132331"
     blend_box(frame, (x, y, x + w, y + height), color, ORANGE if primary else EDGE)
     d = ImageDraw.Draw(frame)
@@ -88,7 +89,8 @@ def button(frame, text, x, y, w, height=48, primary=True):
     if font.getlength(text) > w - 47:
         font = typeface(20, "head")
     d.text((x + 16, y + height / 2), text, font=font, fill=BASE if primary else WHITE, anchor="lm")
-    d.text((x + w - 15, y + height / 2), "›", font=typeface(24, "head"), fill=BASE if primary else MUTED, anchor="rm")
+    if arrow:
+        d.text((x + w - 15, y + height / 2), "›", font=typeface(24, "head"), fill=BASE if primary else MUTED, anchor="rm")
 
 
 def backplate(name, size, shade=0):
@@ -128,14 +130,14 @@ def hud(frame, state):
     label(draw, "HULL", 26, 25)
     for i in range(5):
         draw.rectangle((26 + i * 14, 44, 36 + i * 14, 54), fill=TEAL if i < (3 if state == "heal" else 5) else "#293948")
-    section = "ENDLESS" if state == "endless" else "RED MERIDIAN" if state == "rail" else "THE BREACH" if state in ("start", "combat", "boss", "pause", "heal") else "DEAD SIGNAL"
+    section = "ENDLESS" if state == "endless" else "RED SUN" if state == "rail" else "VESPER ORBIT" if state in ("start", "combat", "boss", "pause", "heal") else "RELAY STATION"
     label(draw, section, 111, 26, WHITE)
     label(draw, "00:14" if state == "start" else "06:42" if state == "endless" else "01:38", 111, 45, MUTED)
     draw.rounded_rectangle((w - 62, 19, w - 18, 63), 3, fill="#172636", outline=EDGE)
     draw.rectangle((w - 44, 32, w - 41, 47), fill=WHITE)
     draw.rectangle((w - 36, 32, w - 33, 47), fill=WHITE)
     if state in ("boss", "rail"):
-        label(draw, "GATEKEEPER" if state == "boss" else "RAIL TYRANT", 20, 88, WHITE)
+        label(draw, "WARDEN" if state == "boss" else "RAIL SHIP", 20, 88, WHITE)
         draw.rectangle((20, 106, w - 20, 111), fill="#494154")
         draw.rectangle((20, 106, w * .64, 111), fill="#ff765e")
     if state == "boss":
@@ -168,12 +170,6 @@ def hud(frame, state):
         frame.alpha_composite(effect)
         blend_box(frame, (22, h - 77, w - 22, h - 29), (10, 23, 35, 245))
         label(ImageDraw.Draw(frame), "BARRIER ×2    OVERDRIVE 07s" if state == "buffs" else "REPAIR   +2 HULL", 34, h - 60, WHITE)
-    if state in ("start", "combat", "heal", "advanced", "boss", "endless"):
-        cx = w * (.56 if state in ("start", "combat", "heal") else .50)
-        cy = h * .681
-        for dx in (-6, 6):
-            for dy in (16, 40):
-                draw.line((cx + dx, cy - dy - 9, cx + dx, cy - dy), fill=TEAL, width=2)
     if state == "rail":
         x = round(w * .58)
         overlay = Image.new("RGBA", frame.size)
@@ -232,33 +228,33 @@ def compose(state, size):
         hud(frame, state)
         if state == "pause":
             frame.alpha_composite(Image.new("RGBA", size, (4, 9, 16, 165)))
-            panel(frame, "Paused", "Your flight is on hold.", "Resume", "Leave flight", "THE BREACH")
+            panel(frame, "Paused", "Your flight is on hold.", "Resume", "Leave flight", "VESPER ORBIT")
         return frame
     if state == "ship":
         frame = backplate("hangar", size)
         veil(frame, h * .32, h * .35)
         header(frame, "Ship bay", "HANGAR")
-        for j, (name, note) in enumerate((("Kestrel", "EQUIPPED"), ("Needle", "CLEAR 02"), ("Bastion", "CLEAR 04"))):
+        for j, (name, note) in enumerate((("Fighter", "EQUIPPED"), ("Interceptor", "CLEAR 02"), ("Gunship", "CLEAR 04"))):
             width = (w - 58) // 3
             x = 23 + j * (width + 6)
             blend_box(frame, (x, h - 127, x + width, h - 82), (12, 24, 37, 247), ORANGE if j == 0 else EDGE)
             title(ImageDraw.Draw(frame), name, x + 7, h - 120, 18)
             label(ImageDraw.Draw(frame), note, x + 7, h - 97, size=9)
-        title(ImageDraw.Draw(frame), "Kestrel", 23, h - 216, 42)
+        title(ImageDraw.Draw(frame), "Fighter", 23, h - 216, 42)
         body(ImageDraw.Draw(frame), "Twin pulse guns · balanced handling", 24, h - 162)
-        button(frame, "Equip Kestrel", 23, h - 76, w - 46)
+        button(frame, "Equip Fighter", 23, h - 76, w - 46)
         label(ImageDraw.Draw(frame), "SHIP BAY   /   UPGRADES ›", w - 22, 109, WHITE, anchor="rt", size=11)
         return frame
     frame = backplate("navigation", size, shade=35)
     if state == "route":
         header(frame, "Stage Select", "ARCADE")
         blend_box(frame, (22, 107, w - 22, 150), (15, 28, 42, 235))
-        title(ImageDraw.Draw(frame), "Kestrel equipped", 33, 117, 21)
+        title(ImageDraw.Draw(frame), "Fighter equipped", 33, 117, 21)
         label(ImageDraw.Draw(frame), "CHANGE ›", w - 33, 124, ORANGE, anchor="rt", size=10)
-        names = ("The Breach", "Glass Belt", "Dead Signal", "Red Meridian", "Hollow Sun", "Crownfall")
-        list_rows(frame, [(f"{i + 1:02d}  {name}", "Gatekeeper at the relay" if i == 0 else "", "LAUNCH" if i == 0 else "LOCKED", i > 0) for i, name in enumerate(names)], top=160)
+        names = ("Vesper Orbit", "Asteroid Belt", "Relay Station", "Red Sun", "Outer Orbit", "The Flagship")
+        list_rows(frame, [(f"{i + 1:02d}  {name}", "Warden at the relay" if i == 0 else "", "LAUNCH" if i == 0 else "LOCKED", i > 0) for i, name in enumerate(names)], top=160)
         button(frame, "Endless", 22, h - 64, int((w - 49) * .52), 44, primary=False)
-        button(frame, "Flight school", 27 + int((w - 49) * .52), h - 64, round((w - 49) * .48), 44, primary=False)
+        button(frame, "Flight school", 27 + int((w - 49) * .52), h - 64, round((w - 49) * .48), 44, primary=False, arrow=False)
     elif state == "upgrades":
         header(frame, "Upgrades", "125 SALVAGE")
         label(ImageDraw.Draw(frame), "‹ SHIP BAY   /   UPGRADES", 22, 110, WHITE, size=11)
@@ -266,7 +262,7 @@ def compose(state, size):
         button(frame, "Inspect Calibrated Rails", 22, h - 72, w - 44)
     elif state == "records":
         header(frame, "Records", "ON THIS DEVICE")
-        list_rows(frame, [("Arcade best", "The Breach · Kestrel", "9,420", False), ("Endless", "Needle · Standard", "06:42", False), ("Star Strike RUSH", "Legacy best and Glory", "ARCHIVE", False)])
+        list_rows(frame, [("Arcade best", "Vesper Orbit · Fighter", "9,420", False), ("Endless", "Interceptor · Standard", "06:42", False), ("Star Strike RUSH", "Legacy best and Glory", "ARCHIVE", False)])
     elif state == "help":
         header(frame, "Flight school", "CONTROLS")
         list_rows(frame, [("Drag to steer", "Lift and drag again to reanchor", "MOVE", False), ("Fire automatically", "Line up targets above you", "FIRE", False), ("Read warning lanes", "Exit striped telegraphs", "DODGE", False), ("Collect equipment", "Fly through the capsule", "PICKUPS", False)])
@@ -274,19 +270,23 @@ def compose(state, size):
     elif state == "settings":
         header(frame, "Settings", "FLIGHT SYSTEMS")
         list_rows(frame, [("Music", "", "ON", False), ("Sound effects", "", "ON", False), ("Reduced motion", "Fewer flashes and less shake", "OFF", False), ("High contrast hazards", "Brighter outlines and warnings", "ON", False), ("Drag sensitivity", "", "STANDARD", False)])
+        button(frame, "Flight school", 22, h - 72, w - 44, primary=False)
     else:
         states = {
-            "defeat": ("Flight lost", "The Breach  ·  2,430 score\n+11 Salvage banked", "Retry The Breach", "Stages", "DEFEAT"),
-            "clear": ("Stage clear", "Gatekeeper down.\n+78 first-clear Salvage", "Next stage", "Replay stage", "THE BREACH"),
-            "stage_unlock": ("Glass Belt open", "Stage 02 · Thread the debris lanes.", "Launch Glass Belt", "View route", "STAGE UNLOCKED"),
-            "ship_unlock": ("Needle unlocked", "Precision interceptor.\nFast steer · focused center fire.", "Inspect in hangar", "Next stage", "SHIP UNLOCKED"),
+            "defeat": ("Flight lost", "Vesper Orbit  ·  2,430 score\n+11 Salvage banked", "Retry Vesper Orbit", "Stages", "DEFEAT"),
+            "clear": ("Stage clear", "Warden down.\n+78 first-clear Salvage", "Next · Asteroid Belt", "Replay stage", "VESPER ORBIT"),
+            "stage_unlock": ("Asteroid Belt open", "Stage 02 · Thread the debris lanes.", "Launch Asteroid Belt", "View route", "STAGE UNLOCKED"),
+            "ship_unlock": ("Interceptor unlocked", "Precision interceptor.\nFast steer · focused center fire.", "Inspect in hangar", "Next stage", "SHIP UNLOCKED"),
             "purchase": ("Calibrated Rails", "+8% weapon damage on every ship.\n70 Salvage", "Install for 70", "Back to upgrades", "UPGRADE"),
-            "endless_end": ("New survival best", "06:42  ·  21,030 score\nNeedle · Standard", "Fly again", "Stage Select", "ENDLESS"),
+            "endless_end": ("New survival best", "06:42  ·  21,030 score\nInterceptor · Standard", "Fly again", "Stage Select", "ENDLESS"),
             "offline": ("Save unavailable", "The flight can continue.\nLocal storage is currently blocked.", "Retry saving", "Back to title", "DEVICE STORAGE"),
             "offline_ready": ("Offline play ready", "Stages and ships are available.\nRecords are saved on this device.", "Stage Select", "Settings", "CONNECTION LOST"),
-            "finale": ("Crownfall", "The Dominion's relay network is down.\nAll Arcade stages can be replayed.", "Stage Select", "Flight records", "CAMPAIGN COMPLETE"),
+            "offline_pack": ("Flight pack missing", "Reconnect to download stages.\nYour device save is kept separately.", "Reload", None, "CONNECTION LOST"),
+            "finale": ("The Flagship", "The Dominion's relay network is down.\nAll Arcade stages can be replayed.", "Stage Select", "Flight records", "CAMPAIGN COMPLETE"),
         }
         panel(frame, *states[state])
+        if state == "clear":
+            button(frame, "Stages", 39, max(118, round(h * .32)) + 293, w - 78, primary=False)
     return frame
 
 

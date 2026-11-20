@@ -370,20 +370,12 @@ function drawPauseButton() {
   fill.addColorStop(0, "rgba(16,32,48,0.78)");
   fill.addColorStop(1, "rgba(3,9,20,0.64)");
   ctx.fillStyle = fill;
-  const trainingFree = state.runMode === "tutorial";
-  ctx.strokeStyle = trainingFree ? "rgba(126,240,210,0.54)" : "rgba(255,86,102,0.82)";
-  ctx.lineWidth = trainingFree ? 1 : 1.5;
+  ctx.strokeStyle = "rgba(126,240,210,0.54)";
+  ctx.lineWidth = 1;
   ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 9); ctx.fill(); ctx.stroke();
   ctx.fillStyle = "rgba(225,247,255,0.82)";
   ctx.fillRect(r.x + 12, r.y + 10, 3, 14);
   ctx.fillRect(r.x + 19, r.y + 10, 3, 14);
-  ctx.font = "800 7px 'Arial Narrow', Arial, sans-serif";
-  ctx.textAlign = "right";
-  ctx.textBaseline = "top";
-  ctx.fillStyle = trainingFree
-    ? "rgba(126,240,210,0.78)"
-    : state.player && state.player.hp > 1 ? "rgba(255,126,136,0.88)" : "rgba(190,205,215,0.42)";
-  ctx.fillText(trainingFree ? "0" : "-1", r.x + r.w - 3, r.y + 2);
   ctx.restore();
 }
 function drawPauseOverlay() {

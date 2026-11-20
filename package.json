@@ -9,6 +9,7 @@
     "generate:achievements": "node scripts/generate-achievements.js",
     "check:achievements": "node scripts/generate-achievements.js --check",
     "build": "npm run check:achievements && node scripts/build_static.js",
+    "build:stellar": "node scripts/build_stellar.js",
     "test": "npm run check:achievements && node --test --test-concurrency=1 tests/*.test.js",
     "test:browser": "node --test tests/browser-gameplay.test.js",
     "test:webkit": "node --test tests/webkit-smoke.test.js",

@@ -1,5 +1,7 @@
 # Stellar Rebels production plan
 
+Current player progression, stage intent, early sessions, paid alternatives and the no-ads launch policy are specified in the [Progression and Monetization Design](STELLAR_REBELS_PROGRESSION.md). Across-stage and economy values remain subject to playtesting.
+
 ## Repository audit and decision
 
 The baseline is Star Strike RUSH `origin/main` at `214cd64ec37c50d8921b0d0d0e188ad8038956b4`, checked out clean. Remote history includes `pre-competition`, Glory/Prestige, competition verification, build-week polish, preview and performance branches. The live Hosting version endpoint returned the same SHA and reported public competition paused. Matching live backend identity requires separate verification. This build starts from `main`, with the baseline preserved at `legacy/star-strike-baseline`. No Stellar Rebels critic ledger was found in the checkout, branch history, or matching project files.
@@ -7,7 +9,7 @@ The baseline is Star Strike RUSH `origin/main` at `214cd64ec37c50d8921b0d0d0e188
 | Area | Current behavior and production decision |
 | --- | --- |
 | Runtime | Ordered scripts own a fixed 60 Hz Canvas 2D update, DPR cap, named actions, movement rules, sprite pivots and hit circles. Arcade reuses the fixed step, input vocabulary, collision primitive and applicable attack math. Keep the simulation independent of Canvas and persistent storage. Use DOM for menus, HUD and dialogs. |
-| Combat | Adaptive phase/wave selection, turn-before-thrust flight, auto-fire and a large roster. Stage schedules replace adaptive run progression. Keep formation, aim, shield/support and dive identities, along with the Warden's safe-gap concept and Rail Tyrant's telegraph. |
+| Combat | Adaptive phase/wave selection, turn-before-thrust flight, auto-fire and a large roster. Stage schedules replace adaptive run progression. Keep formation, aim, shield/support and dive identities, along with the Warden's safe-gap concept and Rail Ship's telegraph. |
 | Controls | Keyboard, virtual joystick and Ghost Shift or contextual dash. Arcade uses relative drag and keyboard, with auto-fire and no extra combat button. Ship positions follow drag deltas immediately up to their speed limit. Lifting and retouching reanchors at the ship. |
 | Pause | Legacy standard runs consume health, tutorials do not. Make both policies free. Clear input on resize, capture loss, blur and visibility changes. Resume deliberately with a countdown and brief protection. |
 | Art | Registered raster ships, original source PNGs, pickup art and tuned sprite metadata. Keep the legacy assets and owner-approved music. New silhouettes, original logo masters and HUD glyphs ship with Arcade. |
@@ -27,12 +29,12 @@ The six proposed stages form one assault on the Dominion's relay network. Each n
 
 | Stage | Environment | Formation challenge | Boss and answer |
 | --- | --- | --- | --- |
-| 1 · The Breach | Rust-orange limb and debris lanes | Chevrons and scouts, then aimed lances alongside dives | Gatekeeper. Read two turret charge marks and focus each marked turret to remove its stream. |
-| 2 · Glass Belt | Violet asteroid shadow | Sweep patterns create lanes to cross while diving scouts punish parking | Debris Warden. Move through the open seam in announced paired debris walls. |
-| 3 · Dead Signal | Teal broadcast ruins | Exposed command craft and escort orbits | Relay Matron. Cut visibly linked nodes to shut down protection, then exploit the exposed core. |
-| 4 · Red Meridian | Red radiation horizon | Alternating rail warnings and diagonally advancing formations | Rail Tyrant. Bait the rail at your old position, then leave the locked stripe. |
-| 5 · Hollow Sun | Amber crescent and distant dust | Flanking support, rotating wedge fire and late crossfire | Siphon Core. Read pull lanes and hit the exposed wings or work the opening between spinning fire. |
-| 6 · Crownfall | Cold eclipse edge | Combine attacks with escalating, distinct spacing and reaction windows | Meridian Crown. Break two pylons, then learn a marked gap sequence and the final crossing windows. Show a finale and return to replayable stages. |
+| 1 · Vesper Orbit | Rust-orange limb and debris lanes | Chevrons and scouts, then aimed lances alongside dives | Warden. Read two turret charge marks and focus each marked turret to remove its stream. |
+| 2 · Asteroid Belt | Violet asteroid shadow | Sweep patterns create lanes to cross while diving scouts punish parking | Harrow. Move through the open seam in announced paired debris walls. |
+| 3 · Relay Station | Teal broadcast ruins | Exposed command craft and escort orbits | Relay Carrier. Cut visibly linked nodes to shut down protection, then exploit the exposed core. |
+| 4 · Red Sun | Red radiation horizon | Alternating rail warnings and diagonally advancing formations | Rail Ship. Bait the rail at your old position, then leave the locked stripe. |
+| 5 · Outer Orbit | Amber crescent and distant dust | Flanking support, rotating wedge fire and late crossfire | Gravity Platform. Read pull lanes and hit the exposed wings or work the opening between spinning fire. |
+| 6 · The Flagship | Cold eclipse edge | Combine attacks with escalating, distinct spacing and reaction windows | the flagship. Break two pylons, then learn a marked gap sequence and the final crossing windows. Show a finale and return to replayable stages. |
 
 Prototype wave sections at 145–175 seconds plus a 30–70 second climax. Give the first launch contact within three seconds. Require every stage to clear at base equipment in deterministic coverage and calibrate real difficulty across real human runs. Stage rejection criteria include unavoidable patterns, waiting through repeated openings, indistinct damage signals and power requirements the hangar fails to communicate.
 
@@ -40,9 +42,9 @@ Prototype wave sections at 145–175 seconds plus a 30–70 second climax. Give 
 
 | Ship | Weapon pattern | Tradeoff | Unlock |
 | --- | --- | --- | --- |
-| Kestrel | Twin parallel bolt lanes | Responsive, generous hull, reliable concentration | Start |
-| Needle | Quick narrow center lance | Swift repositioning and concentrated fire, fewer hits to failure | Clear 2 |
-| Bastion | Wide off-axis salvo | Controls flanking formations, slower lateral movement, stronger hull | Clear 4 |
+| Fighter | Twin parallel bolt lanes | Responsive, generous hull, reliable concentration | Start |
+| Interceptor | Quick narrow center lance | Swift repositioning and concentrated fire, fewer hits to failure | Clear 2 |
+| Gunship | Wide off-axis salvo | Controls flanking formations, slower lateral movement, stronger hull | Clear 4 |
 
 Upgrades share one Salvage balance. Use one versioned IndexedDB profile record and serialized read-write transactions across tabs. Re-read the profile inside each transaction before testing prerequisites, changing ownership or balance, and committing purchases atomically. Never show the upgraded stats or debit before transaction completion. Leave a failed write retryable, with the prior committed state visible. Newer unsupported save schemas open in a visibly temporary session without overwriting data. Show exact deltas and prices in the hangar. Starter play must be intact at rank zero. Enemy damage and health stay independent of upgrades.
 
@@ -57,16 +59,16 @@ Cycling Chamber requires Calibrated Rails. Resonant Cells requires both. Ablativ
 
 | Arcade stage | First clear | Repeat clear | Defeat lifetime cap |
 | --- | ---: | ---: | ---: |
-| The Breach | 78 | 16 | 20 |
-| Glass Belt | 95 | 21 | 24 |
-| Dead Signal | 112 | 27 | 27 |
-| Red Meridian | 132 | 33 | 31 |
-| Hollow Sun | 154 | 39 | 35 |
-| Crownfall | 178 | 46 | 39 |
+| Vesper Orbit | 78 | 16 | 20 |
+| Asteroid Belt | 95 | 21 | 24 |
+| Relay Station | 112 | 27 | 27 |
+| Red Sun | 132 | 33 | 31 |
+| Outer Orbit | 154 | 39 | 35 |
+| The Flagship | 178 | 46 | 39 |
 
 All three weapon improvements together add about 30% sustained damage. The only defensive improvement buys one extra mistake. Initial first-clear bonuses move from 78 to 178 Salvage. Repeat rewards scale from 16 to 46. Defeat awards improve only when a player beats a prior qualifying stage attempt, with a fixed stage-specific ceiling and a minimum of three kills. Register a random run ID, stage, ship, rules and upgrade snapshot in an atomic launch transaction. In one settlement transaction consume that ID, decide first vs repeat clear, apply Salvage and unlocks, and preserve a recent receipt. A repeated settlement returns the same receipt or a stale-run result without issuing another grant. Expire abandoned IDs after a week. Keep the result pending if a settlement write fails, with the same run ID available to retry. A lost tab can only retain a result that was committed; no currency is described as banked before confirmation. Campaign and Endless have no checkpoints. Freeze record context with ship, loadout, assistance settings, rules version, score, duration and result. Local saves can be edited by device owners and carry no online authority.
 
-Weapon Power adds flank fire for 12 seconds. A second pickup refreshes the timer. Barrier refreshes up to two hits without stacking charges. Repair restores up to two hull and shows the actual amount restored. Overdrive refreshes a seven-second fire-rate and damage bonus. Weapon Power and Overdrive can overlap. The weapon interval has a lower bound. Guaranteed pickups appear as recognizable drifting equipment on authored beats and can be missed. Repair appears before high-pressure sections, with difficulty calibrated around avoiding hits and adequate starting hull. Mods, buffs and FX clear at launch/leave. The slowest ship sets the reaction budget. Begin the rail's locked warning at least 1.15 s before firing. Begin wall warnings at least one second before debris becomes live, use a clear seam at least 84 world units wide and limit rapid sequential lateral shifts to 80 world units. Verify those margins with Bastion and representative touch steering. Preserve parallel Kestrel bolts, striped warnings, white/teal hardpoint brackets, gray crossed-out disabled modules and shape-differentiated pickups. Check against the brightest background in grayscale and high-contrast mode.
+Weapon Power adds flank fire for 12 seconds. A second pickup refreshes the timer. Barrier refreshes up to two hits without stacking charges. Repair restores up to two hull and shows the actual amount restored. Overdrive refreshes a seven-second fire-rate and damage bonus. Weapon Power and Overdrive can overlap. The weapon interval has a lower bound. Guaranteed pickups appear as recognizable drifting equipment on authored beats and can be missed. Repair appears before high-pressure sections, with difficulty calibrated around avoiding hits and adequate starting hull. Mods, buffs and FX clear at launch/leave. The slowest ship sets the reaction budget. Begin the rail's locked warning at least 1.15 s before firing. Begin wall warnings at least one second before debris becomes live, use a clear seam at least 84 world units wide and limit rapid sequential lateral shifts to 80 world units. Verify those margins with Gunship and representative touch steering. Preserve parallel Fighter bolts, striped warnings, white/teal hardpoint brackets, gray crossed-out disabled modules and shape-differentiated pickups. Check against the brightest background in grayscale and high-contrast mode.
 
 ## Interface and visual direction
 
@@ -74,9 +76,13 @@ Signal-orange ignition against blue-black space, bone-white technical type, tita
 
 Concept manifest and contact sheets accompany this plan. Plan for title and launch, route map, ship bay, shop, stage launch, combat, boss variants, power-up feedback, pause, defeat, clear, stage and ship unlock, purchase, records, Endless combat/result, settings/help and separate states for offline readiness and local storage failure. Billing is deferred from this artifact pending real platform configuration and owner release authorization. There is no in-game purchase or restoration screen in the initial web build. A US $4.99 full unlock remains a commercial hypothesis for a separately verified release.
 
-## Same-origin release boundary
+## Hosting and legacy boundary
 
-Build Stellar Rebels at `/`, version its `/arcade/` asset subtree by build SHA, keep the legacy app at `/legacy/index.html` with a legacy-scoped manifest and same-origin Auth, and retain `version.json` under the original Hosting configuration. Keep developer fixtures, Blender sources, tests, credentials and design plates outside the public artifact. Add an isolated local browser build smoke check to prove both entries and manifest identities. The arcade service worker precaches the exact current artifact. Its fetch handler is restricted to named arcade assets and root navigations. It does not intercept legacy pages or Firebase Auth/Functions requests. Install a new cache before deleting an old one. Report offline-ready only after service worker control, and distinguish first-load network failure from storage write failure. Both app entries keep the original origin so historical device keys and legacy signed-in account storage remain available.
+Build Stellar Rebels at `/` for `stellar-rebels.web.app`, the user-approved additional Hosting site under project `star-strike-rush`. Version its `/arcade/` asset subtree by build SHA and keep `version.json` available. The older deployment at `star-strike-rush.web.app` remains the owner of legacy browser saves and account access. The new Records screen links to that origin. An untouched legacy snapshot remains runnable from source. Do not assume local browser data crosses origins. Keep developer fixtures, Blender sources, tests, credentials and design plates outside the public artifact. The Arcade service worker precaches the exact current artifact. Its fetch handler is restricted to named Arcade assets and root navigations. HTML and module paths stay pinned to their own cache generation. A waiting worker may activate only after old controlled tabs close. Install a new cache before deleting an old one. If the active pack is evicted, serve a minimal reconnect/reload recovery page. Offline-ready requires service worker control and intact pack, and it differs from local storage failures.
+
+### Gameplay and monetization steering
+
+Validate the first-stage feel and signature behavior before expanding the fleet or stage count. Pipeline work is limited to the combat slice and defects that prevent testing. Compare ordinary combat, a destructible coordinated formation, and a temporary Ghost Shift prototype on stock Fighter using real browser controls. A mechanism earns its place through earlier recognition, a worthwhile decision and a distinct outcome. Extend the campaign only after this gate. The count of six and earlier US $4.99 price are trial assumptions. Keep the current local build free of billing while comparing three commercial models. Native builds use Expo EAS after launch-quality verification. Project ceiling is US $15, with no paid generation, early build credits or memberships added to the budget.
 
 `-StageBackendPreview` currently deploys shared live Functions and Firestore Rules before opening a Hosting preview channel. It is a production infrastructure mutation despite its name. Build and smoke locally for these milestones. For a future staged release, require exact-build owner authorization before invoking the existing shared backend staging workflow. Preserve the SHA-parity check for that workflow. Do not claim hosting/backend equality from a local build or perform a silent backend deployment for a front-end rename.
 
@@ -84,7 +90,7 @@ Build Stellar Rebels at `/`, version its `/arcade/` asset subtree by build SHA, 
 
 Maintain editable `.blend` workbench and scripted Blender geometry, materials and render settings. Compile centered transparent sprites, with intentional blank space, aligned collision circles and hardpoints. Aim the player up and enemies down in screen space. Use a near-overhead orthographic camera, soft top-left key, colored edge light, ceramic against dark metal for friendly hulls, and dark oxidized metal, copper and warning resonators for enemies. Give each hull a silhouette that reads without faction colors. Keep tiny surface markings secondary. Inspect at phone size on the real background and check the full-alpha boundary, aiming origins, centered collider and legible threats.
 
-Batch one begins with Kestrel, scouts, aimed lancers, divers, Gatekeeper and FX. Batch two rolls out the remaining ship, enemy, boss, module and pickup families in sync with content. Reuse the staged audio tracks. Build unique clear shapes for power, barrier, repair and overdrive. Render campaign environments with isolated shapes and retain stable exposure below the gameplay layer.
+Batch one begins with Fighter, scouts, aimed lancers, divers, Warden and FX. Batch two rolls out the remaining ship, enemy, boss, module and pickup families in sync with content. Reuse the staged audio tracks. Build unique clear shapes for power, barrier, repair and overdrive. Render campaign environments with isolated shapes and retain stable exposure below the gameplay layer.
 
 Create editable logo directions around a flight chevron, orbital slash and signal pennant. Select for readability in a small app icon and on the title. Export true paths in stacked, horizontal, emblem, light, dark and mono versions with transparent PNGs. Use a mask-safe square app icon and the existing web packaging sizes plus a 180px Apple touch icon.
 

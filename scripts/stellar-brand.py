@@ -56,7 +56,7 @@ def outline(text, fill, width, height, left, baseline, style="flare"):
 
 
 def svg(width, height, label, content):
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" '
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}">'
             f'<title>{label}</title>{content}</svg>\n')
 
 

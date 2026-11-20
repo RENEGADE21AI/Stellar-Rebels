@@ -10,6 +10,8 @@ tmp/
 release-approval.local.json
 release-evidence/
 dist/
+dist-stellar/
+*.blend1
 node_modules/
 functions/node_modules/
 functions/release-identity.generated.js

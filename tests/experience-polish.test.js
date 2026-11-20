@@ -24,7 +24,7 @@ test("combat HUD protects touch controls and keeps the classic status order", ()
   assert.equal(touch.status.y + touch.status.h <= 535, true, "status must finish above the joystick zone");
   assert.equal(touch.pause.x, 10);
   assert.equal(touch.pause.y, 10);
-  assert.ok(touch.pause.w <= 44, "Pause and its -1 cost should share a compact capsule");
+  assert.ok(touch.pause.w <= 44, "The legacy Pause control should stay compact");
   assert.ok(touch.score.w <= 82, "score backing should not carry an empty left gutter");
 
   context.state.inputMode = "keyboard";

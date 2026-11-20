@@ -112,19 +112,19 @@ test("gameplay renders compact classic HUD without announcement popups", () => {
   assert.doesNotMatch(hudSource, /devStatsVisible|drawDebugHitboxes/);
 });
 
-test("every standard pause costs one health while every training pause is free", () => {
+test("standard and training pauses preserve health, including at one remaining", () => {
   const decision = (player, reason, runMode) => JSON.parse(JSON.stringify(context.pauseHealthDecision(player, reason, runMode)));
   assert.deepEqual(
     decision({ hp: 5, maxHp: 5 }, "manual", "standard"),
-    { allowed: true, cost: 1, remainingHp: 4, message: "PAUSE COST: 1 HEALTH BAR" }
+    { allowed: true, cost: 0, remainingHp: 5, message: "FLIGHT PAUSED: NO HEALTH COST" }
   );
   assert.deepEqual(
     decision({ hp: 5, maxHp: 5 }, "visibility", "standard"),
-    { allowed: true, cost: 1, remainingHp: 4, message: "AUTO-PAUSE COST: 1 HEALTH BAR" }
+    { allowed: true, cost: 0, remainingHp: 5, message: "FLIGHT AUTO-PAUSED: NO HEALTH COST" }
   );
   assert.deepEqual(
     decision({ hp: 1, maxHp: 5 }, "manual", "standard"),
-    { allowed: true, cost: 1, remainingHp: 0, message: "PAUSE COST: 1 HEALTH BAR" }
+    { allowed: true, cost: 0, remainingHp: 1, message: "FLIGHT PAUSED: NO HEALTH COST" }
   );
   assert.deepEqual(
     decision({ hp: 1, maxHp: 5 }, "manual", "tutorial"),
@@ -141,9 +141,6 @@ test("every standard pause costs one health while every training pause is free",
     decision({ hp: 1, maxHp: 5 }, "visibility", "tutorial"),
     { allowed: true, cost: 0, remainingHp: 1, message: "TRAINING AUTO-PAUSED: NO HEALTH COST" }
   );
-  const inputSource = fs.readFileSync(path.join(repoRoot, "src", "18-session-input-loop.js"), "utf8");
-  assert.match(inputSource, /decision\.cost > 0 && state\.player\.hp <= 0/);
-  assert.match(inputSource, /recoverTutorialCheckpoint\(\);[\s\S]*state\.gameState = "paused"/);
 });
 
 test("arrival and paused tutorial dialogue block control and ordinary simulation", () => {
