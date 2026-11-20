@@ -9,11 +9,17 @@ async function packReady(cache) {
   return files.every((url) => present.has(url));
 }
 
-async function fillPack(cache, home = null) {
-  home ??= await fetch('/index.html', { cache: 'reload' });
-  if (!home.ok || !(await home.clone().text()).includes(generationPath)) throw Error('Flight pack generation changed');
-  await cache.addAll(files.filter((url) => url !== '/index.html').map((url) => new Request(url, { cache: 'reload' })));
-  await cache.put('/index.html', home);
+async function fillPack(cache, signal) {
+  const home = await fetch('/index.html', { cache: 'reload', signal });
+  if (!home.ok) throw Error('Flight document unavailable');
+  const html = await home.text();
+  if (!html.includes(generationPath)) throw Error('Flight pack generation changed');
+  const headers = new Headers(home.headers);
+  headers.delete('content-encoding');
+  headers.delete('content-length');
+  const assets = files.filter((url) => url !== '/index.html');
+  await cache.addAll(assets.map((url) => new Request(url, { cache: 'reload', signal })));
+  await cache.put('/index.html', new Response(html, { headers }));
 }
 
 self.addEventListener('install', (event) => {
@@ -55,6 +61,26 @@ async function fromRange(request, cached) {
   } });
 }
 
+async function flightDocument(cache) {
+  // Keep the installed document pinned until a replacement worker finishes installing.
+  const installed = await cache.match('/index.html');
+  if (installed && await packReady(cache)) return installed;
+
+  const recovery = new AbortController();
+  const timeout = setTimeout(() => recovery.abort(), 12_000);
+  try {
+    await fillPack(cache, recovery.signal);
+    return await cache.match('/index.html');
+  } catch {
+    return (await cache.match('/offline.html')) ?? new Response(
+      '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Stellar Rebels</title><main><h1>Flight pack missing</h1><p>Reconnect and reload. Your device save is stored separately.</p><a href="/">Reload</a></main>',
+      { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
@@ -76,38 +102,15 @@ self.addEventListener('fetch', (event) => {
   }
   event.respondWith((async () => {
     const cache = await caches.open(cacheName);
-    const requested = home ? '/index.html' : url.pathname;
-    const cached = await cache.match(requested);
-    if (home) {
-      // A document navigation is a safe update point. Open documents continue using their pinned assets.
-      const fresh = await (async () => {
-        const response = await fetch('/index.html', { cache: 'no-store', signal: AbortSignal.timeout?.(2200) });
-        return response.ok ? { html: await response.text(), headers: new Headers(response.headers) } : null;
-      })().catch(() => null);
-      if (fresh?.html.includes('data-pack="true"')) {
-        // Repair may outlive the fetch timeout. Return the completed document body independently of that request.
-        fresh.headers.delete('content-encoding');
-        fresh.headers.delete('content-length');
-        const document = new Response(fresh.html, { headers: fresh.headers });
-        if (fresh.html.includes(generationPath) && !await packReady(cache)) await fillPack(cache, document.clone()).catch(() => {});
-        return document;
-      }
-    }
-    if (cached && (!home || await packReady(cache))) return request.headers.has('Range') ? fromRange(request, cached) : cached;
+    if (home) return flightDocument(cache);
+    const cached = await cache.match(url.pathname);
+    if (cached) return request.headers.has('Range') ? fromRange(request, cached) : cached;
     try {
-      if (home) {
-        await fillPack(cache).catch(() => {});
-        if (await packReady(cache)) return cache.match('/index.html');
-      }
       const response = await fetch(request, { cache: 'no-store' });
-      if (!home && response.status === 200) await cache.put(url.pathname, response.clone());
+      if (response.status === 200) await cache.put(url.pathname, response.clone());
       return response;
     } catch {
-      if (!home) return Response.error();
-      return (await cache.match('/offline.html')) ?? new Response(
-        '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Stellar Rebels</title><main><h1>Flight pack missing</h1><p>Reconnect and reload. Your device save is stored separately.</p><a href="/">Reload</a></main>',
-        { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
-      );
+      return Response.error();
     }
   })());
 });

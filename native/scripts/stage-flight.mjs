@@ -35,7 +35,7 @@ addAssets(source);
 
 const bridgeModule = path.join(native, 'src', 'pilot-store.mjs');
 const built = await build({
-  entryPoints: [path.join(source, 'app.mjs')], bundle: true, format: 'iife', write: false,
+  entryPoints: [path.join(source, 'app.mjs')], bundle: true, format: 'iife', minifyWhitespace: true, write: false,
   platform: 'browser', target: ['safari16.4', 'chrome115'], define: { 'import.meta.url': 'document.baseURI' },
   plugins: [{ name: 'stellar-native-host', setup(api) {
     api.onLoad({ filter: /[/\\]app\.mjs$/ }, (args) => {
@@ -86,7 +86,7 @@ PNG.bitblt(emblem, adaptive, 0, 0, emblem.width, emblem.height,
   Math.floor((adaptive.width - emblem.width) / 2), Math.floor((adaptive.height - emblem.height) / 2));
 fs.writeFileSync(path.join(generated, 'adaptive.png'), PNG.sync.write(adaptive));
 fs.writeFileSync(path.join(generated, 'version.json'), JSON.stringify(version, null, 2) + '\n');
-const archive = zipSync(pack, { level: 6 });
+const archive = zipSync(pack, { level: 6, mtime: new Date(2000, 0, 1) });
 if (archive.length > 12 * 1024 * 1024) throw Error('Bundled flight assets exceed the 12 MiB ceiling');
 fs.writeFileSync(path.join(generated, 'flight.zip'), archive);
 console.log(`${webVersion.commitSha} / ${webVersion.assetVersion}: ${version.files.length} files, ${archive.length} bytes, app source staged.`);
