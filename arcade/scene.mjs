@@ -1,6 +1,7 @@
-import { ENEMIES, HEIGHT, PICKUPS, STAGES, WIDTH, hardpointAt } from './catalog.mjs';
+import { ENDLESS_BOSSES, ENEMIES, GUNNER_MUZZLES, HEIGHT, PICKUPS, WIDTH, enemyMuzzle, hardpointAt } from './catalog.mjs';
 import { bossPartPosition } from './bosses.mjs';
 import { commandCharge, vanePosition } from './formations.mjs';
+import { SPECTRAL, otherRealm, realmTint } from './wraith.mjs';
 
 export function spriteUrl(key) {
   return new URL(`./media/sprites/${key}.png`, import.meta.url).href;
@@ -17,7 +18,7 @@ export function loadSprite(key) {
   return promise;
 }
 
-const regular = [...Object.keys(ENEMIES), 'turret', 'rock', ...Object.keys(PICKUPS).map((name) => `pickup-${name}`)];
+const regular = [...Object.keys(ENEMIES), 'turret', 'shield-node', 'rock', ...Object.keys(PICKUPS).map((name) => `pickup-${name}`)];
 const playfields = { breach:'vesper', belt:'belt', relay:'relay', sun:'sun', outer:'outer', flagship:'fleet' };
 const fallbackEnvironments = new Set(['breach','belt','relay']);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -72,7 +73,8 @@ export class FlightScene {
     this.illustration = `${playfields[environment]}-playfield`;
     const fallback = `env-${environment}`;
     const keyList = new Set([...regular, flight.run.ship, flight.stage.boss, this.illustration]);
-    if (flight.endless) for (const stage of STAGES) keyList.add(stage.boss);
+    if (flight.endless) for (const boss of ENDLESS_BOSSES) keyList.add(boss);
+    if (keyList.has('wraith')) keyList.add('wraith-ghost');
     for (const key of this.sprites.keys()) {
       if (!keyList.has(key) && key !== fallback) this.sprites.delete(key);
     }
@@ -115,6 +117,10 @@ export class FlightScene {
           break;
         case 'pickup': this.explode(e.x, e.y, PICKUPS[e.detail].color, 16, 19); break;
         case 'barrier': this.explode(e.x, e.y, '#7ad5ff', 15, 26); break;
+        case 'ghostStart': this.phaseFlash(e.x, e.y, '#bbceff'); break;
+        case 'ghostEnd': this.burst(e.x, e.y, '#e4c3ff', 12, 91, .43); break;
+        case 'realmHop': case 'wraithShift': this.phaseFlash(e.x, e.y, realmTint(e.detail)); break;
+        case 'veilHit': this.burst(e.x, e.y, '#b6a0db', 2, 37, .28); break;
         case 'hurt':
           this.hurtPulse = reduce ? .13 : .47;
           this.explode(e.x, e.y, '#ff705d', 17, 15);
@@ -130,6 +136,11 @@ export class FlightScene {
     this.burst(x, y, color, count, 167 + radius, .53 + radius * .014);
     this.shocks.push({ x, y, color, life: 0, total: .42 + radius * .006, radius });
     if (radius > 25) this.cameraPulse = Math.min(1, radius * .023);
+  }
+
+  phaseFlash(x, y, color) {
+    this.burst(x, y, color, 15, 128, .43);
+    this.shocks.push({ x, y, color, life: 0, total: .32, radius: 23, hollow: true });
   }
 
   burst(x, y, color, count, velocity, life) {
@@ -174,7 +185,7 @@ export class FlightScene {
     if (flight.boss) this.boss(flight.boss, prefs);
     for (const drop of flight.pickups) this.drop(drop, prefs);
     for (const shot of flight.friendly) this.playerShot(shot);
-    for (const shot of flight.hostile) this.enemyShot(shot, prefs.contrast);
+    for (const shot of flight.hostile) this.enemyShot(shot, prefs.contrast, flight.player.realm);
     if (flight.status !== 'defeat') this.pilot(flight, prefs);
     this.effects();
     c.restore();
@@ -236,13 +247,17 @@ export class FlightScene {
     c.globalAlpha = 1;
   }
 
-  sprite(key, x, y, size, turn = 0, alpha = 1) {
+  sprite(key, x, y, size, turn = 0, alpha = 1, glow = '') {
     const c = this.ctx;
     const image = this.sprites.get(key);
     c.save();
     c.translate(x, y);
     if (turn) c.rotate(turn);
     c.globalAlpha = alpha;
+    if (glow) {
+      c.shadowColor = glow;
+      c.shadowBlur = 10;
+    }
     if (image) c.drawImage(image, -size / 2, -size / 2, size, size);
     else {
       c.fillStyle = '#60728a';
@@ -263,13 +278,14 @@ export class FlightScene {
   pilot(flight, prefs) {
     const c = this.ctx;
     const p = flight.player;
+    const ghost = p.realm === SPECTRAL;
     const plume = prefs.reduced ? 15 : 13 + (Math.sin(flight.elapsed * 75) + 1) * 2.6;
     for (const [dx, dy] of flight.ship.engines) {
       const { x, y } = hardpointAt(p, dx, dy, p.bank);
-      const color = p.overdrive ? '#ffd478' : '#72ffe6';
+      const color = ghost ? '#dccbff' : p.overdrive ? '#ffd478' : '#72ffe6';
       const bloom = c.createLinearGradient(x, y, x, y + plume);
       bloom.addColorStop(0, color);
-      bloom.addColorStop(.28, p.overdrive ? '#f48950ae' : '#399addae');
+      bloom.addColorStop(.28, ghost ? '#afa0fdba' : p.overdrive ? '#f48950ae' : '#399addae');
       bloom.addColorStop(1, '#286cbc00');
       c.fillStyle = bloom;
       c.beginPath();
@@ -279,7 +295,22 @@ export class FlightScene {
       c.fill();
     }
     this.sprite(flight.run.ship, p.x, p.y, flight.ship.size, p.bank,
-      p.guard && !prefs.reduced ? .74 + .25 * Math.abs(Math.sin(flight.elapsed * 24)) : 1);
+      ghost ? .64 : p.guard && !prefs.reduced ? .74 + .25 * Math.abs(Math.sin(flight.elapsed * 24)) : 1, ghost ? '#beaeff' : '');
+    if (ghost) {
+      const turn = prefs.reduced ? 0 : flight.elapsed * 2.2;
+      c.beginPath();
+      for (const angle of [turn, turn + Math.PI]) {
+        c.moveTo(p.x + 24 * Math.cos(angle), p.y + 24 * Math.sin(angle));
+        c.arc(p.x, p.y, 24, angle, angle + .92);
+      }
+      c.strokeStyle = '#dbceff';
+      c.lineWidth = 1.6;
+      c.stroke();
+      for (const side of [-1, 1]) {
+        line(c, p.x + side * 12, p.y + 19, -side * 2, 13, '#8f7bd0b3', 1.9);
+        if (!prefs.reduced) line(c, p.x + side * 18, p.y + 14, -side * 4, 14, '#d8c6f177', 1.2);
+      }
+    }
     if (p.barrier) {
       ring(c, p.x, p.y, 28, '#256fa4', 3.2);
       ring(c, p.x, p.y, 28, '#8fdeff', 1.1);
@@ -301,9 +332,8 @@ export class FlightScene {
     }
     this.sprite(e.kind, e.x, e.y, e.spec.size, e.turn, e.retreat ? .66 : 1);
     if (e.fireTimer < .26 && e.y > 102 && !e.dive && !e.retreat) {
-      const points = e.kind === 'lancer' ? [[-9.1, 19.7], [9.1, 19.7]] : [[0, 14]];
-      for (const [dx, dy] of points) {
-        const muzzle = hardpointAt(e, dx, dy, e.turn);
+      const points = e.kind === 'lancer' ? GUNNER_MUZZLES.map(([dx, dy]) => hardpointAt(e, dx, dy, e.turn)) : [enemyMuzzle(e)];
+      for (const muzzle of points) {
         filled(this.ctx, muzzle.x, muzzle.y, 2.2 + Math.sin(clock * 19) * .7, '#fff1c9');
       }
     }
@@ -345,12 +375,15 @@ export class FlightScene {
 
   boss(b, prefs) {
     const c = this.ctx;
-    this.sprite(b.kind, b.x, b.y, b.spec.size, 0, b.hull > 0 ? 1 : .35);
+    const ghost = b.realm === SPECTRAL;
+    const look = ghost ? 'wraith-ghost' : b.kind;
+    this.sprite(look, b.x, b.y, b.spec.size, 0, b.hull > 0 ? 1 : .35, ghost ? '#8262e3' : '');
+    if (b.kind === 'wraith' && b.hull > 0) this.wraithCue(b, prefs);
     const hasShields = b.kind === 'matron' || b.kind === 'crown';
     for (const part of b.parts) {
       const { x, y, radius } = bossPartPosition(b, part);
       if (part.hull > 0 && hasShields) line(c, b.x, b.y + 3, x - b.x, y - b.y, '#86cfef9d', 2);
-      this.sprite('turret', x, y, 44, 0, part.hull > 0 ? 1 : .23);
+      if (part.hull > 0) this.sprite(hasShields ? 'shield-node' : 'turret', x, y, 43);
       if (part.hull <= 0) {
         line(c, x - 5, y - 5, 10, 10, '#9eaac5', 1.6);
         line(c, x + 5, y - 5, -10, 10, '#9eaac5', 1.6);
@@ -366,6 +399,25 @@ export class FlightScene {
     }
     if (hasShields && b.parts.some((part) => part.hull > 0)) ring(c, b.x, b.y + 4, b.spec.hit, '#80caec78', 2);
     if (b.hitFlash > 0) ring(c, b.x, b.y + 4, 9, '#fff6dc88');
+  }
+
+  wraithCue(b, prefs) {
+    const c = this.ctx;
+    if (b.shifting) {
+      const tint = realmTint(otherRealm(b.realm));
+      const amount = Math.max(0, 1 - (b.shiftAt - b.age) / 1.06);
+      for (const side of [-1, 1]) line(c, b.x + side * 117, b.y + 41, -24 * side * amount, 0, tint, 2.4);
+    }
+    if (!b.charge) return;
+    const y = b.y + 28;
+    const color = realmTint(b.charge.realm);
+    const reach = prefs.reduced ? 58 : 42 + 32 * Math.max(0, 1 - (b.charge.fireAt - b.age) / 1.04);
+    ring(c, b.x, y, 10, '#22172f', 6);
+    ring(c, b.x, y, 10, color, 2.6);
+    c.save();
+    c.setLineDash(b.charge.realm === SPECTRAL ? [4, 4] : []);
+    line(c, b.x, y, Math.cos(b.charge.aim) * reach, Math.sin(b.charge.aim) * reach, color, 2.3);
+    c.restore();
   }
 
   warning(w, prefs, boss) {
@@ -446,11 +498,12 @@ export class FlightScene {
     const c = this.ctx;
     const x = s.vx * .019;
     const y = s.vy * .019;
-    line(c, s.x - x * .58, s.y - y * .58, x, y, s.powered ? '#8847efac' : '#3bb5bba3', s.powered ? 5.2 : 4.7);
-    line(c, s.x - x * .34, s.y - y * .34, x * .73, y * .73, s.powered ? '#f1ddff' : '#d5fff6', 2.0);
+    const ghost = s.realm === SPECTRAL;
+    line(c, s.x - x * .58, s.y - y * .58, x, y, ghost ? '#b591e7' : s.powered ? '#8847efac' : '#3bb5bba3', s.powered ? 5.2 : 4.7);
+    line(c, s.x - x * .34, s.y - y * .34, x * .73, y * .73, ghost || s.powered ? '#f1ddff' : '#d5fff6', 2.0);
   }
 
-  enemyShot(s, contrast) {
+  enemyShot(s, contrast, pilotRealm) {
     const c = this.ctx;
     if (s.kind === 'rock') {
       this.sprite('rock', s.x, s.y, 42, s.age * .7);
@@ -461,6 +514,11 @@ export class FlightScene {
     c.save();
     c.translate(s.x, s.y);
     c.rotate(Math.atan2(s.vy, s.vx));
+    if (s.kind === 'specter' || s.kind === 'orb') {
+      this.realmShot(s, contrast, s.realm === pilotRealm);
+      c.restore();
+      return;
+    }
     if (s.kind === 'lance') {
       line(c, -10, 0, 16, 0, '#431d25', 8);
       line(c, -7, 0, 13, 0, contrast ? '#ffb684' : '#ff7e4d', 4.5);
@@ -486,13 +544,38 @@ export class FlightScene {
     c.restore();
   }
 
+  realmShot(s, contrast, harmful) {
+    const c = this.ctx;
+    const r = s.radius + 1;
+    if (s.kind === 'orb') {
+      filled(c, 0, 0, r + 1.8, '#39171e');
+      filled(c, 0, 0, r, harmful || contrast ? '#ff995b' : '#c87559');
+      filled(c, 0, 0, 2.3, '#ffedc0');
+      return;
+    }
+    c.beginPath();
+    c.moveTo(r + 1.3, 0);
+    c.lineTo(0, r);
+    c.lineTo(-r - 1.3, 0);
+    c.lineTo(0, -r);
+    c.closePath();
+    c.fillStyle = '#1b1229';
+    c.fill();
+    c.lineWidth = 4.5;
+    c.strokeStyle = '#241535';
+    c.stroke();
+    c.lineWidth = harmful || contrast ? 2.3 : 1.7;
+    c.strokeStyle = harmful || contrast ? '#edcdff' : '#af8bdd';
+    c.stroke();
+  }
+
   effects() {
     const c = this.ctx;
     for (const p of this.shocks) {
       const fraction = p.life / p.total;
       c.globalAlpha = (1 - fraction) * .83;
       ring(c, p.x, p.y, p.radius * (.35 + fraction * 1.42), p.color, 1 + 2 * (1 - fraction));
-      if (fraction < .21) filled(c, p.x, p.y, p.radius * (.79 + fraction), p.color);
+      if (!p.hollow && fraction < .21) filled(c, p.x, p.y, p.radius * (.79 + fraction), p.color);
     }
     for (const p of this.sparks) {
       c.globalAlpha = Math.min(1, (1 - p.life / p.total) * 1.4);

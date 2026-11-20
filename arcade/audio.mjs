@@ -8,6 +8,12 @@ const effects = {
   playerDown: [190, 32, .55, .26, 'triangle'],
   hurt: [98, 42, .25, .19, 'square'],
   barrier: [1000, 280, .19, .12, 'sine'],
+  ghostStart: [260, 980, .28, .115, 'triangle'],
+  ghostEnd: [680, 220, .21, .075, 'sine'],
+  realmHop: [340, 760, .22, .12, 'sine'],
+  realmWarning: [132, 425, .62, .145, 'sine'],
+  wraithShift: [680, 151, .38, .13, 'triangle'],
+  wraithVolley: [195, 72, .22, .12, 'triangle'],
   bossFire: [119, 67, .28, .10, 'triangle'],
   charge: [187, 397, .31, .10, 'triangle'],
   hazard: [190, 83, .38, .16, 'sawtooth'],
@@ -67,6 +73,9 @@ export class FlightAudio {
       else if (e.type === 'formationBreak') {
         this.effect(e.type);
         this.chord([365, 487, 730], .17, .11, .08);
+      } else if (e.type === 'ghostStart' || e.type === 'realmHop') {
+        this.effect(e.type);
+        this.chord([420, 630, 840], .20, .065, .03);
       } else if (e.type === 'bossDown') {
         this.effect(e.type);
         this.chord([260, 327, 391, 520], .33, .115, .23);

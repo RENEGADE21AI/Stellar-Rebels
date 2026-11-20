@@ -66,31 +66,36 @@ async function observe() {
     assert.match(await page.evaluate(() => document.baseURI), new RegExp(`/arcade/${prior}/$`));
     assert.equal(await page.getByRole('heading', { name: 'Paused', exact: true }).count(), 1);
     assert.equal(await page.getByRole('button', { name: 'Update browser build' }).isVisible(), false);
+    await context.setOffline(true);
     const retained = await page.evaluate(async (old) => {
       const response = await fetch(`/arcade/${old}/media/sprites/kestrel.png`);
       return { status: response.status, bytes: (await response.arrayBuffer()).byteLength };
     }, prior);
     assert.equal(retained.status, 200);
     assert.ok(retained.bytes > 1000);
+    await context.setOffline(false);
     await page.getByRole('button', { name: 'Resume', exact: true }).tap();
-    await page.getByRole('heading', { name: 'Paused', exact: true }).waitFor({ state: 'hidden' });
-    await page.waitForTimeout(2000);
+    await page.locator('#flight-modal').waitFor({ state: 'hidden' });
+    await page.waitForFunction(() => document.getElementById('clock').textContent >= '00:03');
     await page.getByRole('button', { name: 'Pause', exact: true }).tap();
     await page.getByRole('button', { name: 'Leave flight', exact: true }).tap();
     const leave = page.getByRole('button', { name: 'Leave flight', exact: true });
     await leave.tap();
-    if (await page.getByRole('button', { name: 'Update browser build' }).isVisible()) {
-      await page.getByRole('button', { name: 'Update browser build' }).tap();
+    const update = page.getByRole('button', { name: 'Update browser build' });
+    const hasUpdateButton = await update.waitFor({ timeout: 5000 }).then(() => true, () => false);
+    if (hasUpdateButton) {
+      await update.tap();
     } else {
-      await page.reload();
+      await page.goto(origin + '/');
     }
+    await page.waitForFunction((version) => document.baseURI.endsWith(`/arcade/${version}/`), latest.assetVersion);
     await page.getByRole('button', { name: 'Play', exact: true }).waitFor();
     assert.match(await page.evaluate(() => document.baseURI), new RegExp(`/arcade/${latest.assetVersion}/$`));
     await page.getByRole('button', { name: 'Settings', exact: true }).tap();
     assert.equal(await page.getByRole('button', { name: 'Reduced motion', exact: true }).getAttribute('aria-pressed'), 'true');
     await page.getByText('Offline flight pack ready.', { exact: true }).waitFor();
     assert.deepEqual(errors, []);
-    fs.writeFileSync(path.join(output, 'update-verified.json'), JSON.stringify({ origin, prior, retained, latest, errors }, null, 2));
+    fs.writeFileSync(path.join(output, 'update-verified.json'), JSON.stringify({ origin, prior, retained, latest, hasUpdateButton, errors }, null, 2));
     console.log(`Verified the preserved flight and saved settings across ${prior} → ${latest.assetVersion}.`);
   } finally {
     await browser.close();

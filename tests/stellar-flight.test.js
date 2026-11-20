@@ -192,6 +192,84 @@ test('fatal rail damage ends the run before a simultaneous repair', async () => 
   assert.ok(!f.events.some((event) => event.type === 'pickup'));
 });
 
+test('Ghost Shift spends earned charge and phases through physical danger without spending a barrier', async () => {
+  const [{ Flight }, , { GHOST }] = await load;
+  const f = new Flight(context());
+  const p = f.player;
+  assert.equal(f.activateGhost(), false);
+  p.guard = 0;
+  f.collect({ kind:'barrier' });
+  for (let i = 0; i < 4; i++) f.scoreKill(100);
+  assert.equal(p.ghostEnergy, GHOST.cost);
+  assert.equal(f.activateGhost(), true);
+  assert.equal(p.ghostEnergy, 0);
+  assert.equal(f.damage(p.x, p.y), false);
+  assert.equal(p.barrier, 2);
+  for (let i = 0; i < 50; i++) { f.scoreKill(100); f.earnGhost(5, true); }
+  assert.equal(p.ghostEnergy, 0);
+  while (p.ghostTime) f.movePilot(step);
+  assert.equal(p.realm, 'physical');
+  assert.equal(f.damage(p.x, p.y), true);
+  assert.equal(p.barrier, 1);
+  f.earnGhost(500);
+  assert.equal(p.ghostEnergy, GHOST.capacity);
+  assert.equal(f.activateGhost(), false);
+  while (p.ghostRecovery) f.movePilot(step);
+  assert.equal(f.activateGhost(), true);
+  assert.equal(new Flight(context()).player.ghostEnergy, GHOST.start);
+});
+
+test('Wraith realm hops alternate actual vulnerability and a charged volley keeps its telegraphed target', async () => {
+  const [{ Flight }, , { GHOST }] = await load;
+  const { launchBoss } = await import('../arcade/bosses.mjs');
+  const { advanceWraith } = await import('../arcade/wraith.mjs');
+  const f = new Flight(context(5));
+  const p = f.player;
+  launchBoss(f, 'wraith');
+  const b = f.boss;
+  Object.assign(b, { age:5, x:192, y:242, attack:2, timer:0 });
+  advanceWraith(f, b, step);
+  assert.equal(b.charge.realm, 'physical');
+  const lockedAngle = b.charge.aim;
+  assert.equal(f.activateGhost(), true);
+  assert.equal(p.ghostEnergy, GHOST.start - GHOST.hop);
+  assert.equal(p.realm, 'ghost');
+  assert.equal(p.ghostTime, 0);
+  p.guard = 0;
+  assert.equal(f.damage(p.x, p.y, 'physical'), false);
+  assert.equal(f.damage(p.x, p.y, 'ghost'), true);
+  const hit = { x:b.x, y:b.y, px:b.x, py:b.y + 7, strength:2, realm:'ghost' };
+  assert.equal(f.hitBoss(hit), true);
+  assert.equal(b.hull, b.spec.hull);
+  assert.equal(f.hitBoss({ ...hit, realm:'physical' }), true);
+  assert.equal(b.hull, b.spec.hull - 2);
+  assert.ok(p.ghostEnergy > GHOST.start - GHOST.hop);
+  p.x = 45;
+  b.age = b.charge.fireAt;
+  advanceWraith(f, b, step);
+  const volley = f.hostile.filter((s) => s.realm === 'physical');
+  assert.equal(volley.length, 5);
+  assert.ok(Math.abs(Math.atan2(volley[2].vy, volley[2].vx) - lockedAngle) < .0001);
+  b.age = b.shiftAt;
+  advanceWraith(f, b, step);
+  assert.equal(b.realm, 'ghost');
+  assert.equal(f.hitBoss(hit), true);
+  assert.equal(b.hull, b.spec.hull - 4);
+});
+
+test('a returning Outer Orbit pilot keeps the original mastery and earns Wraith mastery separately', async () => {
+  const [, { newPilot, beginRun, settleRun }] = await load;
+  const pilot = newPilot();
+  for (const stage of [1, 2, 3, 4, 5]) pilot.clears[stage] = 1;
+  pilot.mastery[5] = true;
+  const run = beginRun(pilot, 'fresh-wraith', 'arcade', 5);
+  const result = settleRun(pilot, run.id, { status:'clear', score:5000, duration:190, kills:18, mastery:true });
+  assert.equal(result.first, false);
+  assert.equal(result.award, 40);
+  assert.equal(result.mastery, true);
+  assert.deepEqual(pilot.mastery, { 5:true, wraith:true });
+});
+
 test('reduced effects preserve shot origins and combat outcomes', async () => {
   const [{ Flight }] = await load;
   const standard = new Flight(context());

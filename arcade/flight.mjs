@@ -1,11 +1,12 @@
-import { ENEMIES, GUNNER_MUZZLES, HEIGHT, PICKUPS, SHIPS, STAGES, WIDTH, formation, hardpointAt, stageById, weaponStats } from './catalog.mjs';
+import { ENDLESS_BOSSES, ENEMIES, GHOST, GUNNER_MUZZLES, HEIGHT, PICKUPS, SHIPS, WIDTH, enemyMuzzle, formation, hardpointAt, stageById, weaponStats } from './catalog.mjs';
 import { advanceBoss, bossPartPosition, launchBoss, operatorWarnings } from './bosses.mjs';
 import { markPull, markRail, markWall } from './boss-patterns.mjs';
 import { VANE_HULL, breakFormation, linkedVolley, vanePosition } from './formations.mjs';
+import { PHYSICAL, SPECTRAL, otherRealm, realmLabel } from './wraith.mjs';
 
 export const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 export const bounds = { left: 17, right: WIDTH - 17, top: 235, bottom: HEIGHT - 37 };
-const projectileRadii = { bolt: 4, seed: 4.5, rock: 12, lance: 4.8, blade: 5, pulse: 4.7 };
+const projectileRadii = { bolt: 4, seed: 4.5, rock: 12, lance: 4.8, blade: 5, pulse: 4.7, orb: 5.1, specter: 5.4 };
 const duration = (value) => Math.max(0, value);
 
 function overlap(x, y, radius, other) {
@@ -25,7 +26,7 @@ export class Flight {
     this.run = run;
     this.ship = SHIPS[run.ship] ?? SHIPS.kestrel;
     this.stats = weaponStats(run.equipment);
-    this.stage = stageById(run.stage) ?? STAGES[0];
+    this.stage = stageById(run.stage) ?? stageById(1);
     this.endless = run.mode === 'endless';
     this.status = 'active';
     this.elapsed = 0;
@@ -59,7 +60,8 @@ export class Flight {
     this.yIntent = HEIGHT * .80;
     this.player = {
       x: this.xIntent, y: this.yIntent, hull: this.ship.hull + this.stats.hull, maxHull: this.ship.hull + this.stats.hull,
-      guard: 1.6, barrier: 0, power: 0, overdrive: 0, bank: 0
+      guard: 1.6, barrier: 0, power: 0, overdrive: 0, bank: 0,
+      realm: PHYSICAL, ghostEnergy: GHOST.start, ghostTime: 0, ghostRecovery: 0, ghostEarnAt: 0
     };
     this.message(this.endless ? 'Survive as long as you can.' : this.stage.brief, 3, 'intro', this.endless ? 'Endless' : this.stage.name);
   }
@@ -99,9 +101,40 @@ export class Flight {
     return events;
   }
 
-  damage(x, y) {
+  get realmHop() { return this.boss?.kind === 'wraith'; }
+  get ghostCost() { return this.realmHop ? GHOST.hop : GHOST.cost; }
+  get shiftReady() {
     const p = this.player;
-    if (p.guard || this.status !== 'active') return false;
+    return this.status === 'active' && p.ghostEnergy >= this.ghostCost && !p.ghostTime && !p.ghostRecovery;
+  }
+
+  activateGhost() {
+    if (!this.shiftReady) return false;
+    const p = this.player;
+    p.ghostEnergy -= this.ghostCost;
+    if (this.realmHop) {
+      p.realm = otherRealm(p.realm);
+      p.ghostRecovery = GHOST.hopRecovery;
+      this.signal('realmHop', p.x, p.y, p.realm);
+    } else {
+      p.realm = SPECTRAL;
+      p.ghostTime = GHOST.duration;
+      p.ghostRecovery = GHOST.duration + GHOST.recovery;
+      this.signal('ghostStart', p.x, p.y);
+    }
+    return true;
+  }
+
+  earnGhost(amount, fromHit = false) {
+    const p = this.player;
+    if (p.ghostTime || (fromHit && this.elapsed < p.ghostEarnAt)) return;
+    if (fromHit) p.ghostEarnAt = this.elapsed + .72;
+    p.ghostEnergy = Math.min(GHOST.capacity, p.ghostEnergy + amount);
+  }
+
+  damage(x, y, realm = PHYSICAL) {
+    const p = this.player;
+    if (p.realm !== realm || p.guard || this.status !== 'active') return false;
     if (p.barrier) {
       p.barrier--;
       p.guard = .58;
@@ -154,8 +187,8 @@ export class Flight {
       kind, radius: projectileRadii[kind], age: 0, live: true, ...extras });
   }
 
-  fan(x, y, direction, count, spacing, speed, kind) {
-    for (let i = 0; i < count; i++) this.projectile(x, y, direction + (i - (count - 1) / 2) * spacing, speed, kind);
+  fan(x, y, direction, count, spacing, speed, kind, extras) {
+    for (let i = 0; i < count; i++) this.projectile(x, y, direction + (i - (count - 1) / 2) * spacing, speed, kind, extras);
   }
 
   queue(name, flip = false) {
@@ -171,14 +204,14 @@ export class Flight {
     if (this.endless) {
       this.pressure = 1 + Math.min(.49, this.elapsed / 570);
       if (!this.boss && this.elapsed >= this.nextEndlessBoss) {
-        const boss = STAGES[this.endlessBossCount % STAGES.length].boss;
+        const boss = ENDLESS_BOSSES[this.endlessBossCount % ENDLESS_BOSSES.length];
         this.endlessBossCount++;
         this.nextEndlessBoss = this.elapsed + 82;
         launchBoss(this, boss);
       }
       if (!this.boss && this.elapsed >= this.endlessNext) {
-        const loop = ['arrow','spear','cross','anvil','hook','sweep','escort','break','trap','surge'];
-        const unlocked = Math.min(loop.length, 5 + STAGES.length, 4 + Math.floor(this.elapsed / 23));
+        const loop = ['arrow','spear','cross','anvil','hook','sweep','escort','break','trap','surge','specters'];
+        const unlocked = Math.min(loop.length, 4 + Math.floor(this.elapsed / 23));
         this.queue(loop[this.endlessWave % unlocked], this.endlessWave % 2 === 1);
         this.endlessWave++;
         this.endlessNext = this.elapsed + Math.max(3.5, 6.8 - this.elapsed / 95);
@@ -231,6 +264,14 @@ export class Flight {
 
   movePilot(dt) {
     const p = this.player;
+    if (p.ghostTime) {
+      p.ghostTime = duration(p.ghostTime - dt);
+      if (!p.ghostTime) {
+        p.realm = PHYSICAL;
+        this.signal('ghostEnd', p.x, p.y);
+      }
+    }
+    p.ghostRecovery = duration(p.ghostRecovery - dt);
     if (this.keys) {
       this.drag(this.keys.x * this.ship.speed * dt, this.keys.y * this.ship.speed * dt);
     }
@@ -259,7 +300,7 @@ export class Flight {
       const { x, y } = hardpointAt(p, dx, dy, p.bank);
       const speed = this.run.ship === 'needle' ? 782 : 685;
       this.friendly.push({ x, y, px: x, py: y, vx: Math.sin(angle) * speed, vy: -Math.cos(angle) * speed,
-        strength: value * this.stats.damage * (boosted ? 1.21 : 1), powered, live: true });
+        strength: value * this.stats.damage * (boosted ? 1.21 : 1), powered, live: true, realm: p.realm });
     };
     this.ship.guns.forEach((gun) => emit(gun));
     if (p.power) {
@@ -270,8 +311,8 @@ export class Flight {
   }
 
   enemyFire(e) {
-    const y = e.y + 9;
-    const aim = this.angleToPilot(e.x, y);
+    const { x, y } = enemyMuzzle(e);
+    const aim = this.angleToPilot(x, y);
     e.volley++;
     switch (e.kind) {
       case 'lancer':
@@ -280,11 +321,16 @@ export class Flight {
           this.projectile(muzzle.x, muzzle.y, this.angleToPilot(muzzle.x, muzzle.y) + Math.sign(dx) * .095, 207, 'lance');
         }
         break;
-      case 'sweeper': this.fan(e.x, y, Math.PI / 2 + Math.sin(e.volley * 1.52) * .49, 5, .20, 162, 'blade'); break;
-      case 'escort': this.fan(e.x, y, Math.PI / 2, 3, .29, 136, 'seed'); break;
-      case 'relay': this.fan(e.x, y, aim, 2, .27, 157, 'pulse'); break;
-      case 'diver': this.projectile(e.x, y, aim, 170, 'bolt'); break;
-      default: this.projectile(e.x, y, Math.PI / 2 + e.side * .075, 149, 'bolt'); break;
+      case 'sweeper': this.fan(x, y, Math.PI / 2 + Math.sin(e.volley * 1.52) * .49, 5, .20, 162, 'blade'); break;
+      case 'escort': this.fan(x, y, Math.PI / 2, 3, .29, 136, 'seed'); break;
+      case 'relay': this.fan(x, y, aim, 2, .27, 157, 'pulse'); break;
+      case 'phantom': {
+        const physical = e.volley % 2 === 1;
+        this.fan(x, y, aim, 3, .24, 151, physical ? 'orb' : 'specter', { realm: physical ? PHYSICAL : SPECTRAL });
+        break;
+      }
+      case 'diver': this.projectile(x, y, aim, 170, 'bolt'); break;
+      default: this.projectile(x, y, Math.PI / 2 + e.side * .075, 149, 'bolt'); break;
     }
   }
 
@@ -338,6 +384,7 @@ export class Flight {
 
   scoreKill(value) {
     this.kills++;
+    this.earnGhost(3);
     this.combo = this.comboTime > 0 ? this.combo + 1 : 1;
     this.comboTime = 3.6;
     this.score += Math.round(value * (1 + Math.min(8, this.combo - 1) * .08));
@@ -352,6 +399,7 @@ export class Flight {
     const protectedEscort = this.escortProtected(e);
     e.hull -= s.strength * (protectedEscort ? .27 : e.jam > 0 ? 1.54 : 1);
     e.flash = .075;
+    this.earnGhost(1.5, true);
     this.signal(protectedEscort ? 'shieldHit' : 'hit', s.x, s.y);
     if (e.hull <= 0) {
       this.scoreKill(e.spec.value + (e.jam > 0 ? 125 : 0));
@@ -373,6 +421,7 @@ export class Flight {
       if (part.hull <= 0 || !shotHits(s, x, y, radius)) continue;
       part.hull -= s.strength;
       part.flash = .13;
+      this.earnGhost(2.5, true);
       this.signal('hit', s.x, s.y);
       if (part.hull <= 0) {
         this.scoreKill(460);
@@ -382,13 +431,19 @@ export class Flight {
       return true;
     }
     if (!shotHits(s, b.x, b.y + 4, b.spec.hit)) return false;
+    if (b.kind === 'wraith' && b.realm !== (s.realm ?? PHYSICAL)) {
+      this.signal('veilHit', s.x, s.y, b.realm);
+      return true;
+    }
     const shielding = b.parts.some((p) => p.hull > 0);
     const protectedCore = (b.kind === 'matron' || b.kind === 'crown') && shielding;
     const factor = protectedCore ? 0 : b.kind === 'gatekeeper' && shielding ? .69 : 1;
     b.hull -= s.strength * factor;
+    if (factor) this.earnGhost(b.kind === 'wraith' ? 5.5 : 2.5, true);
     b.hitFlash = .075;
     this.signal(protectedCore ? 'shieldHit' : 'hit', s.x, s.y);
     if (b.hull <= 0) {
+      if (b.kind === 'wraith') this.player.realm = PHYSICAL;
       this.scoreKill(2400 + 750 * this.stage.id);
       this.signal('bossDown', b.x, b.y, b.kind);
       this.hazards = [];
@@ -433,7 +488,7 @@ export class Flight {
       s.x += s.vx * dt;
       s.y += s.vy * dt;
       if (overlap(s.x, s.y, s.radius, { x: this.player.x, y: this.player.y, radius: this.ship.hit })) {
-        if (this.damage(s.x, s.y)) s.live = false;
+        if (this.damage(s.x, s.y, s.realm)) s.live = false;
       }
     }
     this.hostile = this.hostile.filter((s) => s.live && s.age < 8 && s.y < HEIGHT + 28 && s.y > -40 && s.x > -42 && s.x < WIDTH + 42);

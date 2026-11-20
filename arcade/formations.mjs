@@ -1,4 +1,4 @@
-import { GUNNER_MUZZLES, hardpointAt } from './catalog.mjs';
+import { GUNNER_MUZZLES, enemyMuzzle, hardpointAt } from './catalog.mjs';
 
 export const VANE_HULL = 4.1;
 
@@ -20,7 +20,10 @@ export function linkedVolley(flight, command) {
         const { x, y } = hardpointAt(wing, dx, dy, wing.turn);
         flight.projectile(x, y, direction + Math.sign(dx) * .13, 195, 'pulse');
       }
-    } else flight.projectile(wing.x, wing.y + 12, direction, 195, 'pulse');
+    } else {
+      const { x, y } = enemyMuzzle(wing);
+      flight.projectile(x, y, direction, 195, 'pulse');
+    }
   }
   flight.signal('linkedFire', command.x, command.y);
 }

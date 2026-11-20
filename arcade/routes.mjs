@@ -26,12 +26,12 @@ export const outerRoute = [
     mastery: { name: 'Outside the line', detail: 'Beat the Rail Ship without losing hull in the boss fight.', condition: 'cleanBoss' }
   },
   {
-    id: 5, name: 'Outer Orbit', region: 'Gravity well', brief: 'Keep moving outside the gravity lanes.', accent: '#c0a9ff',
-    environment: 'outer', boss: 'siphon', bossAt: 154, first: 155, repeat: 40, defeatCap: 35,
-    waves: [[1,'sweep'],[8,'cross'],[16,'pinch'],[24,'escort',1],[31,'ladder'],[39,'pinch',1],[47,'sweep',1],[54,'trap',1],[62,'break'],[70,'pinch'],[77,'linked'],[85,'cross'],[93,'sweep'],[100,'pinch',1],[107,'escort'],[114,'trap'],[123,'surge',1],[131,'ladder',1],[138,'pinch'],[145,'break',1]],
+    id: 5, name: 'Outer Orbit', region: 'Gravity well', brief: 'Phantom fire comes from both sides of the veil.', accent: '#c0a9ff',
+    environment: 'outer', boss: 'wraith', bossAt: 154, first: 155, repeat: 40, defeatCap: 35,
+    waves: [[1,'specters'],[8,'cross'],[16,'pinch'],[24,'escort',1],[31,'specters',1],[39,'pinch',1],[47,'sweep',1],[54,'trap',1],[62,'break'],[70,'specters'],[77,'linked'],[85,'cross'],[93,'sweep'],[100,'pinch',1],[107,'escort'],[114,'trap'],[123,'specters',1],[131,'ladder',1],[138,'pinch'],[145,'break',1]],
     drops: [[15,'power',.64],[47,'barrier',.33],[73,'repair',.48],[101,'overdrive',.65],[141,'overdrive',.44]],
     terrain: [[36,'pull',.27],[65,'pull',.68],[92,'pull',.48],[124,'pull',.22]],
-    mastery: { name: 'Clear of the well', detail: 'Beat the Gravity Platform without losing hull in the boss fight.', condition: 'cleanBoss' }
+    mastery: { key: 'wraith', name: 'Through the veil', detail: 'Beat the Wraith without losing hull in the boss fight.', condition: 'cleanBoss' }
   },
   {
     id: 6, name: 'The Flagship', region: 'Fleet center', brief: 'Break through the fleet and disable its flagship.', accent: '#ffb67d',

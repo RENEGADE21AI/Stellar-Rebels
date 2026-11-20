@@ -91,7 +91,7 @@ function stages() {
     let note = s.region;
     if (!available) note = `Clear ${stageById(s.id - 1)?.name ?? 'the previous stage'}`;
     else if (clear && s.mastery) {
-      note = pilot.mastery?.[s.id] ? 'Mastered'
+      note = pilot.mastery?.[s.mastery.key ?? s.id] ? 'Mastered'
         : s.mastery.condition === 'parts' ? 'Destroy both turrets first' : 'Keep hull intact in the boss fight';
     }
     return `<li><button class="stage ${s.id === next?.id ? 'next' : ''}" style="--stage-color:${s.accent}" data-action="fly:${s.id}" ${available ? '' : 'disabled'}>
@@ -161,7 +161,11 @@ function records() {
   const { arcade, endless } = state.pilot.records;
   const rows = STAGES.filter((s) => arcade[s.id]).map((s) => {
     const r = arcade[s.id];
-    return recordLine(s.name, `${r.status === 'clear' ? 'Cleared' : 'Best attempt'} · ${time(r.duration)} · ${recordContext(r)}${state.pilot.mastery?.[s.id] ? ' · Mastered' : ''}`, num(r.score));
+    const badges = [];
+    if (state.pilot.mastery?.[s.mastery?.key ?? s.id]) badges.push('Mastered');
+    if (s.id === 5 && state.pilot.mastery?.[5]) badges.push('Gravity Platform mastery');
+    if (s.id === 5 && r.rules === 'arcade-1') badges.push('Original route score');
+    return recordLine(s.name, `${r.status === 'clear' ? 'Cleared' : 'Best attempt'} · ${time(r.duration)} · ${recordContext(r)}${badges.length ? ' · ' + badges.join(' · ') : ''}`, num(r.score));
   }).join('');
   const survival = endless ? recordLine('Endless survival', `${num(endless.score)} score · ${recordContext(endless)}`, time(endless.duration))
     : recordLine('Endless survival', 'Fly a survival run to set a record.', '—');
@@ -189,6 +193,8 @@ function helpView() {
   const rows = [
     ['Drag to steer', 'Drag anywhere on the playfield. Lift and touch again to reanchor. Arrow keys and WASD also steer.'],
     ['Line up your shots', 'Weapons fire automatically. Aim by placing your ship beneath the target.'],
+    ['Ghost Shift', 'Land shots and destroy targets to fill Ghost Energy. Tap Shift or press Space to pass through physical fire for one second. A short recovery follows.'],
+    ['Wraith realms', 'Tap Hop or press Space to change realms. Match the Wraith to deal damage. Solid rounds hit physical ships. Hollow diamonds hit ghost ships.'],
     ['Read the warning', 'Leave striped beam lanes. Fly through the marked open seam in a debris wall.'],
     ['Break the modules', 'Shoot hardpoints framed by corner brackets. A crossed-out module is offline.'],
     ['Break a formation', 'Target the bracketed command relay. Stop its volley and hit the exposed wing before it recovers.'],
@@ -354,6 +360,28 @@ function content(id, value, html = false) {
   else $(id).textContent = value;
 }
 
+function refreshGhost(f) {
+  const p = f.player;
+  const energy = Math.floor(p.ghostEnergy);
+  const active = p.realm === 'ghost';
+  const action = f.realmHop ? 'Hop' : p.ghostTime ? `${(Math.ceil(p.ghostTime * 10) / 10).toFixed(1)}s` : p.ghostRecovery ? 'Wait' : 'Shift';
+  const mode = active ? 'active' : f.shiftReady ? 'ready' : 'charging';
+  const key = `${energy}/${action}/${mode}/${f.realmHop}`;
+  if (lastHud.ghost === key) return;
+  lastHud.ghost = key;
+  const control = $('ghost-control');
+  control.dataset.mode = mode;
+  control.style.setProperty('--shift-cost', `${f.ghostCost}%`);
+  $('ghost-meter').setAttribute('aria-valuenow', energy);
+  $('ghost-value').style.transform = `scaleX(${energy / 100})`;
+  $('ghost-shift').setAttribute('aria-disabled', String(!f.shiftReady));
+  content('ghost-action', action);
+  content('ghost-label', f.realmHop && !active ? 'Physical' : 'Ghost');
+  content('ghost-status', f.realmHop ? `${active ? 'Ghost' : 'Physical'} realm. ${energy} energy. Hop costs ${f.ghostCost}.`
+    : p.ghostTime ? `${action} of phasing remaining.` : p.ghostRecovery ? 'Ghost Shift is recovering.'
+      : `${energy} energy. Ghost Shift costs ${f.ghostCost}.`);
+}
+
 function refreshHud(restart = false) {
   const f = state.flight;
   const p = f.player;
@@ -372,9 +400,14 @@ function refreshHud(restart = false) {
   content('hull', Array.from({ length: p.maxHull }, (_, i) => `<i class="segment ${i < p.hull ? 'full' : ''}" aria-hidden="true"></i>`).join(''), true);
   $('hull').setAttribute('aria-valuemax', p.maxHull);
   $('hull').setAttribute('aria-valuenow', p.hull);
+  refreshGhost(f);
   $('boss-meter').hidden = !activeBoss;
   if (activeBoss) {
-    content('boss-name', f.boss.spec.name);
+    const boss = f.boss;
+    const realm = boss.realm === 'ghost' ? 'Ghost' : 'Physical';
+    const transition = boss.shifting ? `${realm} → ${boss.realm === 'ghost' ? 'Physical' : 'Ghost'}` : realm;
+    content('boss-name', f.realmHop ? `Wraith · ${transition}` : boss.spec.name);
+    $('boss-meter').dataset.realm = f.realmHop ? boss.realm : '';
     const hp = Math.max(0, f.boss.hull / f.boss.spec.hull);
     $('boss-value').style.transform = `scaleX(${hp.toFixed(3)})`;
     $('boss-track').setAttribute('aria-valuenow', Math.ceil(hp * 100));
@@ -384,8 +417,10 @@ function refreshHud(restart = false) {
   if (p.power) flags.push(`Power ${Math.ceil(p.power)}s`);
   if (p.overdrive) flags.push(`Overdrive ${Math.ceil(p.overdrive)}s`);
   content('field-effects', flags.map((flag) => `<span class="field-chip">${flag}</span>`).join(''), true);
-  $('flight-help').hidden = f.elapsed > 8.5 || (f.endless && f.elapsed > 4.5);
-  content('flight-help', state.input === 'keyboard' ? 'Arrows / WASD to steer · Auto-fire' : 'Drag to steer · Weapons fire automatically');
+  const ghostLesson = !f.endless && f.stage.id === 1 && f.shiftReady && !f.usedShift && f.elapsed < 27;
+  $('flight-help').hidden = !ghostLesson && (f.elapsed > 8.5 || (f.endless && f.elapsed > 4.5));
+  const keyboard = state.input === 'keyboard';
+  content('flight-help', ghostLesson ? `${keyboard ? 'Space' : 'Tap Shift'} to pass through fire` : keyboard ? 'Arrows / WASD to steer · Auto-fire' : 'Drag to steer · Auto-fire');
   if (message && (lastHud.message !== message || restart)) {
     lastHud.message = message;
     if (['warning', 'pickup', 'tactic'].includes(message.kind)) announce([message.title,message.copy].filter(Boolean).join('. '));
@@ -422,7 +457,9 @@ async function changeSetting(key, value) {
 async function handle(command) {
   const [type, value] = command.split(':');
   if (type === 'update-web') {
-    if (state.mode === 'menu' && state.newPack && !state.pending?.working && !state.pending?.error && !store.temporary) location.reload();
+    if (state.mode === 'menu' && state.newPack && !state.pending?.working && !state.pending?.error && !store.temporary) {
+      location.replace(`/?build=${state.newPack}`);
+    }
     return;
   }
   audio.unlock();
@@ -509,6 +546,19 @@ menu.addEventListener('change', (event) => {
 });
 $('pause').innerHTML = icon('pause');
 $('pause').addEventListener('click', () => pause());
+function useShift() {
+  if (state.mode !== 'playing' || !state.flight.activateGhost()) return;
+  state.flight.usedShift = true;
+  audio.unlock();
+  refreshHud();
+}
+$('ghost-shift').addEventListener('click', useShift);
+$('ghost-shift').addEventListener('pointerdown', (event) => {
+  if (event.pointerType === 'touch' && !event.isPrimary) {
+    event.preventDefault();
+    useShift();
+  }
+});
 modal.addEventListener('cancel', (event) => { event.preventDefault(); if (state.mode === 'resuming') pause(); });
 
 sky.addEventListener('pointerdown', (event) => {
@@ -539,6 +589,9 @@ window.addEventListener('keydown', (event) => {
     if (event.repeat) return;
     if (state.mode === 'paused' && modal.querySelector('[data-action="resume"]')) resume();
     else pause();
+  } else if (action === 'ability' && state.mode === 'playing') {
+    event.preventDefault();
+    if (!event.repeat) { state.input = 'keyboard'; useShift(); }
   } else if (action?.startsWith('move_') && state.mode === 'playing') {
     event.preventDefault();
     state.input = 'keyboard';
@@ -635,7 +688,7 @@ function checkPack() {
     probe.port1.close();
     if (reply.data?.ready && reply.data.version && check === state.packCheck) {
       const own = /\/arcade\/([a-f0-9]{15})\//.exec(new URL(document.baseURI).pathname)?.[1];
-      state.newPack = Boolean(own && own !== reply.data.version);
+      state.newPack = own && own !== reply.data.version && /^[a-f0-9]{15}$/.test(reply.data.version) ? reply.data.version : null;
       showBrowserUpdate();
     }
     update(reply.data?.ready === true ? 'ready' : 'missing');
@@ -652,6 +705,7 @@ function lookForBrowserUpdate() {
 }
 
 async function boot() {
+  if (/^\?build=[a-f0-9]{15}$/.test(location.search)) history.replaceState(null, '', '/');
   try { state.pilot = await store.open(); }
   catch { state.pilot = store.useTemporary(); }
   audio.reflect(state.pilot.settings);

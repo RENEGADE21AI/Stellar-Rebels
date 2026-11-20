@@ -2,26 +2,27 @@ import { innerRoute, outerRoute } from './routes.mjs';
 
 export const WIDTH = 384;
 export const HEIGHT = 768;
-export const RULES_VERSION = 'arcade-1';
-export const GUNNER_MUZZLES = [[-9.1,19.7],[9.1,19.7]];
+export const RULES_VERSION = 'arcade-2';
+export const GUNNER_MUZZLES = [[-21,22],[21,22]];
+export const GHOST = { capacity: 100, start: 26, cost: 38, duration: 1.05, recovery: 1.15, hop: 18, hopRecovery: .42 };
 
 export const SHIPS = {
   kestrel: {
     name: 'Fighter', role: 'Fighter', clearance: 0, hull: 5, speed: 318, interval: .224,
-    size: 58, hit: 8, engines: [[-9.6, 19], [9.6, 19]],
-    guns: [[-9.3, -15, 0, .89], [9.3, -15, 0, .89]],
+    size: 58, hit: 8, engines: [[-7.5, 17], [7.5, 17]],
+    guns: [[-10.5, -14.5, 0, .89], [10.5, -14.5, 0, .89]],
     description: 'Twin parallel guns and responsive handling. Line both lanes up on large targets.'
   },
   needle: {
     name: 'Interceptor', role: 'Interceptor', clearance: 2, hull: 4, speed: 388, interval: .19,
-    size: 59, hit: 6.8, engines: [[0, 18]],
-    guns: [[0, -18, 0, 1.55]],
+    size: 59, hit: 6.8, engines: [[0, 23]],
+    guns: [[0, -22, 0, 1.55]],
     description: 'A concentrated center lance and quick lateral movement. Slip through tight gaps with less hull.'
   },
   bastion: {
     name: 'Gunship', role: 'Gunship', clearance: 4, hull: 6, speed: 258, interval: .30,
-    size: 68, hit: 9.2, engines: [[-18, 13], [0, 19], [18, 13]],
-    guns: [[-19, -6, -.21, .8], [-10, -13, -.055, .95], [10, -13, .055, .95], [19, -6, .21, .8]],
+    size: 68, hit: 9.2, engines: [[-19.2, 13.7], [0, 23.3], [19.2, 13.7]],
+    guns: [[-18.6, -17.3, -.21, .8], [-10.8, -17.3, -.055, .95], [10.8, -17.3, .055, .95], [18.6, -17.3, .21, .8]],
     description: 'A broad four-gun salvo and reinforced hull. Move early and dominate the approach lanes.'
   }
 };
@@ -41,12 +42,13 @@ export const PICKUPS = {
 };
 
 export const ENEMIES = {
-  scout: { name: 'Scout', hull: 2.45, y: 138, size: 43, hit: 11, value: 120, cadence: 2.9, speed: 108, drift: 20 },
+  scout: { name: 'Scout', hull: 2.45, y: 138, size: 43, hit: 11, value: 120, cadence: 2.9, speed: 108, drift: 20, muzzle: 11 },
   lancer: { name: 'Gunner', hull: 5.4, y: 169, size: 52, hit: 13, value: 240, cadence: 2.6, speed: 95, drift: 8 },
-  diver: { name: 'Diver', hull: 3.35, y: 144, size: 42, hit: 10, value: 220, cadence: 3.25, speed: 119, drift: 10 },
-  sweeper: { name: 'Sweeper', hull: 6.8, y: 153, size: 56, hit: 14, value: 270, cadence: 2.45, speed: 84, drift: 43 },
-  escort: { name: 'Escort', hull: 8.4, y: 191, size: 54, hit: 15, value: 300, cadence: 2.8, speed: 90, drift: 9 },
-  relay: { name: 'Command Ship', hull: 6.6, y: 133, size: 55, hit: 15, value: 390, cadence: 2.9, speed: 91, drift: 20 }
+  diver: { name: 'Diver', hull: 3.35, y: 144, size: 42, hit: 10, value: 220, cadence: 3.25, speed: 119, drift: 10, muzzle: 18 },
+  sweeper: { name: 'Sweeper', hull: 6.8, y: 153, size: 56, hit: 14, value: 270, cadence: 2.45, speed: 84, drift: 43, muzzle: 7 },
+  escort: { name: 'Escort', hull: 8.4, y: 191, size: 54, hit: 15, value: 300, cadence: 2.8, speed: 90, drift: 9, muzzle: 16 },
+  relay: { name: 'Command Ship', hull: 6.6, y: 133, size: 55, hit: 15, value: 390, cadence: 2.9, speed: 91, drift: 20, muzzle: 17 },
+  phantom: { name: 'Phantom', hull: 6.1, y: 153, size: 59, hit: 14, value: 295, cadence: 2.9, speed: 91, drift: 25, muzzle: 19 }
 };
 
 // Lanes are normalized fractions. Successive craft arrive at 0.25-second intervals.
@@ -64,7 +66,8 @@ const formations = {
   trap: [['relay', .26], ['escort', .33], ['lancer', .78], ['diver', .57], ['scout', .88]],
   surge: [['sweeper', .18], ['diver', .32], ['relay', .52], ['escort', .59], ['lancer', .84], ['diver', .74]],
   ladder: [['lancer', .17], ['scout', .27], ['lancer', .46], ['scout', .56], ['lancer', .77], ['diver', .86]],
-  pinch: [['sweeper', .22], ['sweeper', .78], ['diver', .40], ['diver', .60], ['escort', .50]]
+  pinch: [['sweeper', .22], ['sweeper', .78], ['diver', .40], ['diver', .60], ['escort', .50]],
+  specters: [['phantom', .32], ['scout', .50], ['phantom', .69], ['diver', .81]]
 };
 
 export function formation(name, flipped = false) {
@@ -89,8 +92,11 @@ export const BOSSES = {
   matron: { name: 'Relay Carrier', intro: 'Break the linked nodes to expose the core.', hull: 196, size: 246, hit: 37, motion: 42, parts: [[-70, 6], [70, 6]], partHull: 30 },
   tyrant: { name: 'Rail Ship', intro: 'Leave its striped lane before the rail fires.', hull: 238, size: 245, hit: 40, motion: 47, arrivalY: 245, parts: [] },
   siphon: { name: 'Gravity Platform', intro: 'Keep clear of its pull lane and rotating fan.', hull: 253, size: 247, hit: 39, motion: 47, arrivalY: 258, parts: [] },
+  wraith: { name: 'Wraith', intro: 'Match its realm to land shots. Shift to hop.', hull: 204, size: 284, hit: 42, motion: 48, arrivalY: 242, parts: [] },
   crown: { name: 'Flagship', intro: 'Break its pylons and read the next safe seam.', hull: 272, size: 258, hit: 45, motion: 45, arrivalY: 245, parts: [[-74, 8], [74, 8]], partHull: 37 }
 };
+
+export const ENDLESS_BOSSES = [...STAGES.map((stage) => stage.boss), 'siphon'];
 
 export function stageById(id) {
   return STAGES[id - 1];
@@ -108,4 +114,8 @@ export function hardpointAt(body, dx, dy, angle) {
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
   return { x: body.x + dx * cos - dy * sin, y: body.y + dx * sin + dy * cos };
+}
+
+export function enemyMuzzle(enemy) {
+  return hardpointAt(enemy, 0, ENEMIES[enemy.kind].muzzle ?? 9, enemy.turn ?? 0);
 }

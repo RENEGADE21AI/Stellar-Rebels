@@ -127,8 +127,9 @@ export function settleRun(pilot, id, terminal) {
   pilot.salvage += award;
   delete pilot.active[id];
   pilot.mastery ??= {};
-  const mastery = cleared && Boolean(stage?.mastery) && terminal.mastery === true && !pilot.mastery[stage.id];
-  if (mastery) pilot.mastery[stage.id] = true;
+  const masteryKey = run.rules === 'arcade-1' ? stage?.id : stage?.mastery?.key ?? stage?.id;
+  const mastery = cleared && Boolean(stage?.mastery) && terminal.mastery === true && !pilot.mastery[masteryKey];
+  if (mastery) pilot.mastery[masteryKey] = true;
   const receipt = { ...record, award, first, best, newStage, newShip, mastery };
   pilot.receipts[id] = receipt;
   const recent = Object.keys(pilot.receipts);

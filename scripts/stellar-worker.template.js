@@ -78,6 +78,15 @@ self.addEventListener('fetch', (event) => {
     const cache = await caches.open(cacheName);
     const requested = home ? '/index.html' : url.pathname;
     const cached = await cache.match(requested);
+    if (home) {
+      // A document navigation is a safe update point. Open documents continue using their pinned assets.
+      const network = await fetch('/index.html', { cache: 'no-store', signal: AbortSignal.timeout?.(1600) }).catch(() => null);
+      if (network?.ok) {
+        const html = await network.clone().text();
+        if (html.includes(generationPath) && !await packReady(cache)) await fillPack(cache).catch(() => {});
+        if (html.includes('data-pack="true"')) return network;
+      }
+    }
     if (cached && (!home || await packReady(cache))) return request.headers.has('Range') ? fromRange(request, cached) : cached;
     try {
       if (home) {
@@ -85,8 +94,6 @@ self.addEventListener('fetch', (event) => {
         if (await packReady(cache)) return cache.match('/index.html');
       }
       const response = await fetch(request, { cache: 'no-store' });
-      // A new HTML release may point at another generation. The new worker
-      // will populate that generation after all controlled clients close.
       if (!home && response.status === 200) await cache.put(url.pathname, response.clone());
       return response;
     } catch {

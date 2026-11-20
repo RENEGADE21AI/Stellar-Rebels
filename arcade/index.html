@@ -22,16 +22,23 @@
       <noscript><p>Enable JavaScript to fly.</p></noscript>
     </section>
     <section class="flight" id="flight" aria-label="Flight" hidden>
-      <canvas id="sky" aria-label="Flight playfield. Drag to steer or use arrow keys. Weapons fire automatically."></canvas>
+      <canvas id="sky" aria-label="Flight playfield. Drag or use arrow keys to steer. Weapons fire automatically. Press Space for Ghost Shift."></canvas>
       <div class="flight-ui">
         <div class="instrument">
           <div class="hull"><span class="caption">Hull</span><div id="hull" role="meter" aria-label="Hull" aria-valuemin="0" aria-valuemax="5" aria-valuenow="5"></div></div>
           <div class="flight-label"><span id="flight-name">Vesper Orbit</span><span id="clock" class="caption">00:00</span><span id="flight-tip" hidden></span></div>
+          <div id="ghost-control" class="ghost-control">
+            <button id="ghost-shift" type="button" aria-label="Ghost Shift" aria-describedby="ghost-status" aria-disabled="true">
+              <span id="ghost-label" class="caption">Ghost</span><strong id="ghost-action">Shift</strong>
+            </button>
+            <div id="ghost-meter" role="meter" aria-label="Ghost Energy" aria-valuemin="0" aria-valuemax="100" aria-valuenow="26"><div id="ghost-value"></div></div>
+            <span id="ghost-status" class="visually-hidden">Hit enemies to charge Ghost Shift.</span>
+          </div>
           <button id="pause" class="icon-button" type="button" aria-label="Pause"></button>
         </div>
         <div class="run-line"><span id="flight-score">0</span><span id="flight-progress"></span><span id="chain"></span></div>
         <div id="boss-meter" class="boss-hud" hidden><span id="boss-name"></span><div id="boss-track" role="meter" aria-label="Boss hull" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><div id="boss-value"></div></div></div>
-        <div class="flight-footer"><div id="field-effects"></div><p id="flight-help">Drag to steer · Weapons fire automatically</p></div>
+        <div class="flight-footer"><div id="field-effects"></div><p id="flight-help">Drag to steer · Auto-fire</p></div>
       </div>
       <dialog id="flight-modal" aria-labelledby="pause-title"></dialog>
     </section>

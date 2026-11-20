@@ -108,7 +108,7 @@ export function flagship(flight, boss, phase) {
     boss.timer = 2.50;
   } else if (turn === 1) {
     const x = flight.player.x;
-    markRail(flight, x, 41, boss.y + 119, 82);
+    markRail(flight, x, 41, boss.y + 119, 115);
     flight.fan(boss.x, y, Math.PI/2, 6, .19, 150, 'pulse');
     boss.timer = 2.42;
   } else {

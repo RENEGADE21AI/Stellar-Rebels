@@ -21,7 +21,7 @@ async function clearBossOnly(page) {
     f.terrainIndex = f.stage.terrain?.length ?? 0;
     let commands = 0;
     const frame = 1/60;
-    const cue = {2:'wall',4:'rail',5:'pull',6:'wall'}[f.stage.id];
+    const cue = {2:'wall',4:'rail',5:'realm',6:'wall'}[f.stage.id];
     while (f.status === 'active' && f.elapsed - f.stage.bossAt < 105) {
       const b = f.boss;
       if (b && commands % 6 === 0) {
@@ -30,7 +30,9 @@ async function clearBossOnly(page) {
       }
       f.step(frame);
       commands++;
-      if (b && (cue ? f.hazards.some((hazard) => hazard.kind === cue && hazard.age < hazard.windup) : b.attack === 2)) {
+      const pattern = cue === 'realm' ? b?.realm === 'ghost' : cue
+        ? f.hazards.some((hazard) => hazard.kind === cue && hazard.age < hazard.windup) : b?.attack === 2;
+      if (b && pattern) {
         window.campaign.firstVolley = { kind:b.kind, elapsed:f.elapsed, hull:f.player.hull };
         return { status:'sample-ready', commands, elapsed:f.elapsed, cue };
       }
