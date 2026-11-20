@@ -92,9 +92,8 @@ async function verify() {
     const charging = await page.evaluate(() => window.ghostQA.chargeAtInput);
     assert.equal(await amount(), charging - 38);
     assert.equal(await page.evaluate(() => window.ghostQA.state.pointer !== null), true);
-    await shot('ordinary-shift');
+    await page.keyboard.press('Escape');
     await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    await button('Pause').tap();
     await page.getByRole('heading', { name: 'Paused' }).waitFor();
     const frozen = await page.evaluate(() => window.ghostQA.state.flight.player.ghostTime);
     await page.keyboard.press('KeyE');
@@ -103,6 +102,8 @@ async function verify() {
     assert.equal(await page.evaluate(() => window.ghostQA.state.flight.player.ghostTime), frozen);
     assert.equal(await amount(), charging - 38);
     await button('Resume').tap();
+    await page.waitForFunction(() => window.ghostQA.state.mode === 'playing' && window.ghostQA.state.flight.player.ghostTime > 0);
+    await shot('ordinary-shift');
     await page.waitForFunction(() => window.ghostQA.state.mode === 'playing' && !window.ghostQA.state.flight.player.ghostTime);
     await shot('ordinary-return');
     const audio = await page.evaluate(() => ({ state: window.ghostQA.audio.ctx?.state, playedShift: 'ghostStart' in window.ghostQA.audio.last,

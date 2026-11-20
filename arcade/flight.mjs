@@ -506,6 +506,8 @@ export class Flight {
     const b = this.cruiser;
     if (!b) return false;
     if (this.hitModules(b, s)) return true;
+    // A marked gun remains reachable from below as its parent crosses the flight path.
+    if (s.y >= b.y - 2 && b.parts.some((part) => part.hull > 0 && Math.abs(s.x - (b.x + part.dx)) < part.radius + 5)) return false;
     if (![-70, -25, 21, 62].some((offset) => shotHits(s, b.x + offset, b.y + 4, b.spec.hit))) return false;
     this.signal('shieldHit', s.x, s.y);
     return true;

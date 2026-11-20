@@ -49,6 +49,7 @@ async function main() {
     const scale = renderer.unit / 1.12;
     return { status:f.status, mode:state.mode, elapsed:f.elapsed, stage:f.stage.id, attack:f.boss?.attack ?? 0,
       boss:Boolean(f.boss), hull:f.player.hull, score:f.score, kills:f.kills, pickup:f.notice?.kind === 'pickup' ? f.notice.title : '',
+      cruiser:f.cruiser ? { x:f.cruiser.x, guns:f.cruiser.parts.map((part) => Math.max(0, part.hull)) } : null,
       dx:(desired.x-f.xIntent)*scale, dy:(desired.y-f.yIntent)*scale };
   });
 
@@ -77,6 +78,8 @@ async function main() {
       let moves = 0;
       let reanchors = 0;
       let firstBoss = false;
+      let crossing = null;
+      let disabled = 0;
       let nextSample = 30;
       const supplies = new Set();
       const marks = [];
@@ -92,6 +95,17 @@ async function main() {
           nextSample += 30;
         }
         if (current.pickup) supplies.add(current.pickup);
+        if (current.cruiser) {
+          if (!crossing && current.cruiser.x > 90) {
+            crossing = { time:current.elapsed, guns:current.cruiser.guns };
+            await shot(`stage-${stage}-cruiser-crossing`);
+          }
+          const down = current.cruiser.guns.filter((hull) => hull <= 0).length;
+          if (down > disabled && current.cruiser.x > 0 && current.cruiser.x < 384) {
+            await shot(`stage-${stage}-cruiser-guns-down-${down}`);
+          }
+          disabled = Math.max(disabled, down);
+        }
         if (!firstBoss && current.attack > 0) {
           await shot(`stage-${stage}-first-boss-volley`);
           firstBoss = true;
@@ -123,7 +137,7 @@ async function main() {
             over34:sorted.filter(v=>v>34).length } };
       });
       await shot(endless ? 'endless-soak' : `stage-${stage}-result`);
-      report.push({ stage, wallMs:Date.now()-started, moves, reanchors, supplies:[...supplies], marks, ...result });
+      report.push({ stage, wallMs:Date.now()-started, moves, reanchors, supplies:[...supplies], marks, crossing, cruiserGunsDisabled:disabled, ...result });
       fs.writeFileSync(path.join(output,'flight.json'),JSON.stringify({origin,manifest,viewport,report,
         coverage:'Stock runs at wall-clock speed in the running browser. Strategy read telemetry and sent Chromium touch inputs. Earlier clears are preloaded only when selecting a later entry stage. The chosen flight uses the natural clock, damage and result.'},null,2));
       if (endless) assert.ok(result.elapsed >= requestedSurvival && result.hull > 0, JSON.stringify(result));

@@ -48,10 +48,14 @@ async function main() {
     assert.equal(normal.outline, 'none');
 
     // Let an actual surviving fighter reach the bottom. No armor, movement, reward or timer is assigned.
-    await page.waitForFunction(() => window.arenaQA.state.flight.enemies.some((e) => e.loop && e.y < 640 && e.y > 440));
+    await moveAcross(24, viewport.width - 9);
+    await page.waitForFunction(() => {
+      const { flight } = window.arenaQA.state;
+      return flight.enemies.some((e) => e.loop && e.y < 640 && e.y > 440 && Math.abs(e.x - flight.player.x) > 120);
+    });
     const seen = await page.evaluate(() => {
       const f = window.arenaQA.state.flight;
-      window.arenaQA.returning = f.enemies.find((e) => e.loop && e.y < 640 && e.y > 440);
+      window.arenaQA.returning = f.enemies.find((e) => e.loop && e.y < 640 && e.y > 440 && Math.abs(e.x - f.player.x) > 120);
       const e = window.arenaQA.returning;
       return { kind: e.kind, edge: e.loop.edge, hull: e.hull, heading: e.turn, originalLane: e.home };
     });
@@ -66,6 +70,8 @@ async function main() {
     assert.ok(Math.abs(reentry.x - seen.originalLane) >= 95);
     assert.ok(reentry.y < 0 && Math.abs(reentry.turn) < .3);
     await shot('reentry');
+    await page.waitForFunction(() => window.arenaQA.state.flight.pickups.some((pickup) => pickup.y > 255 && pickup.y < 470));
+    await shot('field-pickup');
 
     await page.evaluate(() => {
       const { flight: f } = window.arenaQA.state;

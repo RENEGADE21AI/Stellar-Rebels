@@ -289,10 +289,12 @@ test('ordinary flight, the crossing cruiser and bosses share the same arena boun
   assert.deepEqual(f.movementBounds, bounds);
   launchCruiser(f);
   const craft = f.cruiser;
+  craft.x = 190;
   const [left, right] = craft.parts;
   const partX = craft.x + left.dx;
   const partY = craft.y + left.dy;
-  assert.equal(f.hitCruiser({ x:partX, y:partY, px:partX, py:partY + 4, strength:15 }), true);
+  f.friendly.push({ x:partX, y:partY + 53, px:partX, py:partY + 53, vx:0, vy:-685, strength:15, live:true });
+  for (let i = 0; i < 8; i++) f.moveProjectiles(step);
   assert.ok(left.hull <= 0 && right.hull === 14);
   assert.equal(f.status, 'active');
   assert.deepEqual(f.movementBounds, bounds);

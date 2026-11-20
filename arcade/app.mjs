@@ -237,7 +237,7 @@ function results() {
     ${p.receipt && (next || finale) ? action(repeat, retry, 'quiet', '') : ''}
     ${p.receipt ? action('Hangar', 'hangar:result', 'quiet', '') : p.error ? action('Leave unsaved', 'discard', 'quiet', '') : ''}
     ${p.receipt && !finale ? action('Stages', 'view:stages', 'quiet', '') : ''}
-    ${buyable ? action('Upgrades', 'shop:result', 'quiet', '') : ''}</div>${p.replay ? action('Save flight replay', 'save-replay', 'flat', '') : ''}</div></article>`;
+    ${buyable ? action('Upgrades', 'shop:result', 'quiet', '') : ''}</div>${p.replay ? action('Save flight replay', 'save-replay', 'flat replay-link', '') : ''}</div></article>`;
 }
 
 const views = { home, stages, hangar, upgrade: upgradeView, records, settings: settingsView, help: helpView, result: results };
