@@ -29,5 +29,6 @@ The `390x844` and `320x568` folders contain individual portrait targets. The con
 | 23 | Settings | Separate audio and readable accessibility controls | Pending |
 | 24 | Storage notice and recovery | Retry preservation if device storage becomes unavailable | Pending |
 | 25 | Crownfall clear | Finish the campaign and offer replay | Pending |
+| 26 | Offline-ready state | Distinguish connection loss from blocked device storage | Pending |
 
 Install purchases and restoration are excluded from this web release scope. Banked Salvage upgrade purchase is shown in frame 18. At 320 × 568, production stage rows and panels may scroll. Interactive targets retain at least 44 CSS px. The logo studies show Flare, Orbit and Pennant at the same display scale.

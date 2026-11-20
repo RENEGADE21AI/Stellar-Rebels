@@ -44,6 +44,7 @@ SCREENS = {
     "23-settings": ("Settings / accessibility", "settings"),
     "24-offline-recovery": ("Offline / local-save recovery", "offline"),
     "25-finale": ("Campaign finale", "finale"),
+    "26-offline-ready": ("Offline play / pack status", "offline_ready"),
 }
 
 
@@ -83,7 +84,10 @@ def button(frame, text, x, y, w, height=48, primary=True):
     color = ORANGE if primary else "#132331"
     blend_box(frame, (x, y, x + w, y + height), color, ORANGE if primary else EDGE)
     d = ImageDraw.Draw(frame)
-    d.text((x + 16, y + height / 2), text, font=typeface(24, "head"), fill=BASE if primary else WHITE, anchor="lm")
+    font = typeface(24, "head")
+    if font.getlength(text) > w - 47:
+        font = typeface(20, "head")
+    d.text((x + 16, y + height / 2), text, font=font, fill=BASE if primary else WHITE, anchor="lm")
     d.text((x + w - 15, y + height / 2), "›", font=typeface(24, "head"), fill=BASE if primary else MUTED, anchor="rm")
 
 
@@ -124,16 +128,25 @@ def hud(frame, state):
     label(draw, "HULL", 26, 25)
     for i in range(5):
         draw.rectangle((26 + i * 14, 44, 36 + i * 14, 54), fill=TEAL if i < (3 if state == "heal" else 5) else "#293948")
-    section = "ENDLESS" if state == "endless" else "THE BREACH" if state in ("start", "combat", "boss", "pause", "heal") else "DEAD SIGNAL"
+    section = "ENDLESS" if state == "endless" else "RED MERIDIAN" if state == "rail" else "THE BREACH" if state in ("start", "combat", "boss", "pause", "heal") else "DEAD SIGNAL"
     label(draw, section, 111, 26, WHITE)
     label(draw, "00:14" if state == "start" else "06:42" if state == "endless" else "01:38", 111, 45, MUTED)
-    draw.rounded_rectangle((w - 56, 21, w - 20, 60), 3, fill="#172636", outline=EDGE)
+    draw.rounded_rectangle((w - 62, 19, w - 18, 63), 3, fill="#172636", outline=EDGE)
     draw.rectangle((w - 44, 32, w - 41, 47), fill=WHITE)
     draw.rectangle((w - 36, 32, w - 33, 47), fill=WHITE)
     if state in ("boss", "rail"):
         label(draw, "GATEKEEPER" if state == "boss" else "RAIL TYRANT", 20, 88, WHITE)
         draw.rectangle((20, 106, w - 20, 111), fill="#494154")
         draw.rectangle((20, 106, w * .64, 111), fill="#ff765e")
+    if state == "boss":
+        for fraction, disabled in ((.255, False), (.752, True)):
+            cx, cy, radius = w * fraction, h * .237, 16
+            if disabled:
+                draw.line((cx-7, cy-7, cx+7, cy+7), fill="#ced3d9", width=2)
+                draw.line((cx+7, cy-7, cx-7, cy+7), fill="#ced3d9", width=2)
+            else:
+                draw.line([(cx-radius, cy-5), (cx-radius, cy-13), (cx-6, cy-13)], fill=TEAL, width=2)
+                draw.line([(cx+radius, cy+5), (cx+radius, cy+13), (cx+6, cy+13)], fill=TEAL, width=2)
     if state == "start":
         blend_box(frame, (32, h - 88, w - 32, h - 29), (9, 18, 29, 235))
         label(ImageDraw.Draw(frame), "DRAG TO FLY   ·   AUTO-FIRE", w // 2, h - 65, WHITE, anchor="mt")
@@ -153,13 +166,21 @@ def hud(frame, state):
             ed.line((cx+27, cy-17, cx+41, cy-17), fill=TEAL, width=2)
             ed.line((cx+34, cy-24, cx+34, cy-10), fill=TEAL, width=2)
         frame.alpha_composite(effect)
-        button(frame, "Barrier ×2   ·   Overdrive 07s" if state == "buffs" else "Repair   +2 hull", 22, h - 77, w - 44, primary=False)
+        blend_box(frame, (22, h - 77, w - 22, h - 29), (10, 23, 35, 245))
+        label(ImageDraw.Draw(frame), "BARRIER ×2    OVERDRIVE 07s" if state == "buffs" else "REPAIR   +2 HULL", 34, h - 60, WHITE)
+    if state in ("start", "combat", "heal", "advanced", "boss", "endless"):
+        cx = w * (.56 if state in ("start", "combat", "heal") else .50)
+        cy = h * .681
+        for dx in (-6, 6):
+            for dy in (16, 40):
+                draw.line((cx + dx, cy - dy - 9, cx + dx, cy - dy), fill=TEAL, width=2)
     if state == "rail":
         x = round(w * .58)
         overlay = Image.new("RGBA", frame.size)
         od = ImageDraw.Draw(overlay)
         od.rectangle((x - 16, 135, x + 16, h - 20), outline="#ffc36f", fill=(243, 112, 56, 49), width=2)
-        od.line((x, 143, x, h - 26), fill="#ea935c", width=1)
+        for stripe in range(160, h - 27, 25):
+            od.line((x - 15, stripe, x + 15, stripe - 16), fill=(250, 168, 89, 180), width=1)
         frame.alpha_composite(overlay)
 
 
@@ -185,7 +206,7 @@ def list_rows(frame, items, top=111, minimum=43):
         blend_box(frame, (22, y, w - 22, y + row), (15, 28, 42, 225), ORANGE if i == 0 and not locked else EDGE)
         d = ImageDraw.Draw(frame)
         title(d, name, 36, y + 8, 23 if row < 58 else 27, MUTED if locked else WHITE)
-        label(d, value, w - 36, y + 12, MUTED if locked else ORANGE, anchor="rt", size=11)
+        label(d, value, w - 36, y + 12, MUTED if locked else ORANGE, anchor="rt", size=12)
         if desc and row >= 49:
             label(d, desc, 36, y + row - 16, MUTED, size=10)
 
@@ -217,20 +238,31 @@ def compose(state, size):
         frame = backplate("hangar", size)
         veil(frame, h * .32, h * .35)
         header(frame, "Ship bay", "HANGAR")
-        title(ImageDraw.Draw(frame), "Kestrel", 23, h - 188, 43)
-        body(ImageDraw.Draw(frame), "Twin pulse guns · balanced handling", 24, h - 135)
-        label(ImageDraw.Draw(frame), "NEEDLE  ·  LOCKED      BASTION  ·  LOCKED", 24, h - 105, size=10)
+        for j, (name, note) in enumerate((("Kestrel", "EQUIPPED"), ("Needle", "CLEAR 02"), ("Bastion", "CLEAR 04"))):
+            width = (w - 58) // 3
+            x = 23 + j * (width + 6)
+            blend_box(frame, (x, h - 127, x + width, h - 82), (12, 24, 37, 247), ORANGE if j == 0 else EDGE)
+            title(ImageDraw.Draw(frame), name, x + 7, h - 120, 18)
+            label(ImageDraw.Draw(frame), note, x + 7, h - 97, size=9)
+        title(ImageDraw.Draw(frame), "Kestrel", 23, h - 216, 42)
+        body(ImageDraw.Draw(frame), "Twin pulse guns · balanced handling", 24, h - 162)
         button(frame, "Equip Kestrel", 23, h - 76, w - 46)
+        label(ImageDraw.Draw(frame), "SHIP BAY   /   UPGRADES ›", w - 22, 109, WHITE, anchor="rt", size=11)
         return frame
     frame = backplate("navigation", size, shade=35)
     if state == "route":
         header(frame, "Stage Select", "ARCADE")
+        blend_box(frame, (22, 107, w - 22, 150), (15, 28, 42, 235))
+        title(ImageDraw.Draw(frame), "Kestrel equipped", 33, 117, 21)
+        label(ImageDraw.Draw(frame), "CHANGE ›", w - 33, 124, ORANGE, anchor="rt", size=10)
         names = ("The Breach", "Glass Belt", "Dead Signal", "Red Meridian", "Hollow Sun", "Crownfall")
-        list_rows(frame, [(f"{i + 1:02d}  {name}", "Gatekeeper at the relay" if i == 0 else "", "LAUNCH" if i == 0 else "LOCKED", i > 0) for i, name in enumerate(names)])
-        button(frame, "Endless", 22, h - 64, w - 44, 44, primary=False)
+        list_rows(frame, [(f"{i + 1:02d}  {name}", "Gatekeeper at the relay" if i == 0 else "", "LAUNCH" if i == 0 else "LOCKED", i > 0) for i, name in enumerate(names)], top=160)
+        button(frame, "Endless", 22, h - 64, int((w - 49) * .52), 44, primary=False)
+        button(frame, "Flight school", 27 + int((w - 49) * .52), h - 64, round((w - 49) * .48), 44, primary=False)
     elif state == "upgrades":
         header(frame, "Upgrades", "125 SALVAGE")
-        list_rows(frame, [("Calibrated Rails", "+8% weapon damage", "70", False), ("Cycling Chamber", "+9% fire rate", "125", True), ("Resonant Cells", "+10% weapon damage", "210", True), ("Ablative Hull", "+1 hull across your fleet", "95", False)])
+        label(ImageDraw.Draw(frame), "‹ SHIP BAY   /   UPGRADES", 22, 110, WHITE, size=11)
+        list_rows(frame, [("Calibrated Rails", "+8% weapon damage", "70", False), ("Cycling Chamber", "+9% fire rate · needs Rails", "125", True), ("Resonant Cells", "+10% damage · needs Chamber", "210", True), ("Ablative Hull", "+1 hull across your fleet", "95", False)], top=132)
         button(frame, "Inspect Calibrated Rails", 22, h - 72, w - 44)
     elif state == "records":
         header(frame, "Records", "ON THIS DEVICE")
@@ -251,6 +283,7 @@ def compose(state, size):
             "purchase": ("Calibrated Rails", "+8% weapon damage on every ship.\n70 Salvage", "Install for 70", "Back to upgrades", "UPGRADE"),
             "endless_end": ("New survival best", "06:42  ·  21,030 score\nNeedle · Standard", "Fly again", "Stage Select", "ENDLESS"),
             "offline": ("Save unavailable", "The flight can continue.\nLocal storage is currently blocked.", "Retry saving", "Back to title", "DEVICE STORAGE"),
+            "offline_ready": ("Offline play ready", "Stages and ships are available.\nRecords are saved on this device.", "Stage Select", "Settings", "CONNECTION LOST"),
             "finale": ("Crownfall", "The Dominion's relay network is down.\nAll Arcade stages can be replayed.", "Stage Select", "Flight records", "CAMPAIGN COMPLETE"),
         }
         panel(frame, *states[state])
