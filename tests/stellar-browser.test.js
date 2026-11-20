@@ -285,6 +285,7 @@ test('Space activates Pause on focus and uses the indicated ability from the pla
         await button(/^01 Vesper Orbit/).press('Enter');
         await playing();
         await page.evaluate(() => { window.controlProbe.state.flight.player.ghostEnergy = 100; });
+        await page.waitForFunction(() => document.getElementById('ghost-meter').getAttribute('aria-valuenow') === '100');
         await page.keyboard.press('Tab');
         await page.keyboard.press('Tab');
         assert.equal(await page.evaluate(() => document.activeElement?.id), 'pause');

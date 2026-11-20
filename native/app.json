@@ -10,6 +10,7 @@
       "bundleIdentifier": "com.renegade21ai.stellarrebels",
       "supportsTablet": true,
       "infoPlist": {
+        "NSAppTransportSecurity": { "NSAllowsArbitraryLoads": false },
         "UISupportedInterfaceOrientations~ipad": [
           "UIInterfaceOrientationPortrait", "UIInterfaceOrientationPortraitUpsideDown",
           "UIInterfaceOrientationLandscapeLeft", "UIInterfaceOrientationLandscapeRight"

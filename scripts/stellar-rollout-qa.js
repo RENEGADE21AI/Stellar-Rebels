@@ -50,14 +50,26 @@ async function main() {
   const incoming = await manifest(nextDir);
   assert.notEqual(installed.assetVersion, incoming.assetVersion);
   const absent = `/arcade/${incoming.assetVersion}/app.mjs`;
+  const crown = `/arcade/${installed.assetVersion}/media/sprites/crown.png`;
+  const audioFile = `/arcade/${installed.assetVersion}/audio/gravitys-edge.mp3`;
   let served = path.resolve(installedDir);
   let withholdModule = false;
+  let repairing = false;
+  let repairAudioRequests = 0;
+  let repairCrownRequests = 0;
   let unavailable = 0;
   const server = http.createServer(async (request, response) => {
     const pathname = new URL(request.url, 'http://localhost').pathname;
     if (withholdModule && pathname === absent) {
       unavailable++;
       response.writeHead(503, { 'Cache-Control':'no-store' }).end('Flight module temporarily unavailable');
+      return;
+    }
+    if (repairing && pathname === crown) repairCrownRequests++;
+    if (repairing && pathname === audioFile) {
+      repairAudioRequests++;
+      const wait = setTimeout(() => response.writeHead(504).end('Delayed unrelated audio'), 14500);
+      response.once('close', () => clearTimeout(wait));
       return;
     }
     const file = path.resolve(served, `.${pathname === '/' ? '/index.html' : pathname}`);
@@ -96,6 +108,21 @@ async function main() {
     await page.getByRole('button', { name:'High contrast hazards', pressed:true }).waitFor();
     await page.reload();
     await button('Play').waitFor();
+
+    await page.evaluate(async ([pack, crown, audio]) => {
+      const cache = await caches.open(`stellar-flight-${pack}`);
+      if (!await cache.match(audio) || !await cache.delete(crown)) throw Error('Fixture needs the complete installed pack');
+    }, [installed.assetVersion, crown, audioFile]);
+    repairing = true;
+    const repairStarted = performance.now();
+    const repair = await page.goto(`${url}?rollout=repair`, { waitUntil:'domcontentloaded' });
+    assert.equal(repair.fromServiceWorker(), true, 'The cache repair must use the installed worker');
+    await button('Play').waitFor({ timeout:5000 });
+    repairing = false;
+    const repairedInMs = Math.round(performance.now() - repairStarted);
+    await controllerReady(page, installed.assetVersion);
+    assert.ok(repairCrownRequests > 0, 'The missing boss art must be fetched');
+    assert.equal(repairAudioRequests, 0, 'Repair must leave already cached audio alone');
 
     served = path.resolve(nextDir);
     withholdModule = true;
@@ -141,7 +168,8 @@ async function main() {
     await page.getByRole('button', { name:'High contrast hazards', pressed:true }).waitFor();
     await page.getByText('Offline flight pack ready.', { exact:true }).waitFor();
     assert.deepEqual(errors, []);
-    const result = { installed, incoming, fromServiceWorker:interrupted.fromServiceWorker(), failedModuleRequests:unavailable, playableWhileWithheld:true,
+    const result = { installed, incoming, repair:{ repairedInMs, repairCrownRequests, repairAudioRequests },
+      fromServiceWorker:interrupted.fromServiceWorker(), failedModuleRequests:unavailable, playableWhileWithheld:true,
       pausedFlightPreserved:true, oldAudioOffline:audio, menuUpdateOffered, fullReplacementActivated:true, settingsPreserved:true };
     await fs.writeFile(path.join(output,'rollout.json'), JSON.stringify(result,null,2) + '\n');
     console.log(JSON.stringify(result));

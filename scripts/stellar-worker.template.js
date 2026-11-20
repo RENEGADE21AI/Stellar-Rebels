@@ -4,12 +4,16 @@ const files = __PACK__;
 const precache = new Set(files);
 const generationPath = cacheName.replace('stellar-flight-', '/arcade/') + '/';
 
-async function packReady(cache) {
+async function missingFiles(cache) {
   const present = new Set((await cache.keys()).map((entry) => new URL(entry.url).pathname));
-  return files.every((url) => present.has(url));
+  return files.filter((url) => !present.has(url));
 }
 
-async function fillPack(cache, signal) {
+async function packReady(cache) {
+  return (await missingFiles(cache)).length === 0;
+}
+
+async function validatedDocument(signal) {
   const home = await fetch('/index.html', { cache: 'reload', signal });
   if (!home.ok) throw Error('Flight document unavailable');
   const html = await home.text();
@@ -17,13 +21,20 @@ async function fillPack(cache, signal) {
   const headers = new Headers(home.headers);
   headers.delete('content-encoding');
   headers.delete('content-length');
-  const assets = files.filter((url) => url !== '/index.html');
-  await cache.addAll(assets.map((url) => new Request(url, { cache: 'reload', signal })));
-  await cache.put('/index.html', new Response(html, { headers }));
+  return new Response(html, { headers });
+}
+
+async function fillPack(cache, needed, signal) {
+  // Unversioned files belong with the server's current document. Versioned assets
+  // have their generation in their URLs and can be repaired from those URLs alone.
+  const document = needed.some((url) => !url.startsWith(generationPath)) ? await validatedDocument(signal) : null;
+  const assets = needed.filter((url) => url !== '/index.html');
+  if (assets.length) await cache.addAll(assets.map((url) => new Request(url, { cache: 'reload', signal })));
+  if (needed.includes('/index.html')) await cache.put('/index.html', document);
 }
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(cacheName).then(fillPack).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(cacheName).then((cache) => fillPack(cache, files)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
@@ -64,13 +75,17 @@ async function fromRange(request, cached) {
 async function flightDocument(cache) {
   // Keep the installed document pinned until a replacement worker finishes installing.
   const installed = await cache.match('/index.html');
-  if (installed && await packReady(cache)) return installed;
+  const missing = await missingFiles(cache);
+  if (installed && missing.length === 0) return installed;
+  if (!installed && !missing.includes('/index.html')) missing.push('/index.html');
 
   const recovery = new AbortController();
   const timeout = setTimeout(() => recovery.abort(), 12_000);
   try {
-    await fillPack(cache, recovery.signal);
-    return await cache.match('/index.html');
+    await fillPack(cache, missing, recovery.signal);
+    const repaired = await cache.match('/index.html');
+    if (repaired && await packReady(cache)) return repaired;
+    throw Error('Flight pack remains incomplete');
   } catch {
     return (await cache.match('/offline.html')) ?? new Response(
       '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Stellar Rebels</title><main><h1>Flight pack missing</h1><p>Reconnect and reload. Your device save is stored separately.</p><a href="/">Reload</a></main>',
