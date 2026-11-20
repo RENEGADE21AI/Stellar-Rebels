@@ -6,9 +6,9 @@ Mode EXACT. Three comprehensive independent assignments across the project. The 
 | --- | --- | --- | --- | --- |
 | 1 | `71ab835d661516ac0bae72dc9cc5ab4d034b1d3c` design and actual concepts | Nov 19, product-critic `product_design` | FIXES REQUIRED | SR-D01–08. See discovery and verification below. |
 | 2 | `cd22e945fc8f92df817041818daaf53883794655`, pack `b76c478691596d2`, frozen three-stage browser artifact | Nov 19, product-critic `product_three_stages` | FIXES REQUIRED, all corrective checks passed | SR2-01–06 independently verified on `ff2e1db56c129c8defa5487a3bcb02e256f40298`. |
-| 3 | Complete release candidate | Pending | Pending | Pending |
+| 3 | `3e9d3fde4275214006c37ac42d113e593ec3b2dd`, pack `168e4072b985801`, complete six-stage web package and portable ZIP | Nov 19, product-critic `product_release` | FIXES REQUIRED on discovery | P3-01–05 below. Focused recheck follows the corrections. |
 
-Remaining allowance is **1**. A dispatched assignment consumes its slot. Same-critic targeted verification stays within the designated slot.
+Remaining allowance is **0**. The three independent reports are complete. Same-critic targeted verification stays within the designated slot.
 
 ## Fixed product rubric
 
@@ -59,3 +59,17 @@ An independent reviewer used the clean artifact in Chromium with compact and tal
 A separate stock run of this exact checkpoint played Vesper Orbit at normal time in Chromium using 938 touch-move events and read-only pilot telemetry. It finished in 176.7 game seconds with 27,264 score, Warden mastery and 78 Salvage. Host p95 was 16.7 ms across 10,600 measured intervals. This run establishes one mechanically reachable full playthrough at phone scale. Human difficulty and target-device measurements remain separate.
 
 The same critic verified all six fixes on `ff2e1db56c129c8defa5487a3bcb02e256f40298`, pack `9c327b7c60d6ce9`. At both viewport sizes, stock Gunship touch crossed the widest late Harrow pair with all six hull intact. Both storage recovery outcomes persisted after reload. The independent checks also exercised all visible combat notices, escort shield math and effects, named equipment in reloaded records, and pack eviction and repair.
+
+## Review 3 discovery and corrections
+
+The critic independently exercised the exact packaged campaign in Chromium and WebKit contexts and compared actual captures at 320 × 568 and 390 × 844. The critic reran the 11 then-current targeted tests and the six-boss settlement journey. The archive contained 65 files matching the web artifact byte for byte. The independent installability probe reported no errors, and the cold title transferred 539,570 bytes including navigation. Touch defeat, retry, and Endless settlement were also exercised. The requested native, physical-device and public acceptance require separate evidence.
+
+The local web assessment was 8.5/10. Category scores were visual 8.6, usability 7.9, functionality 9.0, reliability 8.6, security/privacy/accessibility 8.0, performance/cost 8.7 and cohesion 8.5. The critic withheld a wider release score and held the local web candidate on combat feedback.
+
+| Finding | Correction |
+| --- | --- |
+| P3-01 · Medium | Recommendations and alerts could cover the ship during a rail hit. Instructions now sit inside the fixed top HUD. The browser regression steers into the old overlap area at both sizes and waits for the actual Red Sun rail hit. |
+| P3-02 · Low | A fatal hit and coincident Repair could produce a defeat with restored hull. A terminal step now exits before consuming pickups. The deterministic test covers the authored finale coincidence. |
+| P3-03 · Low | Keyboard focus jumped to the Hangar header when switching tabs, inspecting a ship or returning from an upgrade detail. The selected control or upgrade card retains focus. A dedicated test checks the resulting Tab order. |
+| P3-04 · Low | Reduced motion changed the point from which a banked shot originated. Shot origins now use the same geometry, and the renderer retains the matching bank without shake or flicker in reduced motion. |
+| P3-05 · Low | Stage Select showed a mastery title without its requirement. Rows now show the objective and the Endless entry identifies its survival record and zero Salvage reward. |

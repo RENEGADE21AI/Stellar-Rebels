@@ -11,6 +11,7 @@ Originality, silhouette and role recognition 25%, modeling and proportion 15%, m
 | Stage 1 vertical slice | `a7e66200ba87f27dfd9b1fc19021273ca40d10f1`, individual alpha sprites, legacy comparisons and 320 × 568 / 390 × 844 Chromium captures | Art critic 1, `art_slice`, FIXES REQUIRED, 66/100 | ART-S1-01–05. See corrections and verification below. |
 | Revised opening verification | `cd22e945fc8f92df817041818daaf53883794655`, matched treatments, Vesper boss and inner fleet | Same critic, targeted retest, FIXES REQUIRED, 77/100 | Verified Vesper overlays, uniform scaling and cover consistency. Kept finish and linked anchors open. Added ART-V3-01 and ART-V3-02. |
 | Full route, revised materials and outer fleet | `ff2e1db56c129c8defa5487a3bcb02e256f40298`, all six stages and finished graded plates | Art critic 2, `art_full`, HOLD, 83/100 | ART-F01–03. Verified source renders, alpha bounds, major silhouettes and grade. |
+| Full-route focused retest | `3e9d3fde4275214006c37ac42d113e593ec3b2dd`, pack `168e4072b985801` | Same art critic, READY, 88/100 | All three findings passed on exact 320 × 568 and 390 × 844 captures. |
 
 ## Opening discovery and corrections
 
@@ -37,3 +38,5 @@ The critic opened exact runtime shots from all six stages and ran touch in Chrom
 | ART-F01 · Blocker | Harrow's queued next seam could be mistaken for the opening in the leading row. The live seam now follows the actual stones in pale teal. The next seam uses a separate amber dashed forecast near its launch point. The second warning starts later, and both rows launch clear of the boss hull. |
 | ART-F02 · Material | At compact size the boss meter covered the Gravity Platform's upper lobes. The Platform settles 24 world units lower to reserve that clearance. |
 | ART-F03 · Material | The Rail Ship's beam could appear disconnected when baited sideways. Its forward muzzle now projects a visible targeting link and focusing lens into the locked stripe. The Flagship uses the same cue. |
+
+The independent recheck reproduced the previous Harrow attack and verified that the shipped rows keep their own marks through warning and descent, in default and high contrast. The Gravity Platform clears the compact HUD at peak bob by 1.6 CSS pixels and the tall HUD by 69 pixels. Both off-axis rail attacks remain attached to a visible emitter and focal lens. The critic accepted the art at these browser sizes. Debris can skim the lower hull briefly during release, and the compact HUD trims a thin upper edge of the Rail Ship and Flagship in some poses. The attack cues and roles remain legible. Physical-device rendering remains outside the measured evidence.

@@ -265,7 +265,7 @@ export class FlightScene {
     const p = flight.player;
     const plume = prefs.reduced ? 15 : 13 + (Math.sin(flight.elapsed * 75) + 1) * 2.6;
     for (const [dx, dy] of flight.ship.engines) {
-      const { x, y } = hardpointAt(p, dx, dy, prefs.reduced ? 0 : p.bank);
+      const { x, y } = hardpointAt(p, dx, dy, p.bank);
       const color = p.overdrive ? '#ffd478' : '#72ffe6';
       const bloom = c.createLinearGradient(x, y, x, y + plume);
       bloom.addColorStop(0, color);
@@ -278,7 +278,7 @@ export class FlightScene {
       c.quadraticCurveTo(x + 4, y + 8, x + 3.6, y);
       c.fill();
     }
-    this.sprite(flight.run.ship, p.x, p.y, flight.ship.size, prefs.reduced ? 0 : p.bank,
+    this.sprite(flight.run.ship, p.x, p.y, flight.ship.size, p.bank,
       p.guard && !prefs.reduced ? .74 + .25 * Math.abs(Math.sin(flight.elapsed * 24)) : 1);
     if (p.barrier) {
       ring(c, p.x, p.y, 28, '#256fa4', 3.2);

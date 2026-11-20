@@ -88,7 +88,12 @@ function stages() {
     const available = hasStage(pilot, s.id);
     const clear = Boolean(pilot.clears[s.id]);
     const tag = available ? clear ? `${icon('check')} Replay` : 'Launch' : `${icon('lock')} Locked`;
-    const note = available ? clear && s.mastery ? state.pilot.mastery?.[s.id] ? 'Mastered' : s.mastery.name : s.region : `Clear ${stageById(s.id - 1)?.name ?? 'the previous stage'}`;
+    let note = s.region;
+    if (!available) note = `Clear ${stageById(s.id - 1)?.name ?? 'the previous stage'}`;
+    else if (clear && s.mastery) {
+      note = pilot.mastery?.[s.id] ? 'Mastered'
+        : s.mastery.condition === 'parts' ? 'Destroy both turrets first' : 'Keep hull intact in the boss fight';
+    }
     return `<li><button class="stage ${s.id === next?.id ? 'next' : ''}" style="--stage-color:${s.accent}" data-action="fly:${s.id}" ${available ? '' : 'disabled'}>
       <span class="stage-num">${chapter(s.id)}</span><span><span class="stage-name">${s.name}</span><span class="stage-note">${note}</span></span>
       <span class="stage-tag">${tag}</span></button></li>`;
@@ -96,7 +101,8 @@ function stages() {
   return screen('Stage Select', 'home', `
     <div class="cardline"><strong>${SHIPS[pilot.ship].name} equipped</strong><button data-action="hangar:stages">Change ship ${icon('next')}</button></div>
     <ol class="stage-list" aria-label="Arcade stages">${rows}</ol>
-    <div class="support-actions">${action('Endless', 'fly:endless', 'quiet', 'endless')}${action('Flight school', 'help:stages', 'flat', '')}</div>`, wallet());
+    <div class="support-actions"><div class="endless-entry">${action('Endless', 'fly:endless', 'quiet', 'endless', 'aria-describedby="endless-note"')}
+    <small id="endless-note">Survival record · 0 Salvage</small></div>${action('Flight school', 'help:stages', 'flat', '')}</div>`, wallet());
 }
 
 function hangar() {
@@ -248,6 +254,11 @@ function showHangar(from, selection = state.pilot.ship, tab = 'ships') {
   show('hangar');
 }
 
+function updateHangar(control) {
+  show('hangar', false);
+  menu.querySelector(`[data-action="${control}"]`)?.focus();
+}
+
 function readId() {
   if (crypto.randomUUID) return crypto.randomUUID();
   return Array.from(crypto.getRandomValues(new Uint32Array(4)), (n) => n.toString(16)).join('-');
@@ -272,7 +283,7 @@ async function start(which) {
   audio.play('flight');
   sky.setAttribute('tabindex', '-1');
   sky.focus({ preventScroll: true });
-  announce(endless ? 'Endless flight launched' : `${stageById(stage).name} launched`);
+  announce(endless ? 'Endless flight launched.' : `${state.flight.stage.name} launched. ${state.flight.stage.brief}`);
   if (document.hidden) pause(true);
 }
 
@@ -336,11 +347,15 @@ function refreshHud(restart = false) {
   const p = f.player;
   const activeBoss = Boolean(f.boss && f.boss.hull > 0);
   const message = f.notice?.time > 0 ? f.notice : null;
+  const brief = message && ['intro','tactic','warning'].includes(message.kind);
   content('flight-name', f.endless ? 'Endless' : f.stage.name);
   content('clock', time(f.elapsed));
+  $('clock').hidden = Boolean(brief);
+  $('flight-tip').hidden = !brief;
+  content('flight-tip', brief ? message.copy : '');
   content('flight-score', num(f.score));
   const meters = activeBoss ? '' : f.endless ? 'Survival' : `${Math.min(100, Math.floor(f.elapsed / f.stage.bossAt * 100))}% to boss`;
-  content('flight-progress', message?.kind === 'pickup' ? message.brief : meters);
+  content('flight-progress', message?.kind === 'pickup' ? message.brief : message?.kind === 'tactic' ? message.title : meters);
   content('chain', f.combo >= 2 ? `${f.combo} chain` : '');
   content('hull', Array.from({ length: p.maxHull }, (_, i) => `<i class="segment ${i < p.hull ? 'full' : ''}" aria-hidden="true"></i>`).join(''), true);
   $('hull').setAttribute('aria-valuemax', p.maxHull);
@@ -359,14 +374,8 @@ function refreshHud(restart = false) {
   content('field-effects', flags.map((flag) => `<span class="field-chip">${flag}</span>`).join(''), true);
   $('flight-help').hidden = f.elapsed > 8.5 || (f.endless && f.elapsed > 4.5);
   content('flight-help', state.input === 'keyboard' ? 'Arrows / WASD to steer · Auto-fire' : 'Drag to steer · Weapons fire automatically');
-  const callout = $('callout');
-  callout.hidden = !message || message.kind === 'pickup';
   if (message && (lastHud.message !== message || restart)) {
     lastHud.message = message;
-    callout.className = `callout ${message.kind}`;
-    callout.querySelector('strong').textContent = message.title;
-    callout.querySelector('span').textContent = message.copy;
-    callout.querySelector('strong').hidden = !message.title;
     if (['warning', 'pickup', 'tactic'].includes(message.kind)) announce([message.title,message.copy].filter(Boolean).join('. '));
   }
 }
@@ -402,20 +411,24 @@ async function handle(command) {
   const [type, value] = command.split(':');
   audio.unlock();
   audio.effect('ui');
-  if (type === 'view') { show(value); return; }
+  if (type === 'view') {
+    if (value === 'hangar' && state.view === 'upgrade') updateHangar(`upgrade:${state.upgrade}`);
+    else show(value);
+    return;
+  }
   if (type === 'hangar') { showHangar(value); return; }
   if (type === 'shop') { showHangar(value, state.pilot.ship, 'upgrades'); return; }
   if (type === 'unlocked') { showHangar('result', value); return; }
   if (type === 'help') { state.helpBack = value; show('help'); return; }
   if (type === 'fly') { await start(value); return; }
-  if (type === 'tab') { state.hangarTab = value; show('hangar'); return; }
-  if (type === 'inspect') { state.inspected = value; show('hangar'); return; }
+  if (type === 'tab') { state.hangarTab = value; updateHangar(command); return; }
+  if (type === 'inspect') { state.inspected = value; updateHangar(command); return; }
   if (type === 'upgrade') { state.upgrade = value; show('upgrade'); return; }
   if (type === 'equip') {
     const { pilot, result } = await store.change((saved) => equip(saved, value));
     state.pilot = pilot;
     announce(result ? `${SHIPS[value].name} equipped.` : 'Ship locked.');
-    show('hangar');
+    updateHangar(`inspect:${value}`);
     return;
   }
   if (type === 'install') {

@@ -254,7 +254,7 @@ export class Flight {
     const boosted = p.overdrive > 0;
     this.fireTimer += Math.max(.095, this.ship.interval / this.stats.rate / (boosted ? 1.56 : 1));
     const emit = ([dx, dy, angle, value], powered = false) => {
-      const { x, y } = hardpointAt(p, dx, dy, this.run.assistance.reduced ? 0 : p.bank);
+      const { x, y } = hardpointAt(p, dx, dy, p.bank);
       const speed = this.run.ship === 'needle' ? 782 : 685;
       this.friendly.push({ x, y, px: x, py: y, vx: Math.sin(angle) * speed, vy: -Math.cos(angle) * speed,
         strength: value * this.stats.damage * (boosted ? 1.21 : 1), powered, live: true });
@@ -449,12 +449,14 @@ export class Flight {
     this.moveProjectiles(dt);
     if (this.status !== 'active') return;
     operatorWarnings(this, dt);
+    if (this.status !== 'active') return;
     const p = this.player;
     for (const e of this.enemies) {
       if (e.hull > 0 && !e.retreat && overlap(e.x, e.y, e.spec.hit, { x: p.x, y: p.y, radius: this.ship.hit })) {
         if (this.damage(e.x, e.y)) e.retreat = true;
       }
     }
+    if (this.status !== 'active') return;
     this.enemies = this.enemies.filter((e) => e.hull > 0 && e.y < HEIGHT + 40 && e.y > -55 && e.x > -38 && e.x < WIDTH + 38);
     this.pickups = this.pickups.filter((drop) => {
       drop.age += dt;

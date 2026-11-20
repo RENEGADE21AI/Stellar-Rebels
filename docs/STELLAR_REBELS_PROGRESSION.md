@@ -29,7 +29,7 @@ All six stages, both earnable ships and six optional mastery objectives are play
 4. **Choosing how to play.** The player uses Interceptor or returns to Fighter to beat Relay Station, notices the linked enemy relationship and finds a way to dismantle it. The next location or arc resolution provides a further reason to finish.
 5. **One more try.** The player replays their favorite stage to earn its one mastery mark or improve a personal score. A short Endless flight is available if they'd like a different pace, then they can return to the Arcade route.
 
-With every upgrade installed, a session can open directly into a favorite boss and still demand the correct position and timing. The player may choose a quick Interceptor score attempt or a broader Gunship run, pursue a previously missed mastery mark, replay the final stage, or set a personal survival record. Permanent power can shorten exposure and help recover from mistakes. It cannot move the ship to the gap or choose a target. Compare stock and maximum-loadout attempts for this exact difference.
+With every upgrade installed, the player can replay a favorite stage and still face the boss's full attack sequence. The player may choose a quick Interceptor score attempt or a broader Gunship run, pursue a previously missed mastery mark, replay the final stage, or set a personal survival record. Permanent power can shorten exposure and help recover from mistakes. Reading the gap and choosing a target remain part of the run.
 
 ## Economy rules and testable examples
 

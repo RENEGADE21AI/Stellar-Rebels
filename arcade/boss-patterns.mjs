@@ -32,7 +32,7 @@ export function harrow(flight, boss, phase) {
     flight.fan(boss.x + 85, boss.y + 20, 1.98, 4, .14, 134 + phase * 19, 'seed');
   } else {
     const speed = globalThis.debrisWardenRowSpeed(boss.hull / boss.spec.hull, 'wall') * 60;
-    const y = boss.y + 53;
+    const y = boss.y + 81;
     markWall(flight, gap, { speed, y });
     if (phase && turn % 2 === 0) markWall(flight, gapOrder[(turn + 1) % gapOrder.length], { speed, y, delay:2.12 });
   }
@@ -97,14 +97,14 @@ export function flagship(flight, boss, phase) {
       const x = boss.x + part.dx;
       flight.fan(x, boss.y + part.dy + 14, Math.PI/2 + Math.sign(part.dx) * .38, 4, .128, 177, 'lance');
     }
-    if (boss.attack % 2 === 0) markWall(flight, gapOrder[boss.attack % gapOrder.length], { speed:147, y:boss.y + 80 });
+    if (boss.attack % 2 === 0) markWall(flight, gapOrder[boss.attack % gapOrder.length], { speed:147, y:boss.y + 101 });
     boss.timer = 2.64;
     return;
   }
   const turn = boss.attack % 3;
   const y = boss.y + 32;
   if (turn === 0) {
-    markWall(flight, gapOrder[(boss.attack + 1) % gapOrder.length], { speed:161 + phase * 16, y:boss.y + 80 });
+    markWall(flight, gapOrder[(boss.attack + 1) % gapOrder.length], { speed:161 + phase * 16, y:boss.y + 101 });
     boss.timer = 2.50;
   } else if (turn === 1) {
     const x = flight.player.x;

@@ -165,3 +165,91 @@ test('restoring IndexedDB reconciles temporary results with the actual saved rec
     }
   } finally { await browser.close(); }
 });
+
+test('flight instructions stay in the HUD during real touch and a rail strike', { skip: !origin, timeout:60000 }, async () => {
+  const browser = await chromium.launch();
+  try {
+    for (const viewport of [{width:320,height:568},{width:390,height:844}]) {
+      const context = await browser.newContext({viewport,isMobile:true,hasTouch:true,serviceWorkers:'block'});
+      try {
+        const page = await context.newPage();
+        const touch = await context.newCDPSession(page);
+        await page.route(/\/app\.mjs(\?|$)/, async (route) => {
+          const response = await route.fetch();
+          await route.fulfill({response, body:(await response.text())+'\nwindow.hudProbe = {state,renderer,store};'});
+        });
+        const dragHigh = async () => {
+          const x = viewport.width / 2;
+          await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y:viewport.height*.82}]});
+          await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:viewport.height*.36}]});
+          await page.waitForFunction(() => window.hudProbe.state.flight.player.y < 341);
+          await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+        };
+        const verifyClearance = async () => {
+          const clearance = await page.evaluate(() => {
+            const {state,renderer} = window.hudProbe;
+            const f = state.flight;
+            const frame = renderer.canvas.getBoundingClientRect();
+            const y = frame.top + (frame.height - 768 * renderer.unit) / 2;
+            const shipTop = y + (f.player.y - f.ship.size / 2) * renderer.unit;
+            const tip = document.querySelector('#flight-tip');
+            return {inside:tip.closest('.instrument') !== null, gap:shipTop - tip.getBoundingClientRect().bottom};
+          });
+          assert.ok(clearance.inside && clearance.gap > 30, JSON.stringify(clearance));
+        };
+
+        await page.goto(origin);
+        await page.getByRole('button',{name:'Play',exact:true}).tap();
+        await page.getByRole('button',{name:/01 Vesper Orbit/}).tap();
+        await page.getByText('Fight through the blockade.',{exact:true}).waitFor();
+        await dragHigh();
+        await verifyClearance();
+        await page.evaluate(async () => {
+          await window.hudProbe.store.change((pilot) => { pilot.clears = {1:1,2:1,3:1,4:1}; });
+        });
+
+        await page.reload();
+        await page.getByRole('button',{name:'Play',exact:true}).tap();
+        const redSun = page.getByRole('button',{name:/04 Red Sun/});
+        assert.match(await redSun.innerText(),/Keep hull intact in the boss fight/);
+        assert.equal(await page.getByRole('button',{name:'Endless',exact:true}).getAttribute('aria-describedby'),'endless-note');
+        assert.match(await page.locator('#endless-note').innerText(),/0 Salvage/);
+        await redSun.tap();
+        await page.locator('#flight-tip').waitFor();
+        await dragHigh();
+        await page.evaluate(() => {
+          const f = window.hudProbe.state.flight;
+          f.elapsed = 44.98;
+          f.waveIndex = f.stage.waves.length;
+          f.dropIndex = f.stage.drops.length;
+          f.player.guard = 0;
+        });
+        await page.getByText('Leave the striped lane.',{exact:true}).waitFor();
+        await verifyClearance();
+        await page.waitForFunction(() => window.hudProbe.state.flight.player.hull === 4);
+      } finally { await context.close(); }
+    }
+  } finally { await browser.close(); }
+});
+
+test('keyboard focus follows hangar controls and an upgrade detail return', { skip: !origin, timeout:30000 }, async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({viewport:{width:390,height:844}});
+    await page.goto(origin);
+    await page.getByRole('button',{name:'Hangar',exact:true}).press('Enter');
+    const activate = async (button) => {
+      await button.press('Enter');
+      assert.equal(await button.evaluate((node) => document.activeElement === node),true);
+    };
+    await activate(page.getByRole('button',{name:/^Interceptor/}));
+    await activate(page.getByRole('button',{name:'Upgrades',exact:true}));
+    const chamber = page.getByRole('button',{name:/^Cycling Chamber/});
+    await chamber.press('Enter');
+    await page.getByRole('heading',{name:'Cycling Chamber'}).waitFor();
+    await page.getByRole('button',{name:'Back',exact:true}).press('Enter');
+    assert.equal(await chamber.evaluate((node) => document.activeElement === node),true);
+    await page.keyboard.press('Tab');
+    assert.equal(await page.getByRole('button',{name:/^Resonant Cells/}).evaluate((node) => document.activeElement === node),true);
+  } finally { await browser.close(); }
+});

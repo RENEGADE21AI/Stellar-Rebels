@@ -63,7 +63,7 @@ async function compare(browser, viewport, prefix) {
       f.dropIndex = f.stage.drops.length;
     });
     await page.clock.runFor(3120);
-    assert.equal(await page.locator('#callout').isVisible(), false, 'boss intro leaves the first volley unobscured');
+    assert.equal(await page.locator('#flight-tip').isVisible(), false, 'the HUD returns to the clock for the first boss volley');
     await save('first-boss-volley-fixture');
     await page.clock.resume();
     const measure = (raw) => page.evaluate((raw) => new Promise((resolve) => {

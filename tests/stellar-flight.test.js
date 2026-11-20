@@ -163,6 +163,34 @@ test('linked Gunners launch from both rotated hardware mounts', async () => {
   assert.deepEqual(f.hostile.map(({ x,y }) => ({ x,y })), GUNNER_MUZZLES.map(([dx,dy]) => hardpointAt(wing,dx,dy,wing.turn)));
 });
 
+test('fatal rail damage ends the run before a simultaneous repair', async () => {
+  const [{ Flight }] = await load;
+  const f = new Flight(context(6));
+  f.elapsed = 65.999;
+  f.terrainIndex = 1;
+  f.dropIndex = 2;
+  f.waveIndex = f.stage.waves.length;
+  Object.assign(f.player, {x:191, y:308.5, guard:0, hull:1});
+  f.reanchor();
+  while (f.status === 'active' && f.elapsed < 67.3) f.step(step);
+  assert.equal(f.terminal()?.status, 'defeat');
+  assert.equal(f.player.hull, 0);
+  assert.ok(f.events.some((event) => event.type === 'playerDown'));
+  assert.ok(!f.events.some((event) => event.type === 'pickup'));
+});
+
+test('reduced effects preserve shot origins and combat outcomes', async () => {
+  const [{ Flight }] = await load;
+  const standard = new Flight(context());
+  const reduced = new Flight({ ...context(), assistance:{reduced:true} });
+  for (const f of [standard,reduced]) {
+    f.drag(-123,-14);
+    f.player.bank = -.18;
+    f.shoot(.25);
+  }
+  assert.deepEqual(standard.friendly,reduced.friendly);
+});
+
 test('legacy decoding preserves all device save keys and reads nested historical records', async () => {
   const [, { legacyArchive }] = await load;
   const values = new Map([

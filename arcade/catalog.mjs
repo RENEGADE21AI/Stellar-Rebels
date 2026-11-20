@@ -87,9 +87,9 @@ export const BOSSES = {
   gatekeeper: { name: 'Warden', intro: 'Destroy the marked turrets to cut their fire.', hull: 164, size: 267, hit: 41, motion: 43, parts: [[-69, 31], [69, 31]], partHull: 27 },
   warden: { name: 'Harrow', intro: 'Move through the seams in the debris walls.', hull: 186, size: 242, hit: 44, motion: 42, parts: [] },
   matron: { name: 'Relay Carrier', intro: 'Break the linked nodes to expose the core.', hull: 196, size: 246, hit: 37, motion: 42, parts: [[-70, 6], [70, 6]], partHull: 30 },
-  tyrant: { name: 'Rail Ship', intro: 'Leave its striped lane before the rail fires.', hull: 238, size: 245, hit: 40, motion: 47, parts: [] },
-  siphon: { name: 'Gravity Platform', intro: 'Keep clear of its pull lane and rotating fan.', hull: 253, size: 247, hit: 39, motion: 47, arrivalY: 254, parts: [] },
-  crown: { name: 'Flagship', intro: 'Break its pylons and read the next safe seam.', hull: 272, size: 258, hit: 45, motion: 45, parts: [[-74, 8], [74, 8]], partHull: 37 }
+  tyrant: { name: 'Rail Ship', intro: 'Leave its striped lane before the rail fires.', hull: 238, size: 245, hit: 40, motion: 47, arrivalY: 245, parts: [] },
+  siphon: { name: 'Gravity Platform', intro: 'Keep clear of its pull lane and rotating fan.', hull: 253, size: 247, hit: 39, motion: 47, arrivalY: 258, parts: [] },
+  crown: { name: 'Flagship', intro: 'Break its pylons and read the next safe seam.', hull: 272, size: 258, hit: 45, motion: 45, arrivalY: 245, parts: [[-74, 8], [74, 8]], partHull: 37 }
 };
 
 export function stageById(id) {

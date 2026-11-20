@@ -26,12 +26,11 @@
       <div class="flight-ui">
         <div class="instrument">
           <div class="hull"><span class="caption">Hull</span><div id="hull" role="meter" aria-label="Hull" aria-valuemin="0" aria-valuemax="5" aria-valuenow="5"></div></div>
-          <div class="flight-label"><span id="flight-name">Vesper Orbit</span><span id="clock" class="caption">00:00</span></div>
+          <div class="flight-label"><span id="flight-name">Vesper Orbit</span><span id="clock" class="caption">00:00</span><span id="flight-tip" hidden></span></div>
           <button id="pause" class="icon-button" type="button" aria-label="Pause"></button>
         </div>
         <div class="run-line"><span id="flight-score">0</span><span id="flight-progress"></span><span id="chain"></span></div>
         <div id="boss-meter" class="boss-hud" hidden><span id="boss-name"></span><div id="boss-track" role="meter" aria-label="Boss hull" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><div id="boss-value"></div></div></div>
-        <div id="callout" class="callout" hidden><strong></strong><span></span></div>
         <div class="flight-footer"><div id="field-effects"></div><p id="flight-help">Drag to steer · Weapons fire automatically</p></div>
       </div>
       <dialog id="flight-modal" aria-labelledby="pause-title"></dialog>
