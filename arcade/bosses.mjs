@@ -39,7 +39,8 @@ export function advanceBoss(flight, dt) {
   b.hitFlash = Math.max(0, b.hitFlash - dt);
   for (const part of b.parts) part.flash = Math.max(0, part.flash - dt);
   const entry = Math.min(1, b.age / b.entryTime);
-  b.y = -100 + 330 * (1 - (1 - entry) ** 2) + 7 * Math.sin(b.age * 1.1) * entry;
+  const arrivalY = b.spec.arrivalY ?? 230;
+  b.y = -100 + (100 + arrivalY) * (1 - (1 - entry) ** 2) + 7 * Math.sin(b.age * 1.1) * entry;
   b.x = WIDTH / 2 + b.spec.motion * Math.sin(Math.max(0, b.age - b.entryTime) * .78);
   b.timer -= dt;
   if (b.age < b.entryTime || b.timer > 0) return;
@@ -54,13 +55,16 @@ export function operatorWarnings(flight, dt) {
     warning.age += dt;
     if (delayed && warning.age >= 0) flight.signal('charge', warning.x, warning.y);
     if (warning.age < warning.windup) continue;
+    if (warning.kind === 'wall' && warning.triggered) warning.rowY += warning.rowSpeed * dt;
     if (!warning.triggered) {
       warning.triggered = true;
       flight.signal('hazard', warning.x, warning.y ?? 150);
       if (warning.kind === 'wall') {
+        warning.rowY = warning.y;
+        warning.rowSpeed = warning.speed * flight.pressure;
         for (let x = 18; x <= WIDTH - 13; x += 34) {
           if (Math.abs(x - warning.x) < warning.width / 2 + 11) continue;
-          flight.projectile(x, 112, Math.PI/2, warning.speed, 'rock');
+          flight.projectile(x, warning.y, Math.PI/2, warning.speed, 'rock');
         }
       }
     }
@@ -74,5 +78,7 @@ export function operatorWarnings(flight, dt) {
       if (falloff > 0) flight.drag(Math.sign(offset) * Math.min(Math.abs(offset), (48 + 60 * falloff) * dt), 0);
     }
   }
-  flight.hazards = flight.hazards.filter((warning) => warning.age < warning.windup + warning.live);
+  flight.hazards = flight.hazards.filter((warning) => warning.kind === 'wall'
+    ? !warning.triggered || warning.rowY < HEIGHT + 17
+    : warning.age < warning.windup + warning.live);
 }

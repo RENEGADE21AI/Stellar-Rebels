@@ -3,15 +3,16 @@ import { WIDTH } from './catalog.mjs';
 export function markWall(flight, slot, options = {}) {
   const gap = globalThis.debrisSafeGap(slot, { slots:5, width:WIDTH, asteroidRadius:12, playerRadius:flight.ship.hit, margin:8 });
   const delay = options.delay ?? 0;
+  const y = options.y ?? 176;
   flight.hazards.push({
-    kind:'wall', x:gap.center, y:111, width:Math.max(94, gap.width), age:-delay, windup:1.12,
-    live:0.10, speed:options.speed ?? 141
+    kind:'wall', x:gap.center, y, width:Math.max(94, gap.width), age:-delay, windup:1.12,
+    speed:options.speed ?? 141
   });
-  if (!delay) flight.signal('charge', gap.center, 112);
+  if (!delay) flight.signal('charge', gap.center, y);
 }
 
-export function markRail(flight, x, width = 38, y = 105) {
-  flight.hazards.push({ kind:'rail', x, y, width, age:0, windup:1.22, live:.24 });
+export function markRail(flight, x, width = 38, y = 105, emitter = null) {
+  flight.hazards.push({ kind:'rail', x, y, width, age:0, windup:1.22, live:.24, emitter });
   flight.signal('charge', x, y);
 }
 
@@ -31,8 +32,9 @@ export function harrow(flight, boss, phase) {
     flight.fan(boss.x + 85, boss.y + 20, 1.98, 4, .14, 134 + phase * 19, 'seed');
   } else {
     const speed = globalThis.debrisWardenRowSpeed(boss.hull / boss.spec.hull, 'wall') * 60;
-    markWall(flight, gap, { speed });
-    if (phase && turn % 2 === 0) markWall(flight, gapOrder[(turn + 1) % gapOrder.length], { speed, delay:1.25 });
+    const y = boss.y + 53;
+    markWall(flight, gap, { speed, y });
+    if (phase && turn % 2 === 0) markWall(flight, gapOrder[(turn + 1) % gapOrder.length], { speed, y, delay:2.12 });
   }
   boss.timer = lighter ? 2.32 : phase ? 3.25 : 3.75;
 }
@@ -59,10 +61,10 @@ export function railShip(flight, boss, phase) {
   const y = boss.y + 52;
   const lockedX = flight.player.x;
   if (boss.attack % 3 !== 0) {
-    markRail(flight, lockedX, phase ? 44 : 36, y);
+    markRail(flight, lockedX, phase ? 44 : 36, boss.y + 116, 79);
     if (phase && boss.attack % 3 === 2) {
       const reserve = lockedX < WIDTH / 2 ? WIDTH - 59 : 59;
-      markRail(flight, reserve, 27, y);
+      markRail(flight, reserve, 27, boss.y + 116, 79);
     }
     boss.timer = 2.43;
     return;
@@ -95,18 +97,18 @@ export function flagship(flight, boss, phase) {
       const x = boss.x + part.dx;
       flight.fan(x, boss.y + part.dy + 14, Math.PI/2 + Math.sign(part.dx) * .38, 4, .128, 177, 'lance');
     }
-    if (boss.attack % 2 === 0) markWall(flight, gapOrder[boss.attack % gapOrder.length], { speed:147 });
+    if (boss.attack % 2 === 0) markWall(flight, gapOrder[boss.attack % gapOrder.length], { speed:147, y:boss.y + 80 });
     boss.timer = 2.64;
     return;
   }
   const turn = boss.attack % 3;
   const y = boss.y + 32;
   if (turn === 0) {
-    markWall(flight, gapOrder[(boss.attack + 1) % gapOrder.length], { speed:161 + phase * 16 });
+    markWall(flight, gapOrder[(boss.attack + 1) % gapOrder.length], { speed:161 + phase * 16, y:boss.y + 80 });
     boss.timer = 2.50;
   } else if (turn === 1) {
     const x = flight.player.x;
-    markRail(flight, x, 41, y);
+    markRail(flight, x, 41, boss.y + 119, 82);
     flight.fan(boss.x, y, Math.PI/2, 6, .19, 150, 'pulse');
     boss.timer = 2.42;
   } else {

@@ -147,6 +147,10 @@ test('rail and gravity lanes take effect only at the marked place and time', asy
   operatorWarnings(f, 1.20);
   assert.ok(f.hostile.length > 0);
   assert.ok(f.hostile.every((shot) => Math.abs(shot.x - f.hazards[0].x) >= f.hazards[0].width/2+11));
+  const wall = f.hazards[0];
+  f.hostile.forEach((shot) => { shot.y += shot.vy * .4; });
+  operatorWarnings(f, .4);
+  assert.ok(f.hostile.every((shot) => Math.abs(shot.y - wall.rowY) < .001));
 });
 
 test('linked Gunners launch from both rotated hardware mounts', async () => {

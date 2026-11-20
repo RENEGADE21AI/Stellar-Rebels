@@ -90,11 +90,11 @@ for (const scenario of [
     }
     const afterInput = await snapshot(page);
     assert.notEqual(afterInput.player.x, before.player.x, "WebKit gameplay input did not move the fighter");
-    await page.getByRole("button", { name: /Pause flight, costs one health bar/ }).evaluate((button) => button.click());
+    await page.getByRole("button", { name: "Pause flight, no health cost", exact: true }).evaluate((button) => button.click());
     await page.waitForFunction(() => JSON.parse(document.querySelector("#debugSnapshot").textContent).gameState === "paused");
     const paused = await snapshot(page);
     assert.equal(paused.gameState, "paused");
-    assert.equal(paused.player.hp, before.player.hp - 1);
+    assert.equal(paused.player.hp, afterInput.player.hp, "Pausing must preserve hull");
     await page.getByRole("button", { name: "Resume flight" }).evaluate((button) => button.click());
     await page.setViewportSize({ width: 844, height: 390 });
     await page.waitForTimeout(100);

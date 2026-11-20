@@ -168,7 +168,7 @@ export class FlightScene {
       c.translate(Math.sin(flight.elapsed * 169 + this.cameraPulse * 7) * this.cameraPulse * 3.4,
         Math.sin(flight.elapsed * 126 + this.cameraPulse * 5) * this.cameraPulse * 3.4);
     }
-    for (const warning of flight.hazards) this.warning(warning, prefs);
+    for (const warning of flight.hazards) this.warning(warning, prefs, flight.boss);
     this.drawLinks(flight);
     for (const enemy of flight.enemies) this.enemy(enemy, flight.elapsed);
     if (flight.boss) this.boss(flight.boss, prefs);
@@ -368,7 +368,7 @@ export class FlightScene {
     if (b.hitFlash > 0) ring(c, b.x, b.y + 4, 9, '#fff6dc88');
   }
 
-  warning(w, prefs) {
+  warning(w, prefs, boss) {
     if (w.age < 0) return;
     const c = this.ctx;
     const solid = w.age >= w.windup;
@@ -377,6 +377,15 @@ export class FlightScene {
     if (w.kind === 'rail') {
       const left = w.x - w.width / 2;
       const start = w.y;
+      if (Number.isFinite(w.emitter) && boss) {
+        const muzzleY = boss.y + w.emitter;
+        c.save();
+        c.setLineDash(solid ? [] : [5,4]);
+        line(c, boss.x, muzzleY, w.x - boss.x, start - muzzleY, solid ? '#eb9d77b8' : '#caa6a278', 1.8);
+        c.restore();
+        ring(c, w.x, start, Math.min(12, w.width * .29), solid ? '#fff2ca' : color, 2);
+        if (solid) filled(c, w.x, start, 4.6, '#fff7da');
+      }
       c.globalAlpha = solid ? .7 : .17;
       c.fillStyle = solid ? '#ff702c' : color;
       c.fillRect(left, start, w.width, HEIGHT - start);
@@ -391,15 +400,20 @@ export class FlightScene {
         line(c, left, start, 0, HEIGHT - start, color, 2.7);
         line(c, left + w.width, start, 0, HEIGHT - start, color, 2.7);
       }
-    } else if (w.kind === 'wall' && !solid) {
+    } else if (w.kind === 'wall') {
       const l = w.x - w.width / 2;
       const r = w.x + w.width / 2;
-      const y = 352;
-      line(c, 0, y, l - 5, 0, color, 2.4);
-      line(c, r + 5, y, WIDTH - r, 0, color, 2.4);
+      const y = solid ? w.rowY : w.y > 220 ? w.y + 30 : 352;
+      const seamColor = solid ? '#bfffe6' : color;
+      if (!solid) {
+        c.setLineDash([8,5]);
+        line(c, 0, y, l - 5, 0, color, 2.1);
+        line(c, r + 5, y, WIDTH - r, 0, color, 2.1);
+        c.setLineDash([]);
+      }
       for (const [x, sign] of [[l, 1], [r, -1]]) {
-        line(c, x, y - 10, 11 * sign, 10, '#b1ffea', 2.5);
-        line(c, x, y + 10, 11 * sign, -10, '#b1ffea', 2.5);
+        line(c, x, y - 10, 11 * sign, 10, seamColor, 2.5);
+        line(c, x, y + 10, 11 * sign, -10, seamColor, 2.5);
       }
     } else if (w.kind === 'pull') {
       c.globalAlpha = solid ? .12 : .07;

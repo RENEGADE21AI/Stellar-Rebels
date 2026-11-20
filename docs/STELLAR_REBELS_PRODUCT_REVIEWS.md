@@ -5,7 +5,7 @@ Mode EXACT. Three comprehensive independent assignments across the project. The 
 | Slot | Candidate | Dispatched | Completed report | Findings, changes and verification |
 | --- | --- | --- | --- | --- |
 | 1 | `71ab835d661516ac0bae72dc9cc5ab4d034b1d3c` design and actual concepts | Nov 19, product-critic `product_design` | FIXES REQUIRED | SR-D01–08. See discovery and verification below. |
-| 2 | `cd22e945fc8f92df817041818daaf53883794655`, pack `b76c478691596d2`, frozen three-stage browser artifact | Nov 19, product-critic `product_three_stages` | FIXES REQUIRED | SR2-01–06 below. Targeted corrections in the six-stage candidate. |
+| 2 | `cd22e945fc8f92df817041818daaf53883794655`, pack `b76c478691596d2`, frozen three-stage browser artifact | Nov 19, product-critic `product_three_stages` | FIXES REQUIRED, all corrective checks passed | SR2-01–06 independently verified on `ff2e1db56c129c8defa5487a3bcb02e256f40298`. |
 | 3 | Complete release candidate | Pending | Pending | Pending |
 
 Remaining allowance is **1**. A dispatched assignment consumes its slot. Same-critic targeted verification stays within the designated slot.
@@ -57,3 +57,5 @@ An independent reviewer used the clean artifact in Chromium with compact and tal
 | SR2-06 · Medium | A clear with a purchasable upgrade offers direct access to Upgrades and returns to the result. Records show installed item names. |
 
 A separate stock run of this exact checkpoint played Vesper Orbit at normal time in Chromium using 938 touch-move events and read-only pilot telemetry. It finished in 176.7 game seconds with 27,264 score, Warden mastery and 78 Salvage. Host p95 was 16.7 ms across 10,600 measured intervals. This run establishes one mechanically reachable full playthrough at phone scale. Human difficulty and target-device measurements remain separate.
+
+The same critic verified all six fixes on `ff2e1db56c129c8defa5487a3bcb02e256f40298`, pack `9c327b7c60d6ce9`. At both viewport sizes, stock Gunship touch crossed the widest late Harrow pair with all six hull intact. Both storage recovery outcomes persisted after reload. The independent checks also exercised all visible combat notices, escort shield math and effects, named equipment in reloaded records, and pack eviction and repair.
