@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" <title>Stellar Rebels app icon</title>
+    <defs><linearGradient id="field" x2=".9" y2="1"><stop stop-color="#152233"/>
+    <stop offset=".53" stop-color="#0b1320"/><stop offset="1" stop-color="#311b1c"/>
+    </linearGradient><linearGradient id="ember" x2="1" y2="1"><stop stop-color="#ffc180"/>
+    <stop offset="1" stop-color="#ff633d"/></linearGradient></defs>
+    <path fill="url(#field)" d="M0 0h1024v1024H0z"/>
+    <circle cx="512" cy="512" r="334" fill="#0d1623" stroke="#4b4750" stroke-width="3"/>
+    <path d="M187 535a326 326 0 0 1 580-223M838 494a326 326 0 0 1-589 216"
+      fill="none" stroke="url(#ember)" stroke-width="7" stroke-linecap="round"/>
+    <g transform="translate(242 243) scale(5.4)"><path fill="#fff0db" d="M50 8 86 69 69 63 50 34 30 63 14 69Z M12 73 34 66 50 92 24 82Z M88 73 66 66 50 92 76 82Z"/><path fill="#111927" d="M50 43 58 56 50 69 42 56Z"/></g>
+    <path fill="#ff7848" d="M512 475l38 70-38 69-38-69z"/>
+    <path d="M512 140v25m0 695v25M140 512h25m695 0h25" fill="none" stroke="#ae7370" stroke-width="5"/>
+    </svg>
