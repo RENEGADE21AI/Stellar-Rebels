@@ -343,6 +343,63 @@ test('a surviving fighter loops up the edge once with its existing hull and no d
   assert.equal(f.kills, 0);
 });
 
+test('the opening wing can earn the Power drop early, with a single timed fallback', async () => {
+  const [{ Flight }] = await load;
+  for (const clearWing of [true, false]) {
+    const f = new Flight(context());
+    f.queue('arrow', false, 'opening');
+    f.elapsed = 2;
+    f.moveEnemies(step);
+    assert.equal(f.enemies.filter((enemy) => enemy.returns).length, 1);
+    if (clearWing) for (const enemy of f.enemies) f.hitEnemy(enemy, { strength: 100, x: enemy.x, y: enemy.y });
+    assert.equal(f.pickups.length, Number(clearWing));
+    f.elapsed = 14.01;
+    f.updateSchedule();
+    assert.deepEqual(f.pickups.map((drop) => drop.kind), ['power']);
+  }
+});
+
+test('fast beams hit rotated bodies, clear empty margins, and ignore an aircraft on its return path', async () => {
+  const [{ Flight }] = await load;
+  const f = new Flight(context());
+  f.addEnemy({ kind:'scout', lane:.5 });
+  const target = f.enemies[0];
+  Object.assign(target, { y:308, turn:.8, px:197, py:305 });
+  const shoot = (x) => {
+    f.friendly.push({ x, y:364, vx:0, vy:-6500, live:true, strength:1 });
+    f.moveProjectiles(step);
+  };
+  const hp = target.hull;
+  shoot(target.x + 27);
+  assert.equal(target.hull, hp);
+  shoot(target.x);
+  assert.equal(target.hull, hp - 1);
+  target.loop = {};
+  shoot(target.x);
+  assert.equal(target.hull, hp - 1);
+});
+
+test('a fast lance hits the center of each banked pilot and clears their wing tips in either realm', async () => {
+  const [{ Flight }] = await load;
+  for (const ship of ['kestrel', 'needle', 'bastion']) {
+    const f = new Flight({ ...context(), ship });
+    const p = f.player;
+    Object.assign(p, { guard:0, bank:.22, px:p.x - 6, py:p.y });
+    const launch = (dx, realm) => {
+      f.hostile.length = 0;
+      f.projectile(p.x + dx, p.y - 60, Math.PI / 2, 7000, 'lance', { realm });
+      f.moveProjectiles(step);
+    };
+    launch(20, 'physical');
+    assert.equal(p.hull, p.maxHull, ship);
+    p.realm = 'ghost';
+    launch(-3, 'physical');
+    assert.equal(p.hull, p.maxHull, ship);
+    launch(-3, 'ghost');
+    assert.equal(p.hull, p.maxHull - 1, ship);
+  }
+});
+
 test('the seed controls return lanes and the replay verifier rebuilds the score from inputs', async () => {
   const [{ Flight, bounds }, , { RULES_VERSION }] = await load;
   const { captureReplay, verifyReplay } = await import('../arcade/replay.mjs');

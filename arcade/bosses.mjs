@@ -1,6 +1,7 @@
 import { BOSSES, WIDTH, HEIGHT } from './catalog.mjs';
 import { flagship, gravityPlatform, harrow, railShip, relayCarrier } from './boss-patterns.mjs';
 import { advanceWraith, enterWraith } from './wraith.mjs';
+import { bodiesMeet, pilotBody, railBody, rememberPosition } from './collision.mjs';
 
 export function launchBoss(flight, kind) {
   const spec = BOSSES[kind];
@@ -42,6 +43,7 @@ const attacks = {
 export function advanceBoss(flight, dt) {
   const b = flight.boss;
   if (!b) return;
+  rememberPosition(b);
   b.age += dt;
   b.hitFlash = Math.max(0, b.hitFlash - dt);
   for (const part of b.parts) part.flash = Math.max(0, part.flash - dt);
@@ -78,13 +80,12 @@ export function operatorWarnings(flight, dt) {
         const steps = Math.round(span / 34);
         for (let i = 0; i <= steps; i++) {
           const x = left + span * i / steps;
-          if (Math.abs(x - warning.x) < warning.width / 2 + 11) continue;
+          if (Math.abs(x - warning.x) < warning.width / 2 + 15) continue;
           flight.projectile(x, warning.y, Math.PI/2, warning.speed, 'rock');
         }
       }
     }
-    if (warning.kind === 'rail' && flight.player.y >= warning.y - flight.ship.hit &&
-      Math.abs(flight.player.x - warning.x) < warning.width / 2 + flight.ship.hit) {
+    if (warning.kind === 'rail' && bodiesMeet(pilotBody(flight), railBody(warning))) {
       flight.damage(warning.x, HEIGHT * .55);
     }
     if (warning.kind === 'pull' && flight.player.y >= warning.y) {

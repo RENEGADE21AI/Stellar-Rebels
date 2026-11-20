@@ -11,7 +11,8 @@ export function commandCharge(command) {
 }
 
 export function linkedVolley(flight, command) {
-  const line = flight.enemies.filter((e) => e.group === command.group && e.hull > 0 && e.y > 37);
+  const line = flight.enemies.filter((e) => e.group === command.group && e.hull > 0 && e.y > 37 && !e.dive &&
+    e.y < flight.player.y - 84);
   for (const wing of line) {
     const off = Math.sign(wing.x - command.x) * .11;
     const direction = Math.PI / 2 + off;

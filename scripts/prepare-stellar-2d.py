@@ -18,13 +18,11 @@ BL, BR = (0, 627, 627, 1254), (627, 627, 1254, 1254)
 # Gun, exhaust, rail and module coordinates in the game use this same transform.
 BOARDS = {
     'fleet': [
-        ('kestrel', TL, 300, 58, (315, 337), .104),
         ('needle', TR, 300, 59, (941, 312), .098),
         ('bastion', BL, 320, 68, (315, 908), .113),
         ('shield-node', BR, 164, 43, (941, 919), .081),
     ],
     'fighters': [
-        ('scout', TL, 192, 43, (315, 350), .080),
         ('diver', TR, 192, 42, (941, 308), .069),
         ('sweeper', BL, 208, 56, (315, 931), .086),
         ('relay', BR, 208, 55, (940, 929), .081),
@@ -119,12 +117,10 @@ def main():
         for name, box, side, world, center, scale in units:
             unit = isolated_foreground(source.crop(box))
             write(name, frame(unit, side, world, center, scale, box[:2], SOCKET_COLUMNS.get(name)))
-            if name == 'kestrel':
-                craft = frame(unit, 720, 57, center, .106)
-                craft = craft.rotate(-8, resample=Image.Resampling.BICUBIC)
-                craft.save(ENVIRONMENT / 'title-craft.webp', quality=90, method=6)
 
     legacy = [
+        ('kestrel', 'player', 300, 58, (248.5, 256), .101, False),
+        ('scout', 'enemy-red', 192, 43, (224, 191.5), .091, True),
         ('escort', 'enemy-shieldbearer', 224, 54, (224, 203), .099, False),
         ('phantom', 'enemy-phantom', 224, 59, (212, 225), .101, True),
         ('rock', 'asteroid-rock-1', 152, 42, (155, 160), .099, False),
@@ -134,9 +130,13 @@ def main():
         if invert:
             sprite = sprite.transpose(Image.Transpose.ROTATE_180)
         write(name, frame(sprite, side, world, center, scale))
+        if name == 'kestrel':
+            craft = frame(sprite, 720, 59, center, .105)
+            craft = craft.rotate(-8, resample=Image.Resampling.BICUBIC)
+            craft.save(ENVIRONMENT / 'title-craft.webp', quality=90, method=6)
     with Image.open(SOURCE / 'cruiser.png') as cruiser:
         write('cruiser', frame(isolated_foreground(cruiser.convert('RGBA')), 410, 214, (1065, 316), .098))
-    with Image.open(SOURCE / 'wraith.png') as wraith:
+    with Image.open(SOURCE / 'wraith-refined.png') as wraith:
         physical = frame(isolated_foreground(wraith.convert('RGBA')), 430, 215, (929, 332), .102)
         ghost = build_variant(physical, 'ghost')
         assert physical.getchannel('A').tobytes() == ghost.getchannel('A').tobytes()

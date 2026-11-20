@@ -24,7 +24,7 @@ async function verifyIn(engine, label) {
       await page.getByRole('button', { name, exact:true, pressed:false }).waitFor();
     }
     await page.getByRole('button', { name:'Back', exact:true }).click();
-    await page.getByRole('button', { name:'Play', exact:true }).click();
+    await page.getByRole('button', { name:'Stage Select', exact:true }).click();
     await page.getByRole('button', { name:'Endless', exact:true }).click();
     await page.getByRole('button', { name:'Pause', exact:true }).waitFor();
     await page.keyboard.down('ArrowRight');

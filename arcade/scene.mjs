@@ -2,6 +2,8 @@ import { ENDLESS_BOSSES, ENEMIES, GUNNER_MUZZLES, HEIGHT, PICKUPS, WIDTH, enemyM
 import { bossPartPosition } from './bosses.mjs';
 import { commandCharge, vanePosition } from './formations.mjs';
 import { SPECTRAL, WRAITH_EMITTER, otherRealm, realmTint } from './wraith.mjs';
+import { diveWarningAt } from './enemy-course.mjs';
+import { shieldModules } from './collision.mjs';
 
 export function spriteUrl(key) {
   return new URL(`./media/sprites/${key}.png`, import.meta.url).href;
@@ -215,6 +217,7 @@ export class FlightScene {
     for (const shot of flight.hostile) this.enemyShot(shot, prefs.contrast, flight.player.realm);
     if (flight.status !== 'defeat') this.pilot(flight, prefs);
     this.effects();
+    this.collisionOverlay?.(c, flight);
     c.restore();
     if (this.hurtPulse > 0) {
       c.globalAlpha = this.hurtPulse * .65;
@@ -363,7 +366,7 @@ export class FlightScene {
       this.sprite(e.kind, e.x, e.y, e.spec.size, e.turn);
       return;
     }
-    if (e.kind === 'diver' && e.age > 1.95 && !e.retreat) {
+    if (e.kind === 'diver' && e.age > diveWarningAt && !e.retreat) {
       if (e.dive) {
         const v = e.vector;
         line(c, e.x, e.y, -Math.cos(v) * 27, -Math.sin(v) * 27, '#ed875cb3', 2);
@@ -421,7 +424,7 @@ export class FlightScene {
     const look = ghost ? 'wraith-ghost' : b.kind;
     this.sprite(look, b.x, b.y, b.spec.size, 0, b.hull > 0 ? 1 : .35, ghost ? '#8262e3' : '');
     if (b.kind === 'wraith' && b.hull > 0 && b.age >= b.entryTime - .25) this.wraithCue(b, prefs);
-    const hasShields = b.kind === 'matron' || b.kind === 'crown';
+    const hasShields = shieldModules(b);
     for (const part of b.parts) {
       const { x, y, radius } = bossPartPosition(b, part);
       if (part.hull > 0 && hasShields) line(c, b.x, b.y + 3, x - b.x, y - b.y, '#86cfef9d', 2);
@@ -432,7 +435,7 @@ export class FlightScene {
         continue;
       }
       if (part.charge > 0) {
-        const muzzleY = y + 12;
+        const muzzleY = y + part.muzzle;
         const tint = prefs.contrast ? '#fff2c1' : '#ffae63';
         ring(c, x, muzzleY, 5, tint, 1.7);
         line(c, x, muzzleY, Math.cos(part.aim) * 25, Math.sin(part.aim) * 25, tint, 1.65);
@@ -443,7 +446,7 @@ export class FlightScene {
         line(c, x + sign * r, y + sign * r, -sign * 6, 0, tint, 1.9);
         line(c, x + sign * r, y + sign * r, 0, -sign * 6, tint, 1.9);
       }
-      if (b.timer < .32 && b.age > b.entryTime) filled(c, x, y + 11, 2.8, '#fff4d2');
+      if (b.timer < .32 && b.age > b.entryTime) filled(c, x, y + part.muzzle, 2.8, '#fff4d2');
     }
     if (hasShields && b.parts.some((part) => part.hull > 0)) ring(c, b.x, b.y + 4, b.spec.hit, '#80caec78', 2);
     if (b.hitFlash > 0) ring(c, b.x, b.y + 4, 9, '#fff6dc88');

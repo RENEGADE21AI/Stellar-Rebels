@@ -1,5 +1,5 @@
 const effects = {
-  shot: [360, 158, .07, .027, 'sine'],
+  shot: [535, 282, .055, .023, 'triangle'],
   hit: [490, 140, .07, .055, 'triangle'],
   shieldHit: [1080, 450, .09, .047, 'triangle'],
   enemyDown: [150, 41, .24, .18, 'sawtooth'],
@@ -98,6 +98,9 @@ export class FlightAudio {
     if (t - (this.last[kind] ?? -1) < (kind === 'hit' || kind === 'shieldHit' ? .082 : .044)) return;
     this.last[kind] = t;
     this.tone(recipe, t, power);
+    if (kind === 'enemyDown' || kind === 'moduleDown' || kind === 'bossDown') {
+      this.tone([365, 93, .11, kind === 'enemyDown' ? .032 : .047, 'square'], t);
+    }
   }
 
   tone([from, to, duration, volume, type], start, power = 1) {

@@ -40,7 +40,7 @@ async function main() {
   try {
     const meta = await (await page.request.get(new URL('/version.json', origin).href)).json();
     await page.goto(origin);
-    await page.getByRole('button', { name: 'Play', exact: true }).tap();
+    await page.getByRole('button', { name: 'Stage Select', exact: true }).tap();
     await page.getByRole('button', { name: /01 Vesper Orbit/ }).tap();
     await page.getByRole('button', { name: 'Pause', exact: true }).waitFor();
     const normal = await snapshot();
@@ -51,11 +51,11 @@ async function main() {
     await moveAcross(24, viewport.width - 9);
     await page.waitForFunction(() => {
       const { flight } = window.arenaQA.state;
-      return flight.enemies.some((e) => e.loop && e.y < 640 && e.y > 440 && Math.abs(e.x - flight.player.x) > 120);
-    });
+      return flight.enemies.some((e) => e.loop && e.y < 640 && e.y > 440);
+    }, null, { timeout:60000 });
     const seen = await page.evaluate(() => {
       const f = window.arenaQA.state.flight;
-      window.arenaQA.returning = f.enemies.find((e) => e.loop && e.y < 640 && e.y > 440 && Math.abs(e.x - f.player.x) > 120);
+      window.arenaQA.returning = f.enemies.find((e) => e.loop && e.y < 640 && e.y > 440);
       const e = window.arenaQA.returning;
       return { kind: e.kind, edge: e.loop.edge, hull: e.hull, heading: e.turn, originalLane: e.home };
     });

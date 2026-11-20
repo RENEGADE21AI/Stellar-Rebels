@@ -25,7 +25,8 @@ async function observe() {
     await page.getByRole('button', { name: 'Reduced motion', exact: true, pressed: true }).waitFor();
     await page.getByRole('button', { name: 'Back', exact: true }).tap();
     await page.getByRole('button', { name: 'Play', exact: true }).tap();
-    await page.getByRole('button', { name: /01 Vesper Orbit/ }).tap();
+    const firstStage = page.getByRole('button', { name: /01 Vesper Orbit/ });
+    if (await firstStage.or(page.locator("#flight:not([hidden])")).first().waitFor().then(() => firstStage.isVisible())) await firstStage.tap();
     await page.getByRole('button', { name: 'Pause', exact: true }).waitFor();
     const touch = await context.newCDPSession(page);
     await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 185, y: 580 }] });

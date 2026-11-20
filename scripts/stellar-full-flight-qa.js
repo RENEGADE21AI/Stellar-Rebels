@@ -49,6 +49,7 @@ async function main() {
     const scale = renderer.unit / 1.12;
     return { status:f.status, mode:state.mode, elapsed:f.elapsed, stage:f.stage.id, attack:f.boss?.attack ?? 0,
       boss:Boolean(f.boss), hull:f.player.hull, score:f.score, kills:f.kills, pickup:f.notice?.kind === 'pickup' ? f.notice.title : '',
+      hop:f.realmHop && f.shiftReady && f.player.realm !== f.boss.realm && f.boss.shifting === false,
       cruiser:f.cruiser ? { x:f.cruiser.x, guns:f.cruiser.parts.map((part) => Math.max(0, part.hull)) } : null,
       dx:(desired.x-f.xIntent)*scale, dy:(desired.y-f.yIntent)*scale };
   });
@@ -68,8 +69,8 @@ async function main() {
       }, firstStage);
       await page.reload();
     }
-    await page.getByRole('button',{name:'Play',exact:true}).tap();
-    await page.getByRole('button',{name:endless ? 'Endless' : new RegExp(`^${String(firstStage).padStart(2, '0')} `)}).tap();
+    await page.getByRole('button',{name:endless ? 'Stage Select' : 'Play',exact:true}).tap();
+    if (endless) await page.getByRole('button',{name:'Endless',exact:true}).tap();
     const report = [];
     for (let stage = firstStage; stage < firstStage + stages; stage++) {
       await page.waitForFunction((id) => window.fullFlight.state.mode === 'playing' && window.fullFlight.state.flight.stage.id === id, stage);
@@ -111,6 +112,7 @@ async function main() {
           firstBoss = true;
         }
         if (endless && current.elapsed >= requestedSurvival) break;
+        if (current.hop) await page.keyboard.press('Space');
         if (Math.hypot(current.dx, current.dy) > 1) {
           const move = { x:finger.x+current.dx, y:finger.y+current.dy };
           if (move.x < 9 || move.x > viewport.width-9 || move.y < 135 || move.y > viewport.height-9) {

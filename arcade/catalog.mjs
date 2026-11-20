@@ -2,7 +2,7 @@ import { innerRoute, outerRoute } from './routes.mjs';
 
 export const WIDTH = 384;
 export const HEIGHT = 768;
-export const RULES_VERSION = 'arcade-5';
+export const RULES_VERSION = 'arcade-6';
 export const FIXED_TICK = 1 / 60;
 export const AIM_PRECISION = 16;
 export const INPUT_SHIFT = 1;
@@ -13,8 +13,8 @@ export const GHOST = { capacity: 100, start: 26, cost: 38, duration: 1.05, recov
 export const SHIPS = {
   kestrel: {
     name: 'Fighter', role: 'Fighter', clearance: 0, hull: 5, speed: 318, interval: .224,
-    size: 58, hit: 8, engines: [[-7.5, 17], [7.5, 17]],
-    guns: [[-10.5, -14.5, 0, .89], [10.5, -14.5, 0, .89]],
+    size: 58, hit: 8, engines: [[-3.2, 17], [3.2, 17]],
+    guns: [[-10.5, -6.5, 0, .89], [10.5, -6.5, 0, .89]],
     description: 'Twin parallel guns and responsive handling. Line both lanes up on large targets.'
   },
   needle: {
@@ -58,6 +58,7 @@ export const ENEMIES = {
 // Lanes are normalized fractions. Successive craft arrive at 0.25-second intervals.
 const formations = {
   arrow: [['scout', .49], ['scout', .34], ['scout', .66], ['scout', .21], ['scout', .79]],
+  column: [['scout', .24], ['scout', .28], ['scout', .32], ['scout', .36]],
   rake: [['scout', .15], ['scout', .28], ['scout', .43], ['scout', .61], ['scout', .78]],
   spear: [['lancer', .48], ['scout', .31], ['scout', .67], ['scout', .80]],
   cross: [['diver', .20], ['diver', .80], ['scout', .49], ['scout', .34], ['scout', .66]],
@@ -84,9 +85,10 @@ export const STAGES = [
     id: 1, name: 'Vesper Orbit', region: 'Blockade', brief: 'Fight through the blockade.', accent: '#ff8752',
     environment: 'breach', boss: 'gatekeeper', bossAt: 126, cruiserAt: 82, first: 78, repeat: 16, defeatCap: 20,
     chapters: [[0,'Approach'],[16,'Blockade screen'],[42,'Fighter wings'],[82,'Cruiser crossing'],[103,'Final approach']],
-    waves: [[.6,'arrow'],[7.5,'rake',1],[16,'spear'],[23,'hook'],[30,'linked'],[37,'rake'],[43,'anvil'],[49,'cross'],[56,'linked',1],
-      [63,'sweep'],[70,'break'],[77,'rake',1],[85,'screen'],[97,'anvil',1],[104,'linked'],[112,'hook',1],[119,'cross']],
-    drops: [[14,'power',.50],[39,'barrier',.65],[72,'repair',.37],[99,'power',.57],[116,'overdrive',.50]],
+    waves: [[.6,'arrow',0,'opening'],[6.4,'column',1],[15,'spear'],[19.5,'hook'],[30,'linked'],[38,'rake'],[43,'anvil'],
+      [47.4,'cross'],[58,'linked',1],[63,'sweep'],[73,'break'],[77,'column',1],[89,'screen'],[98,'anvil',1],
+      [103,'linked'],[112,'hook',1],[118,'cross']],
+    drops: [[14,'power',.50,'opening'],[39,'barrier',.65],[72,'repair',.37],[99,'power',.57],[116,'overdrive',.50]],
     mastery: { name: 'Disarm the Warden', detail: 'Destroy both turrets before the main hull.', condition: 'parts' }
   },
   ...innerRoute,
@@ -94,13 +96,13 @@ export const STAGES = [
 ];
 
 export const BOSSES = {
-  gatekeeper: { name: 'Warden', intro: 'Destroy its two turrets.', hull: 164, size: 235, artSize:267, hit: 38, motion: 43, parts: [[-69, 31], [69, 31]], partHull: 27 },
+  gatekeeper: { name: 'Warden', intro: 'Destroy its two turrets.', hull: 164, size: 235, artSize:267, hit: 38, motion: 43, parts: [[-69, 39], [69, 39]], partHull: 27 },
   warden: { name: 'Harrow', intro: 'Follow each debris gap.', hull: 186, size: 203, artSize:242, hit: 42, motion: 42, arrivalY:225, parts: [] },
-  matron: { name: 'Relay Carrier', intro: 'Break the linked nodes to expose the core.', hull: 196, size: 198, artSize:246, hit: 35, motion: 42, parts: [[-70, 6], [70, 6]], partHull: 30 },
+  matron: { name: 'Relay Carrier', intro: 'Break the linked nodes to expose the core.', hull: 196, size: 198, artSize:246, hit: 35, motion: 42, parts: [[-70, 11], [70, 11]], partHull: 30 },
   tyrant: { name: 'Rail Ship', intro: 'Leave its striped lane before the rail fires.', hull: 238, size: 245, hit: 40, motion: 47, arrivalY: 230, parts: [] },
   siphon: { name: 'Gravity Platform', intro: 'Stay clear of pull lanes.', hull: 253, size: 224, artSize:247, hit: 37, motion: 47, arrivalY: 248, parts: [] },
-  wraith: { name: 'Wraith', intro: 'Hop to match realms. Shoot the core.', hull: 204, size: 215, hit: 37, motion: 48, arrivalY: 229, parts: [] },
-  crown: { name: 'Flagship', intro: 'Break its pylons and read the next safe seam.', hull: 272, size: 208, artSize:258, hit: 40, motion: 45, arrivalY: 231, parts: [[-74, 8], [74, 8]], partHull: 37 }
+  wraith: { name: 'Wraith', intro: 'Hop to match realms. Shoot the core.', hull: 152, size: 215, hit: 37, motion: 48, arrivalY: 229, parts: [] },
+  crown: { name: 'Flagship', intro: 'Break its pylons and read the next safe seam.', hull: 272, size: 208, artSize:258, hit: 40, motion: 45, arrivalY: 231, parts: [[-74, 29], [74, 29]], partHull: 37 }
 };
 
 export const ENDLESS_BOSSES = [...STAGES.map((stage) => stage.boss), 'siphon'];

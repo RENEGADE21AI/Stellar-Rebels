@@ -21,7 +21,7 @@ async function compare(browser, viewport, prefix) {
     await page.goto(origin);
     await page.locator('.title-craft').evaluate((image) => image.decode());
     await save('title');
-    await page.getByRole('button', { name:'Play', exact:true }).tap();
+    await page.getByRole('button', { name:'Stage Select', exact:true }).tap();
     await save('stages');
     await page.getByRole('button', { name:/01 Vesper Orbit/ }).tap();
     await page.waitForFunction(() => window.capture.state.mode === 'playing');

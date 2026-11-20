@@ -136,7 +136,8 @@ async function main() {
     assert.ok(unavailable > 0, 'Replacement install must encounter the withheld app module');
     await page.screenshot({ path:path.join(output,'installed-menu.png') });
     await button('Play').tap();
-    await button(/^01 Vesper Orbit/).tap();
+    const firstStage = button(/^01 Vesper Orbit/);
+    if (await firstStage.or(page.locator("#flight:not([hidden])")).first().waitFor().then(() => firstStage.isVisible())) await firstStage.tap();
     await page.waitForFunction(() => document.querySelector('#clock')?.textContent === '00:02');
     await button('Pause').tap();
     await page.getByRole('heading', { name:'Paused' }).waitFor();

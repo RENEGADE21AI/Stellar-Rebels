@@ -30,6 +30,7 @@ const icons = {
   next: '<path d="m9 5 7 7-7 7"/>', back: '<path d="m15 5-7 7 7 7"/>',
   play: '<path fill="currentColor" stroke="none" d="M7 4.6 19 12 7 19.4z"/>',
   pause: '<path stroke-width="3" d="M8.2 5v14m7.6-14v14"/>',
+  stages: '<circle cx="5" cy="18" r="1.5"/><circle cx="12" cy="11" r="1.5"/><circle cx="19" cy="5" r="1.5"/><path d="m6 17 5-5m2-2 5-4"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   score: '<path d="M7 3h10v5c0 4-2 7-5 7S7 12 7 8zM3 5h4v5c-3 0-4-2-4-5zm18 0h-4v5c3 0 4-2 4-5zM12 15v5m-4 1h8"/>',
   ship: '<path d="m12 3 3.5 9 5 4.6V20l-5-2-3.5 3-3.5-3L3.5 20v-3.4l5-4.6L12 3Z"/>',
@@ -75,17 +76,22 @@ function wallet() {
 function home() {
   return `<article class="title-screen"><h1 tabindex="-1" class="brand-lockup"><img src="${media('brand/stacked-light.svg')}" alt="Stellar Rebels" width="336" height="201"></h1>
     <img class="title-craft" alt="" src="${media('environment/title-craft.webp')}" width="720" height="720">
-    <div class="title-actions">${saveNotice()}${action('Play', 'view:stages', 'primary', 'play')}
-      <nav class="home-links" aria-label="Hangar and records">
+    <div class="title-actions">${saveNotice()}${action('Play', 'fly:next', 'primary', 'play')}
+      <nav class="home-links" aria-label="Game options">
+        <button class="home-link" data-action="view:stages" aria-label="Stage Select">${icon('stages')} Stages</button>
         <button class="home-link" data-action="hangar:home">${icon('ship')} Hangar</button>
         <button class="home-link" data-action="view:records">${icon('score')} Records</button>
         <button class="home-link" data-action="view:settings">${icon('settings')} Settings</button>
       </nav></div></article>`;
 }
 
+function nextStage(pilot) {
+  return STAGES.find((stage) => !pilot.clears[stage.id] && hasStage(pilot, stage.id));
+}
+
 function stages() {
   const { pilot } = state;
-  const next = STAGES.find((s) => !pilot.clears[s.id] && hasStage(pilot, s.id));
+  const next = nextStage(pilot);
   const rows = STAGES.map((s) => {
     const available = hasStage(pilot, s.id);
     const clear = Boolean(pilot.clears[s.id]);
@@ -295,7 +301,9 @@ function readId() {
 
 async function start(which) {
   const endless = which === 'endless';
-  const stage = endless ? null : Number(which);
+  const chooseStage = (pilot) => endless ? null : which === 'next'
+    ? (nextStage(pilot) ?? STAGES.at(-1)).id : Number(which);
+  const stage = chooseStage(state.pilot);
   const launch = { controller: new AbortController(), from: state.view, which, name: endless ? 'Endless' : stageById(stage)?.name };
   if (!launch.name) return;
   let run;
@@ -304,7 +312,7 @@ async function start(which) {
   show('launch');
   try {
     const seed = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
-    const saved = await store.change((pilot) => beginRun(pilot, readId(), endless ? 'endless' : 'arcade', stage, Date.now(), seed));
+    const saved = await store.change((pilot) => beginRun(pilot, readId(), endless ? 'endless' : 'arcade', chooseStage(pilot), Date.now(), seed));
     run = saved.result;
     if (launch.controller.signal.aborted) return;
     state.pilot = saved.pilot;
@@ -446,19 +454,20 @@ function refreshHud(restart = false) {
   const brief = message && ['intro','tactic','warning'].includes(message.kind);
   content('flight-name', f.endless ? 'Endless' : f.stage.name);
   content('clock', time(f.elapsed));
-  $('clock').hidden = Boolean(brief);
   $('flight-tip').hidden = !brief;
   content('flight-tip', brief ? message.copy : '');
   content('flight-score', num(f.score));
   const chapter = activeBoss ? f.realmHop ? `${realmLabel(p.realm)} realm` : '' : f.endless ? 'Survival'
     : f.stage.chapters.findLast(([start]) => start <= f.elapsed)?.[1] ?? '';
   content('flight-progress', message?.kind === 'pickup' ? message.brief : message?.kind === 'tactic' ? message.title : chapter);
-  content('chain', f.combo >= 2 ? `${f.combo} chain` : '');
+  content('chain', f.combo >= 2 ? `×${f.combo}` : '');
   content('hull', Array.from({ length: p.maxHull }, (_, i) => `<i class="segment ${i < p.hull ? 'full' : ''}" aria-hidden="true"></i>`).join(''), true);
   $('hull').setAttribute('aria-valuemax', p.maxHull);
   $('hull').setAttribute('aria-valuenow', p.hull);
   refreshGhost(f);
   $('boss-meter').hidden = !activeBoss;
+  $('boss-name').hidden = !activeBoss;
+  $('flight-name').hidden = activeBoss;
   if (activeBoss) {
     const boss = f.boss;
     const realm = boss.realm === 'ghost' ? 'Ghost' : 'Physical';
@@ -475,11 +484,11 @@ function refreshHud(restart = false) {
   if (p.overdrive) flags.push(`Boost ${Math.ceil(p.overdrive)}s`);
   content('field-effects', flags.map((flag) => `<span class="field-chip">${flag}</span>`).join(''), true);
   const ghostLesson = !f.endless && f.stage.id === 1 && f.shiftReady && !f.usedShift && f.elapsed < 27;
-  const showHelp = !flags.length && (ghostLesson || f.elapsed <= (f.endless ? 4.5 : 8.5));
+  const showHelp = !brief && !flags.length && (ghostLesson || f.elapsed <= (f.endless ? 4.5 : 8.5));
   $('flight-help').hidden = !showHelp;
-  $('field-effects').hidden = !flags.length;
-  $('flight-progress').hidden = showHelp || Boolean(flags.length);
-  $('chain').hidden = Boolean(flags.length);
+  $('field-effects').hidden = Boolean(brief) || !flags.length;
+  $('flight-progress').hidden = Boolean(brief || showHelp || flags.length);
+  $('chain').hidden = Boolean(brief || flags.length || f.combo < 2);
   const keyboard = state.input === 'keyboard';
   content('flight-help', ghostLesson ? `${keyboard ? 'Space' : 'Tap Shift'} to phase` : keyboard ? 'Arrows / WASD · Auto-fire' : 'Drag to steer · Auto-fire');
   if (message && (lastHud.message !== message || restart)) {
@@ -792,7 +801,7 @@ async function boot() {
   audio.reflect(state.pilot.settings);
   show('home', false);
   void loadSprite('kestrel');
-  if (navigator.serviceWorker && document.documentElement.dataset.pack === 'true') {
+  if (navigator.serviceWorker && document.documentElement.dataset.pack === 'true' && !document.documentElement.dataset.localPreview) {
     navigator.serviceWorker.addEventListener('controllerchange', checkPack);
     window.addEventListener('offline', checkPack);
     window.addEventListener('online', checkPack);

@@ -4,6 +4,32 @@ const { chromium, webkit } = require('playwright');
 
 const origin = process.env.STELLAR_WEB_URL;
 
+test('Play resumes the Arcade route with the equipped ship and replays the finale after completion', { skip: !origin, timeout:45000 }, async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport:{ width:320, height:568 }, hasTouch:true, isMobile:true, serviceWorkers:'block' });
+  try {
+    await page.route(/\/app\.mjs(\?|$)/, async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({ response, body:(await response.text()) + '\nwindow.quickPlay = { state, store };' });
+    });
+    const play = page.getByRole('button', { name:'Play', exact:true });
+    for (const [cleared, expected] of [[2,3], [6,6]]) {
+      await page.goto(origin);
+      await play.waitFor();
+      await page.evaluate((count) => window.quickPlay.store.change((pilot) => {
+        for (let stage = 1; stage <= count; stage++) pilot.clears[stage] = 1;
+        pilot.ship = 'needle';
+      }), cleared);
+      await page.reload();
+      await play.tap();
+      await page.waitForFunction((stage) => {
+        const { state } = window.quickPlay;
+        return state.mode === 'playing' && state.flight.run.stage === stage && state.flight.run.ship === 'needle';
+      }, expected);
+    }
+  } finally { await browser.close(); }
+});
+
 test('production web artifact uses touch, atomic saves, and a recoverable offline pack', { skip: !origin, timeout: 60000 }, async () => {
   const browser = await chromium.launch();
   const context = await browser.newContext({ viewport: { width: 320, height: 568 }, isMobile: true, hasTouch: true });
@@ -39,7 +65,6 @@ test('production web artifact uses touch, atomic saves, and a recoverable offlin
 
     await page.reload();
     await page.getByRole('button', { name:'Play', exact:true }).tap();
-    await page.getByRole('button', { name:/01 Vesper Orbit/ }).tap();
     await page.getByRole('button', { name:'Pause', exact:true }).waitFor();
     const hp = await page.getByRole('meter', { name:'Hull' }).getAttribute('aria-valuenow');
     await page.evaluate(() => window.dispatchEvent(new Event('blur')));
@@ -99,7 +124,6 @@ test('mobile WebKit can launch, pause and resume the production artifact', { ski
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(origin);
     await page.getByRole('button', { name:'Play', exact:true }).tap();
-    await page.getByRole('button', { name:/01 Vesper Orbit/ }).tap();
     await page.getByRole('button', { name:'Pause', exact:true }).tap();
     await page.getByRole('heading', { name:'Paused' }).waitFor();
     await page.getByRole('button', { name:'Resume', exact:true }).tap();
@@ -136,7 +160,7 @@ test('restoring IndexedDB reconciles temporary results with the actual saved rec
         const play = page.getByRole('button', { name:'Play', exact:true });
         await play.waitFor();
         for (const state of ['home','stages']) {
-          if (state === 'stages') await play.tap();
+          if (state === 'stages') await page.getByRole('button', { name:'Stage Select', exact:true }).tap();
           const box = await banner.boundingBox();
           assert.ok(box.y >= 0 && box.y + box.height < 568, JSON.stringify(box));
         }
@@ -158,7 +182,7 @@ test('restoring IndexedDB reconciles temporary results with the actual saved rec
           await page.getByText('Asteroid Belt unlocked').waitFor();
         }
         await page.reload();
-        await page.getByRole('button', { name:'Play', exact:true }).tap();
+        await page.getByRole('button', { name:'Stage Select', exact:true }).tap();
         assert.equal(await page.getByRole('button', {name:/02 Asteroid Belt/}).isEnabled(), !existing);
         await page.getByText(existing ? '0 Salvage' : '78 Salvage', {exact:true}).waitFor();
       } finally { await context.close(); }
@@ -193,18 +217,19 @@ test('flight instructions stay in the HUD during real touch and a rail strike', 
             const y = frame.top + (frame.height - 768 * renderer.unit) / 2;
             const shipTop = y + (f.player.y - f.ship.size / 2) * renderer.unit;
             const tip = document.querySelector('#flight-tip');
-            return {inside:tip.closest('.instrument') !== null, gap:shipTop - tip.getBoundingClientRect().bottom};
+            const hudBottom = document.querySelector('.flight-ui').getBoundingClientRect().bottom;
+            return {inside:tip.closest('.instrument') !== null, gap:shipTop - hudBottom, blocked: hudBottom > frame.top};
           });
-          assert.ok(clearance.inside && clearance.gap > 30, JSON.stringify(clearance));
+          assert.ok(clearance.inside && clearance.gap > 30 && !clearance.blocked, JSON.stringify(clearance));
         };
 
         await page.goto(origin);
         await page.getByRole('button',{name:'Play',exact:true}).tap();
-        await page.getByRole('button',{name:/01 Vesper Orbit/}).tap();
         await page.getByText('Fight through the blockade.',{exact:true}).waitFor();
         await page.keyboard.down('ArrowDown');
         await page.waitForFunction(() => window.hudProbe.state.flight.player.y >= 729);
         await page.keyboard.up('ArrowDown');
+        await page.locator('#flight-help').waitFor();
         const help = await page.locator('#flight-help').boundingBox();
         assert.ok(help && help.y + help.height < viewport.height * .25);
         await dragHigh();
@@ -222,7 +247,7 @@ test('flight instructions stay in the HUD during real touch and a rail strike', 
         });
 
         await page.reload();
-        await page.getByRole('button',{name:'Play',exact:true}).tap();
+        await page.getByRole('button',{name:'Stage Select',exact:true}).tap();
         const redSun = page.getByRole('button',{name:/04 Red Sun/});
         assert.match(await redSun.innerText(),/Keep hull intact in the boss fight/);
         assert.equal(await page.getByRole('button',{name:'Endless',exact:true}).getAttribute('aria-describedby'),'endless-note');
@@ -282,7 +307,6 @@ test('Space activates Pause on focus and uses the indicated ability from the pla
         const playing = () => page.waitForFunction(() => document.activeElement?.id === 'sky');
         await page.goto(origin);
         await button('Play').press('Enter');
-        await button(/^01 Vesper Orbit/).press('Enter');
         await playing();
         assert.match(await page.locator('#sky').getAttribute('aria-label'), /Space for Ghost Shift/);
         await page.evaluate(() => { window.controlProbe.state.flight.player.ghostEnergy = 100; });
@@ -302,7 +326,7 @@ test('Space activates Pause on focus and uses the indicated ability from the pla
         await page.evaluate(() => window.controlProbe.store.change((pilot) => { pilot.clears = { 1:1, 2:1, 3:1, 4:1 }; }));
 
         await page.reload();
-        await button('Play').tap();
+        await button('Stage Select').tap();
         await button(/^05 Outer Orbit/).tap();
         await playing();
         await page.evaluate(() => {
@@ -360,7 +384,7 @@ test('slow flight art can be canceled and failed art has a bounded fallback', { 
     await page.route(target, routeHandler);
     await page.goto(origin);
     const button = (name) => page.getByRole('button', { name, exact:typeof name === 'string' });
-    await button('Play').tap();
+    await button('Stage Select').tap();
     const stage = button(/^01 Vesper Orbit/);
     await stage.tap();
     const image = await stalled;

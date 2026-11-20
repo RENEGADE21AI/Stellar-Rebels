@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
+const { spriteColliderDigests } = require('../arcade/silhouettes.mjs');
 
 const root = path.resolve(__dirname, '..');
 const source = path.join(root, 'arcade');
@@ -29,6 +30,12 @@ for (const file of walk(source)) {
   if (!local.startsWith('media/') && !/^[a-z-]+\.(?:mjs|css)$/.test(local)) throw Error(`Unexpected runtime file: ${local}`);
   if (!/\.(mjs|css|png|webp|svg|woff2|txt)$/.test(local)) throw Error(`Unsupported build asset: ${local}`);
   files.set(local, /\.(mjs|css|svg|txt)$/.test(local) ? readText(file) : fs.readFileSync(file));
+}
+for (const [sprite, expected] of Object.entries(spriteColliderDigests)) {
+  const art = files.get(`media/sprites/${sprite}.png`);
+  if (!art || crypto.createHash('sha256').update(art).digest('hex') !== expected) {
+    throw Error(`Collision geometry is stale for ${sprite}. Run scripts/prepare-stellar-colliders.py and check its overlay.`);
+  }
 }
 const shared = ['00-runtime.js', '00-input-actions.js', '00-gameplay-rules.js', '00-asset-manifest.js'];
 for (const name of shared) files.set(`shared/${name}`, readText(path.join(root, 'src', name)));

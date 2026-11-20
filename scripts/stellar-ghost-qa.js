@@ -64,7 +64,7 @@ async function verify() {
     await button('Play').waitFor();
     await page.locator('.title-craft').evaluate((image) => image.decode());
     await shot('title');
-    await button('Play').tap();
+    await button('Stage Select').tap();
     await button(/01 Vesper Orbit/).tap();
     await flight();
     assert.equal(await amount(), 26);
@@ -135,7 +135,7 @@ async function verify() {
     await page.locator('.craft-art').evaluate((image) => image.decode());
     await shot('interceptor-hangar');
     await button('Back').tap();
-    await button('Play').tap();
+    await button('Stage Select').tap();
     await button(/04 Red Sun/).tap();
     await flight();
     const railFinger = { x: viewport.width / 2, y: Math.round(viewport.height * .733), id: 1 };

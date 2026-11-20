@@ -1,5 +1,7 @@
 # Stellar Rebels browser-to-mobile review
 
+**Gameplay readiness has been reopened.** The former verdict records an earlier web candidate. The owner identified issues in flight flow, collision, enemy movement, and visual quality that require a fresh review. See the [restoration audit](STELLAR_REBELS_RESTORATION.md).
+
 ## Brief
 
 The deliverable is the playable six-stage arcade shooter at [stellar-rebels.web.app](https://stellar-rebels.web.app/), plus the preparation needed to enter an app-store-intended Expo EAS validation build. The audience is people who want a quick, readable portrait arcade shooter with a satisfying route to clear and replay. Core scope covers all public browser journeys, compact and tall phone layouts, game feel, combined art and audio, save and update integrity, and the native handoff. The game is fully free and ad-free. Accessibility and reliability apply to the normal browser experience. Human retention, physical-device performance, native runtime behavior and store review require their own evidence.
