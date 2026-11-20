@@ -76,6 +76,34 @@ test('a returning playfield follows an operating system reduction preference', {
   } finally { await browser.close(); }
 });
 
+test('Arcade, Hangar and Settings keep their controls inside the landscape frame', { skip: !origin, timeout:15000 }, async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport:{ width:844, height:390 }, isMobile:true, hasTouch:true, serviceWorkers:'block' });
+    await page.goto(origin);
+    const button = (name) => page.getByRole('button', { name, exact:true });
+    const fit = async (selector) => {
+      const layout = await page.locator('#menu').evaluate((menu, controls) => ({
+        width:menu.clientWidth,
+        scrollWidth:menu.scrollWidth,
+        controls:[...menu.querySelectorAll(controls)].map((el) => [el.offsetWidth, el.scrollWidth])
+      }), selector);
+      assert.ok(layout.width >= layout.scrollWidth, JSON.stringify(layout));
+      assert.ok(layout.controls.length && layout.controls.every(([width, scroll]) => width >= scroll), JSON.stringify(layout));
+    };
+    await button('Arcade').tap();
+    await fit('.stage, .support-actions button');
+    await button('Back').tap();
+    await button('Hangar').tap();
+    await fit('.craft-choice');
+    await button('Upgrades').tap();
+    await fit('.shop-card');
+    await button('Back').tap();
+    await button('Settings').tap();
+    await fit('.setting, #sensitivity');
+  } finally { await browser.close(); }
+});
+
 test('first Play teaches steering, targeting and Shift before starting a recorded flight', { skip: !origin, timeout:45000 }, async () => {
   const browser = await chromium.launch();
   try {
@@ -283,8 +311,14 @@ test('restoring IndexedDB reconciles temporary results with the actual saved rec
         await page.locator('#training-actions').waitFor({ state:'hidden' });
         await page.getByRole('button', { name:'Pause', exact:true }).waitFor();
         // Only the storage path is under test here. The real campaign tests clear by play.
-        await page.evaluate(() => { window.storageFixture.flight.status = 'clear'; });
+        await page.evaluate(() => {
+          window.storageFixture.flight.score = 7451;
+          window.storageFixture.flight.status = 'clear';
+        });
         await page.getByText(/78 Salvage this session/).waitFor();
+        const captionsFit = await page.locator('.result-facts .caption').evaluateAll((labels) =>
+          labels.every((label) => label.scrollWidth <= label.clientWidth));
+        assert.equal(captionsFit, true);
         await page.evaluate(() => {
           window.failOpen = false;
           sessionStorage.setItem('fixture-storage-restored','yes');
@@ -507,7 +541,7 @@ test('slow flight art can be canceled and failed art has a bounded fallback', { 
     await page.route(target, routeHandler);
     await page.goto(origin);
     const button = (name) => page.getByRole('button', { name, exact:typeof name === 'string' });
-    await button('Stage Select').tap();
+    await button('Arcade').tap();
     const stage = button(/^01 Vesper Orbit/);
     await stage.tap();
     const image = await stalled;

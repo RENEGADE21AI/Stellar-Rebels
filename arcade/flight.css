@@ -186,7 +186,7 @@ dialog::backdrop{background:#040911af}
 .result-card .score{font:700 36px/.9 var(--display);color:var(--paper)}
 .result-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;padding:10px 0;border-block:1px solid #4e6576}
 .result-facts strong{font:700 26px/1 var(--display);display:block;margin-top:4px}
-.result-facts .caption{display:block;font-size:.62rem;letter-spacing:.04em;white-space:nowrap}
+.result-facts .caption{display:block;font-size:.62rem;line-height:1.2;letter-spacing:.04em;text-wrap:balance}
 .replay-link{justify-content:center;font:650 .84rem var(--sans);color:#b4cbd3}
 .result-reward{display:flex;gap:7px;align-items:center;color:#8df2dd;font-size:.89rem}
 .result-reward.warning{color:#ffbc92}
@@ -202,6 +202,30 @@ dialog::backdrop{background:#040911af}
   .title-actions .primary{min-height:48px;font-size:26px}
   .title-pilot small{font-size:.58rem}
   .home-link{font-size:.62rem}
+  .screen{padding-inline:max(9px,env(safe-area-inset-left)) max(9px,env(safe-area-inset-right));overflow-wrap:anywhere}
+  .topline{gap:5px;flex-wrap:wrap}
+  .balance{font-size:.69rem}
+  .cardline{flex-wrap:wrap;gap:1px 5px;padding:6px}
+  .cardline button{margin:0;padding:3px 4px}
+  .stage{grid-template-columns:19px minmax(0,1fr) auto;gap:5px;padding-inline:5px}
+  .stage-tag{font-size:.61rem;gap:2px}
+  .stage-tag .icon{width:11px;height:11px}
+  .support-actions{grid-template-columns:minmax(0,1fr)}
+  .dock-tabs{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+  .hangar-tab{font-size:20px;padding-inline:4px}
+  .craft-grid{grid-template-columns:minmax(0,1fr)}
+  .craft-choice{grid-template-columns:minmax(0,1fr) minmax(0,44%);align-items:center}
+  .craft-choice small{text-align:right}
+  .shop-card{grid-template-columns:20px minmax(0,1fr);gap:5px}
+  .shop-card .icon{width:20px;height:20px}
+  .shop-card .price{grid-column:2;text-align:left}
+  .record,.setting{grid-template-columns:minmax(0,1fr) auto;gap:5px;padding-inline:7px}
+  .toggle{min-width:49px}
+  .setting select{min-width:min(49%,91px);max-width:91px}
+  .result-card{padding-inline:9px}
+  .result-facts{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+  .result-facts strong{font-size:21px}
+  .result-secondary{grid-template-columns:minmax(0,1fr)}
 }
 @container (max-width:179px){
   .home-links{grid-template-columns:repeat(2,minmax(0,1fr))}

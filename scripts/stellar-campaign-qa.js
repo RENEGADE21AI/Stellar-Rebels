@@ -188,7 +188,7 @@ async function verify() {
     await page.waitForFunction(() => window.campaign.state.mode === 'playing' && window.campaign.state.flight.endless);
     const gravityEntry = await seekBossEntry(page);
     assert.ok(gravityEntry >= 6, `Gravity Platform has ${gravityEntry}px between its hittable hull and the introductory HUD`);
-    await page.getByText('Gravity Platform', { exact:true }).waitFor();
+    await page.locator('#flight-name').filter({ hasText:'Gravity Platform' }).waitFor();
     await shot('endless-gravity-entry');
     await page.waitForFunction(() => window.campaign.state.flight.boss.age >= 4.3);
     const gravityHeadroom = await bossHeadroom(page);
