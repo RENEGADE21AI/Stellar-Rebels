@@ -10,6 +10,8 @@ const target = path.join(root, 'dist-stellar');
 const release = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
 const dirty = Boolean(execFileSync('git', ['status', '--porcelain=v1', '--untracked-files=all'], { cwd: root, encoding: 'utf8' }).trim());
 const files = new Map();
+const googleSignIn = process.env.STELLAR_ENABLE_GOOGLE_SIGN_IN === '1';
+const lazyFiles = new Map();
 
 function readText(file) {
   return fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
@@ -27,6 +29,7 @@ function walk(directory) {
 for (const file of walk(source)) {
   const local = path.relative(source, file).split(path.sep).join('/');
   if (local === 'index.html') continue;
+  if (local === 'media/brand/google-sign-in.png' && !googleSignIn) continue;
   if (!local.startsWith('media/') && !/^[a-z-]+\.(?:mjs|css)$/.test(local)) throw Error(`Unexpected runtime file: ${local}`);
   if (!/\.(mjs|css|png|webp|svg|woff2|txt)$/.test(local)) throw Error(`Unsupported build asset: ${local}`);
   files.set(local, /\.(mjs|css|svg|txt)$/.test(local) ? readText(file) : fs.readFileSync(file));
@@ -41,10 +44,25 @@ const shared = ['00-runtime.js', '00-input-actions.js', '00-gameplay-rules.js', 
 for (const name of shared) files.set(`shared/${name}`, readText(path.join(root, 'src', name)));
 const audio = ['hangar-bay-seven.mp3', 'gravitys-edge.mp3'];
 for (const name of audio) files.set(`audio/${name}`, fs.readFileSync(path.join(root, 'assets', 'audio', name)));
-const template = readText(path.join(source, 'index.html'));
+if (googleSignIn) {
+  const bundle = require('esbuild').buildSync({
+    entryPoints: [path.join(__dirname, 'stellar-google-auth.mjs')],
+    bundle: true,
+    platform: 'browser',
+    format: 'esm',
+    target: ['es2020'],
+    minify: true,
+    legalComments: 'inline',
+    write: false
+  });
+  lazyFiles.set('google-auth-vendor.mjs', bundle.outputFiles[0].contents);
+}
+const packAttributes = googleSignIn ? ' data-pack="true" data-google-sign-in="true"' : ' data-pack="true"';
+const template = readText(path.join(source, 'index.html')).replace('<html lang="en">', `<html lang="en"${packAttributes}>`);
 const workerTemplate = readText(path.join(__dirname, 'stellar-worker.template.js'));
 const hash = crypto.createHash('sha256').update(template).update(workerTemplate);
 for (const [name, body] of files) hash.update(name).update(body);
+for (const [name, body] of lazyFiles) hash.update(name).update(body);
 const fingerprint = hash.digest('hex');
 const version = fingerprint.slice(0, 15);
 const base = `/arcade/${version}/`;
@@ -59,9 +77,9 @@ function emit(url, content) {
 if (path.relative(root, target) !== 'dist-stellar') throw Error('Refusing to replace unrelated files');
 fs.rmSync(target, { recursive: true, force: true });
 for (const [name, body] of files) emit(base + name, body);
+for (const [name, body] of lazyFiles) emit(base + name, body);
 
-const html = template.replace('<html lang="en">', '<html lang="en" data-pack="true">')
-  .replace('<meta charset="utf-8">', `<meta charset="utf-8">\n  <base href="${base}">\n  <link rel="manifest" href="/site.webmanifest">`)
+const html = template.replace('<meta charset="utf-8">', `<meta charset="utf-8">\n  <base href="${base}">\n  <link rel="manifest" href="/site.webmanifest">`)
   .replace(/src="\/src\/(00-[\w-]+\.js)"/g, (_, name) => `src="${base}shared/${name}"`);
 emit('/index.html', html);
 emit('/site.webmanifest', JSON.stringify({
@@ -73,5 +91,5 @@ emit('/offline.html', `<!doctype html><html lang="en"><head><meta charset="utf-8
 const pack = ['/index.html', '/site.webmanifest', '/offline.html', ...[...files.keys()].map((name) => base + name)];
 emit('/sw.js', workerTemplate.replace('__VERSION__', version).replace('__PACK__', JSON.stringify(pack)));
 const bytes = pack.reduce((size, url) => size + fs.statSync(path.join(target, url.slice(1))).size, 0);
-emit('/version.json', JSON.stringify({ commitSha: release, assetVersion: version, fingerprint, dirty, packBytes: bytes, title: 'Stellar Rebels', hostingSite: 'stellar-rebels' }, null, 2) + '\n');
+emit('/version.json', JSON.stringify({ commitSha: release, assetVersion: version, fingerprint, dirty, packBytes: bytes, googleSignIn, title: 'Stellar Rebels', hostingSite: 'stellar-rebels' }, null, 2) + '\n');
 console.log(`Local Stellar Rebels web artifact ${version}, ${pack.length} cached files, ${(bytes / 1048576).toFixed(2)} MiB${dirty ? ', working changes included' : ''}.`);

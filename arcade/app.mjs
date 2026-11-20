@@ -7,6 +7,7 @@ import { captureReplay } from './replay.mjs';
 import { otherRealm, realmLabel } from './wraith.mjs';
 import { mountTitlePatrol } from './title-patrol.mjs';
 import { advanceTraining, startTraining } from './training.mjs';
+import { createGoogleAccount, googleSignInAvailable, pendingGoogleReturn } from './account.mjs';
 
 const $ = (id) => document.getElementById(id);
 const menu = $('menu');
@@ -23,6 +24,11 @@ const state = {
   helpBack: 'home', upgrade: null, flight: null, pending: null, last: null, busy: null, launch: null,
   pointer: null, keys: new Set(), input: 'touch', support: '', pack: 'waiting', packCheck: 0, installed: false, resumeAt: 0, finishAt: 0
 };
+let accountState = { phase:'connecting', notice:'Checking account…' };
+const googleAccount = createGoogleAccount((next) => {
+  accountState = next;
+  if (state.view === 'account') paintAccount();
+});
 
 const icons = {
   next: '<path d="m9 5 7 7-7 7"/>', back: '<path d="m15 5-7 7 7 7"/>',
@@ -190,7 +196,33 @@ function settingsView() {
   return screen('Settings', 'home', `${switches}<div class="setting"><div><strong>Drag sensitivity</strong><small>Changes how far the ship follows a swipe</small></div>
     <select class="toggle" id="sensitivity" aria-label="Drag sensitivity"><option value="gentle" ${prefs.sensitivity === 'gentle' ? 'selected' : ''}>Gentle</option><option value="standard" ${prefs.sensitivity === 'standard' ? 'selected' : ''}>Standard</option><option value="direct" ${prefs.sensitivity === 'direct' ? 'selected' : ''}>Direct</option></select></div>
     <div class="notice" id="pack-status" role="status">${packCopy()}</div>${state.installed ? '' : '<p class="subtle">Install from your browser menu or Add to Home Screen in Safari.</p>'}
+    ${googleSignInAvailable ? action('Account', 'view:account') : ''}
     ${action('Flight school', 'help:settings', 'quiet')}${state.support ? `<p class="notice">${state.support}</p>` : ''}`);
+}
+
+function accountView() {
+  return screen('Account', 'settings', `<div class="info account-panel">
+    <p class="subtle">Sign-in is optional. Scores, Salvage and upgrades stay in this browser.</p>
+    <p id="account-status" class="subtle" role="status" tabindex="-1"></p>
+    <button type="button" class="google-sign-in" data-action="account:sign-in" aria-label="Sign in with Google" hidden>
+      <img src="${media('brand/google-sign-in.png')}" width="180" height="40" alt="">
+    </button>
+    ${action('Sign out', 'account:sign-out', 'quiet', '', 'hidden')}
+    ${action('Retry connection', 'account:retry', 'quiet', '', 'hidden')}
+  </div>`);
+}
+
+function paintAccount() {
+  const status = $('account-status');
+  if (!status) return;
+  status.textContent = accountState.notice;
+  for (const [command, phase] of [['sign-in', 'guest'], ['sign-out', 'connected'], ['retry', 'retry']]) {
+    const button = menu.querySelector(`[data-action="account:${command}"]`);
+    const hide = accountState.phase !== phase;
+    if (hide && document.activeElement === button) status.focus({ preventScroll: true });
+    button.hidden = hide;
+  }
+  menu.querySelector('.back').disabled = accountState.phase === 'signing-in';
 }
 
 function helpView() {
@@ -250,7 +282,7 @@ function launchView() {
     <p class="notice" role="status">Loading flight assets…</p>${action('Cancel launch', 'cancel-flight', 'quiet', 'back')}</article>`;
 }
 
-const views = { home, stages, hangar, upgrade: upgradeView, records, settings: settingsView, help: helpView, result: results, launch: launchView };
+const views = { home, stages, hangar, upgrade: upgradeView, records, settings: settingsView, account: accountView, help: helpView, result: results, launch: launchView };
 
 function announce(message) { $('announcer').textContent = message; }
 
@@ -265,7 +297,7 @@ function showBrowserUpdate() {
 }
 
 function show(view, focus = true) {
-  if (!views[view]) return;
+  if (!views[view] || (view === 'account' && !googleSignInAvailable)) return;
   $('frame').dataset.reducedMotion = String(state.pilot.settings.reduced);
   state.mode = 'menu';
   state.view = view;
@@ -278,6 +310,10 @@ function show(view, focus = true) {
   menu.scrollTop = 0;
   if (focus) menu.querySelector('h1')?.focus({ preventScroll: true });
   if (view === 'settings') checkPack();
+  if (view === 'account') {
+    paintAccount();
+    void googleAccount.open();
+  }
   lookForBrowserUpdate();
   audio.play('hangar');
 }
@@ -616,6 +652,12 @@ async function handle(command) {
     else show(value);
     return;
   }
+  if (type === 'account' && state.view === 'account') {
+    if (value === 'sign-in') void googleAccount.signIn();
+    if (value === 'sign-out') void googleAccount.signOut();
+    if (value === 'retry') void googleAccount.open();
+    return;
+  }
   if (type === 'hangar') { showHangar(value); return; }
   if (type === 'shop') { showHangar(value, state.pilot.ship, 'upgrades'); return; }
   if (type === 'unlocked') { showHangar('result', value); return; }
@@ -873,7 +915,13 @@ async function boot() {
   try { state.pilot = await store.open(); }
   catch { state.pilot = store.useTemporary(); }
   audio.reflect(state.pilot.settings);
-  show('home', false);
+  const returning = googleSignInAvailable && pendingGoogleReturn();
+  show(returning ? 'account' : 'home', returning);
+  if (googleSignInAvailable) {
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted && state.view === 'account' && pendingGoogleReturn()) void googleAccount.open(true);
+    });
+  }
   void loadSprite('kestrel');
   if (navigator.serviceWorker && document.documentElement.dataset.pack === 'true' && !document.documentElement.dataset.localPreview) {
     navigator.serviceWorker.addEventListener('controllerchange', checkPack);
