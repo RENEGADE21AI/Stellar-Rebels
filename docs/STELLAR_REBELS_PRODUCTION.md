@@ -72,6 +72,10 @@ Weapon Power adds flank fire for 12 seconds. A second pickup refreshes the timer
 
 Ghost Energy starts at 26 out of 100. Landed hits and kills charge it. A normal Shift costs 38, passes through physical hits for 1.05 seconds and then recovers for 1.15 seconds. Pilots can still steer and fire. Charge gain pauses during ordinary phasing. The Wraith encounter uses a persistent realm hop costing 18. In either realm, shots and vulnerable targets must match. The Wraith alternates realms, so a pilot can wait for a matching window if low on charge. A charged fan locks its direction and realm at the start of the telegraph. Phase time and charge freeze during pause and reset on a fresh run.
 
+Boss arrival opens the arena 22% wider, including extra lower space for dodging. The camera pulls back on entry and the HUD stays anchored. Debris rows span the wider field, and rails and pull lanes extend through the added space. Reduced motion uses the wide view without animating the pullback. In Endless, existing fighters withdraw at boss entry and the arena returns to its normal size after a kill.
+
+Ordinary survivors can turn below the view, fly up the nearest edge and make a second pass from the top. They keep their existing hull and give one normal reward if destroyed. Up to three fighters can loop simultaneously. They hold their fire and do not ram on the way up. They leave after the second pass.
+
 ## Interface and visual direction
 
 Signal-orange ignition against blue-black space, bone-white technical type, titanium hangar panels, turquoise player plasma and coral hostile fire. Design the title around a real illustration, a clear original emblem and one primary CTA. Frame views with hairlines, clipped corners and a compact instrument family. Stage environments use low-contrast depth and limited colors under vectors and sprites. Enemy silhouettes and projectile geometry take priority over backdrops. Use generated visual concepts, then draw live copy, bars, icons and interaction states deterministically. Verify 390 × 844 and 320 × 568, with 44 CSS px controls and compact cinematic crops.

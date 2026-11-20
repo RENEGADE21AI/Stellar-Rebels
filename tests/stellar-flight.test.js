@@ -279,6 +279,62 @@ test('a returning Outer Orbit pilot keeps the original mastery and earns Wraith 
   assert.deepEqual(pilot.mastery, { 5:true, wraith:true });
 });
 
+test('boss flight opens real side space and debris coverage and smoothly closes in Endless', async () => {
+  const [{ Flight, bounds }, , { WIDTH }] = await load;
+  const { launchBoss, operatorWarnings } = await import('../arcade/bosses.mjs');
+  const { markWall } = await import('../arcade/boss-patterns.mjs');
+  const f = new Flight({ ...context(), mode:'endless' });
+  launchBoss(f, 'warden');
+  for (let i = 0; i < 60; i++) {
+    f.drag(-400, 400);
+    f.movePilot(step);
+  }
+  assert.equal(f.arenaMix, 1);
+  assert.ok(f.player.x < 0 && f.player.y > bounds.bottom);
+  f.fireTimer = 0;
+  f.shoot(step);
+  f.moveProjectiles(step);
+  assert.equal(f.friendly.length, 2);
+  markWall(f, 2);
+  const seam = f.hazards[0];
+  operatorWarnings(f, seam.windup);
+  assert.ok(f.hostile.some((s) => s.kind === 'rock' && s.x < 0));
+  assert.ok(f.hostile.some((s) => s.kind === 'rock' && s.x > WIDTH));
+  assert.ok(f.hostile.every((s) => Math.abs(seam.x - s.x) > seam.width / 2 + 11));
+  f.boss = null;
+  f.reanchor();
+  const outerX = f.player.x;
+  f.movePilot(step);
+  assert.ok(f.player.x > outerX && f.player.x < bounds.left);
+  for (let i = 0; i < 60; i++) f.movePilot(step);
+  assert.equal(f.arenaMix, 0);
+  assert.equal(f.player.x, bounds.left);
+  assert.equal(f.player.y, bounds.bottom);
+});
+
+test('a surviving fighter loops up the edge once with its existing hull and no duplicate reward', async () => {
+  const [{ Flight }, , { HEIGHT }] = await load;
+  const f = new Flight(context());
+  f.addEnemy({ kind:'scout', lane:.2 });
+  const enemy = f.enemies[0];
+  Object.assign(enemy, { y:HEIGHT + 24, age:9, hull:1.25 });
+  f.moveEnemies(step);
+  assert.ok(enemy.loop);
+  assert.equal(enemy.loop.edge, 15);
+  for (let i = 0; i < 75; i++) f.moveEnemies(step);
+  assert.ok(enemy.y > 0 && enemy.y < HEIGHT && enemy.turn > 3);
+  assert.equal(f.kills, 0);
+  assert.equal(f.hostile.length, 0);
+  for (let i = 0; i < 60; i++) f.moveEnemies(step);
+  assert.equal(enemy.returned, true);
+  assert.equal(enemy.loop, null);
+  assert.equal(enemy.hull, 1.25);
+  Object.assign(enemy, { y:HEIGHT + 42, age:9 });
+  f.step(step);
+  assert.equal(f.enemies.includes(enemy), false);
+  assert.equal(f.kills, 0);
+});
+
 test('reduced effects preserve shot origins and combat outcomes', async () => {
   const [{ Flight }] = await load;
   const standard = new Flight(context());

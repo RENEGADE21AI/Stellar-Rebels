@@ -1,11 +1,13 @@
 import { WIDTH } from './catalog.mjs';
 
 export function markWall(flight, slot, options = {}) {
-  const gap = globalThis.debrisSafeGap(slot, { slots:5, width:WIDTH, asteroidRadius:12, playerRadius:flight.ship.hit, margin:8 });
+  const room = flight.sideRoom;
+  const gap = globalThis.debrisSafeGap(slot, { slots:5, width:WIDTH + 2 * room, asteroidRadius:12, playerRadius:flight.ship.hit, margin:8 });
   const delay = options.delay ?? 0;
   const y = options.y ?? 176;
   flight.hazards.push({
-    kind:'wall', x:gap.center, y, width:Math.max(94, gap.width), age:-delay, windup:1.12,
+    kind:'wall', x:gap.center - room, y, width:Math.max(94, gap.width), age:-delay, windup:1.12,
+    left: -room, right: WIDTH + room,
     speed:options.speed ?? 141
   });
   if (!delay) flight.signal('charge', gap.center, y);
@@ -63,7 +65,7 @@ export function railShip(flight, boss, phase) {
   if (boss.attack % 3 !== 0) {
     markRail(flight, lockedX, phase ? 44 : 36, boss.y + 116, 79);
     if (phase && boss.attack % 3 === 2) {
-      const reserve = lockedX < WIDTH / 2 ? WIDTH - 59 : 59;
+      const reserve = lockedX < WIDTH / 2 ? WIDTH - 59 + flight.sideRoom : 59 - flight.sideRoom;
       markRail(flight, reserve, 27, boss.y + 116, 79);
     }
     boss.timer = 2.43;
@@ -81,7 +83,7 @@ export function gravityPlatform(flight, boss, phase) {
   const offset = Math.sin(boss.attack * 1.10);
   flight.fan(boss.x, y, Math.PI/2 + .56 * offset, phase ? 9 : 7, .122, 144 + phase * 26, 'blade');
   if (boss.attack % 2 === 1) {
-    const lock = Math.min(WIDTH - 57, Math.max(57, flight.player.x));
+    const lock = Math.min(WIDTH - 57 + flight.sideRoom, Math.max(57 - flight.sideRoom, flight.player.x));
     markPull(flight, lock, y);
   } else if (phase) {
     const secondX = boss.x - 61 * Math.sign(offset);

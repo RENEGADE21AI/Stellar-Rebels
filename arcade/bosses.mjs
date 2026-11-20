@@ -4,6 +4,8 @@ import { advanceWraith, enterWraith } from './wraith.mjs';
 
 export function launchBoss(flight, kind) {
   const spec = BOSSES[kind];
+  for (const enemy of flight.enemies) enemy.retreat = true;
+  flight.spawns.length = 0;
   flight.boss = {
     kind, spec, x: WIDTH / 2, y: -100, hull: spec.hull, age: 0, timer: 2.9, attack: 0,
     entryTime: 1.55, hitFlash: 0, parts: spec.parts.map(([dx, dy]) => ({ dx, dy, hull: spec.partHull, flash: 0 }))
@@ -68,7 +70,11 @@ export function operatorWarnings(flight, dt) {
       if (warning.kind === 'wall') {
         warning.rowY = warning.y;
         warning.rowSpeed = warning.speed * flight.pressure;
-        for (let x = 18; x <= WIDTH - 13; x += 34) {
+        const left = (warning.left ?? 0) + 18;
+        const span = (warning.right ?? WIDTH) - 18 - left;
+        const steps = Math.round(span / 34);
+        for (let i = 0; i <= steps; i++) {
+          const x = left + span * i / steps;
           if (Math.abs(x - warning.x) < warning.width / 2 + 11) continue;
           flight.projectile(x, warning.y, Math.PI/2, warning.speed, 'rock');
         }
@@ -85,6 +91,6 @@ export function operatorWarnings(flight, dt) {
     }
   }
   flight.hazards = flight.hazards.filter((warning) => warning.kind === 'wall'
-    ? !warning.triggered || warning.rowY < HEIGHT + 17
+    ? !warning.triggered || warning.rowY < HEIGHT + 17 + 24 * flight.arenaMix
     : warning.age < warning.windup + warning.live);
 }

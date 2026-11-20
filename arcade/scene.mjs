@@ -1,4 +1,4 @@
-import { ENDLESS_BOSSES, ENEMIES, GUNNER_MUZZLES, HEIGHT, PICKUPS, WIDTH, enemyMuzzle, hardpointAt } from './catalog.mjs';
+import { BOSS_ARENA_SCALE, ENDLESS_BOSSES, ENEMIES, GUNNER_MUZZLES, HEIGHT, PICKUPS, WIDTH, enemyMuzzle, hardpointAt } from './catalog.mjs';
 import { bossPartPosition } from './bosses.mjs';
 import { commandCharge, vanePosition } from './formations.mjs';
 import { SPECTRAL, otherRealm, realmTint } from './wraith.mjs';
@@ -93,7 +93,8 @@ export class FlightScene {
     const dpr = globalThis.effectiveCanvasDpr(clientWidth, clientHeight, window.devicePixelRatio, 1.85, 1_300_000);
     this.canvas.width = Math.max(1, Math.floor(clientWidth * dpr));
     this.canvas.height = Math.max(1, Math.floor(clientHeight * dpr));
-    this.unit = Math.min(clientWidth / WIDTH, clientHeight / HEIGHT) || 1;
+    this.baseUnit = Math.min(clientWidth / WIDTH, clientHeight / HEIGHT) || 1;
+    this.unit = this.baseUnit;
     this.grade = null;
   }
 
@@ -170,7 +171,10 @@ export class FlightScene {
     const c = this.ctx;
     c.setTransform(this.canvas.width / WIDTH, 0, 0, this.canvas.height / HEIGHT, 0, 0);
     this.background(flight, prefs.reduced);
-    const scale = Math.min(this.canvas.width / WIDTH, this.canvas.height / HEIGHT);
+    const arena = prefs.reduced ? Number(Boolean(flight.boss || flight.arenaMix)) : flight.arenaMix;
+    const zoom = 1 + (BOSS_ARENA_SCALE - 1) * arena;
+    this.unit = this.baseUnit / zoom;
+    const scale = Math.min(this.canvas.width / WIDTH, this.canvas.height / HEIGHT) / zoom;
     const left = (this.canvas.width - scale * WIDTH) / 2;
     const top = (this.canvas.height - scale * HEIGHT) / 2;
     c.setTransform(scale, 0, 0, scale, left, top);
@@ -179,7 +183,8 @@ export class FlightScene {
       c.translate(Math.sin(flight.elapsed * 169 + this.cameraPulse * 7) * this.cameraPulse * 3.4,
         Math.sin(flight.elapsed * 126 + this.cameraPulse * 5) * this.cameraPulse * 3.4);
     }
-    for (const warning of flight.hazards) this.warning(warning, prefs, flight.boss);
+    const visibleBottom = HEIGHT * (zoom + 1) / 2;
+    for (const warning of flight.hazards) this.warning(warning, prefs, flight.boss, visibleBottom);
     this.drawLinks(flight);
     for (const enemy of flight.enemies) this.enemy(enemy, flight.elapsed);
     if (flight.boss) this.boss(flight.boss, prefs);
@@ -321,6 +326,12 @@ export class FlightScene {
 
   enemy(e, clock) {
     const c = this.ctx;
+    if (e.loop) {
+      line(c, e.x - 5, e.y + 13, 0, 29, '#965845a6', 2.1);
+      line(c, e.x + 5, e.y + 13, 0, 29, '#965845a6', 2.1);
+      this.sprite(e.kind, e.x, e.y, e.spec.size, e.turn);
+      return;
+    }
     if (e.kind === 'diver' && e.age > 1.95 && !e.retreat) {
       if (e.dive) {
         const v = e.vector;
@@ -347,8 +358,8 @@ export class FlightScene {
 
   drawLinks(flight) {
     const c = this.ctx;
-    for (const relay of flight.enemies.filter((e) => e.kind === 'relay' && e.y > 0 && !e.retreat)) {
-      for (const ally of flight.enemies.filter((e) => e.kind === 'escort' && Math.hypot(e.x - relay.x, e.y - relay.y) < 144)) {
+    for (const relay of flight.enemies.filter((e) => e.kind === 'relay' && e.y > 0 && !e.retreat && !e.loop)) {
+      for (const ally of flight.enemies.filter((e) => e.kind === 'escort' && !e.retreat && !e.loop && Math.hypot(e.x - relay.x, e.y - relay.y) < 144)) {
         line(c, relay.x, relay.y, ally.x - relay.x, ally.y - relay.y, '#8dcaff75', 2);
         ring(c, ally.x, ally.y, 19, '#74bdcaad');
       }
@@ -437,7 +448,7 @@ export class FlightScene {
     c.restore();
   }
 
-  warning(w, prefs, boss) {
+  warning(w, prefs, boss, bottom = HEIGHT) {
     if (w.age < 0) return;
     const c = this.ctx;
     const solid = w.age >= w.windup;
@@ -457,17 +468,17 @@ export class FlightScene {
       }
       c.globalAlpha = solid ? .7 : .17;
       c.fillStyle = solid ? '#ff702c' : color;
-      c.fillRect(left, start, w.width, HEIGHT - start);
+      c.fillRect(left, start, w.width, bottom - start);
       c.globalAlpha = 1;
       if (solid) {
-        line(c, w.x, start, 0, HEIGHT - start, '#fffdf1', w.width * .32);
+        line(c, w.x, start, 0, bottom - start, '#fffdf1', w.width * .32);
       } else {
         c.beginPath();
-        c.rect(left, start, w.width, HEIGHT - start);
+        c.rect(left, start, w.width, bottom - start);
         c.clip();
-        for (let y = start + 11; y < HEIGHT + 25; y += 24) line(c, left, y, w.width, -w.width * .76, color, 1.4);
-        line(c, left, start, 0, HEIGHT - start, color, 2.7);
-        line(c, left + w.width, start, 0, HEIGHT - start, color, 2.7);
+        for (let y = start + 11; y < bottom + 25; y += 24) line(c, left, y, w.width, -w.width * .76, color, 1.4);
+        line(c, left, start, 0, bottom - start, color, 2.7);
+        line(c, left + w.width, start, 0, bottom - start, color, 2.7);
       }
     } else if (w.kind === 'wall') {
       const l = w.x - w.width / 2;
@@ -476,8 +487,10 @@ export class FlightScene {
       const seamColor = solid ? '#bfffe6' : color;
       if (!solid) {
         c.setLineDash([8,5]);
-        line(c, 0, y, l - 5, 0, color, 2.1);
-        line(c, r + 5, y, WIDTH - r, 0, color, 2.1);
+        const left = w.left ?? 0;
+        const right = w.right ?? WIDTH;
+        line(c, left, y, l - 5 - left, 0, color, 2.1);
+        line(c, r + 5, y, right - (r + 5), 0, color, 2.1);
         c.setLineDash([]);
       }
       for (const [x, sign] of [[l, 1], [r, -1]]) {
@@ -487,12 +500,12 @@ export class FlightScene {
     } else if (w.kind === 'pull') {
       c.globalAlpha = solid ? .12 : .07;
       c.fillStyle = '#b395f9';
-      c.fillRect(w.x - w.width/2, w.y, w.width, HEIGHT - w.y);
+      c.fillRect(w.x - w.width/2, w.y, w.width, bottom - w.y);
       c.globalAlpha = solid ? .80 : .52;
       for (const side of [-1,1]) {
         const edge = w.x + side * w.width / 2;
-        line(c, edge, w.y, 0, HEIGHT - w.y, '#cbacfe', 1);
-        for (let y = w.y + 26; y < HEIGHT; y += 52) {
+        line(c, edge, w.y, 0, bottom - w.y, '#cbacfe', 1);
+        for (let y = w.y + 26; y < bottom; y += 52) {
           const drift = solid && !prefs.reduced ? Math.sin(y * .07 - w.age * 6) * 4 : 0;
           const x = edge - side * (19 + drift);
           line(c, x, y - 8, -side * 9, 8, '#e2d0ff', 2.4);

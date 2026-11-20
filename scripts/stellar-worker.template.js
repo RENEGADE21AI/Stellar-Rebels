@@ -9,8 +9,8 @@ async function packReady(cache) {
   return files.every((url) => present.has(url));
 }
 
-async function fillPack(cache) {
-  const home = await fetch('/index.html', { cache: 'reload' });
+async function fillPack(cache, home = null) {
+  home ??= await fetch('/index.html', { cache: 'reload' });
   if (!home.ok || !(await home.clone().text()).includes(generationPath)) throw Error('Flight pack generation changed');
   await cache.addAll(files.filter((url) => url !== '/index.html').map((url) => new Request(url, { cache: 'reload' })));
   await cache.put('/index.html', home);
@@ -80,11 +80,17 @@ self.addEventListener('fetch', (event) => {
     const cached = await cache.match(requested);
     if (home) {
       // A document navigation is a safe update point. Open documents continue using their pinned assets.
-      const network = await fetch('/index.html', { cache: 'no-store', signal: AbortSignal.timeout?.(1600) }).catch(() => null);
-      if (network?.ok) {
-        const html = await network.clone().text();
-        if (html.includes(generationPath) && !await packReady(cache)) await fillPack(cache).catch(() => {});
-        if (html.includes('data-pack="true"')) return network;
+      const fresh = await (async () => {
+        const response = await fetch('/index.html', { cache: 'no-store', signal: AbortSignal.timeout?.(2200) });
+        return response.ok ? { html: await response.text(), headers: new Headers(response.headers) } : null;
+      })().catch(() => null);
+      if (fresh?.html.includes('data-pack="true"')) {
+        // Repair may outlive the fetch timeout. Return the completed document body independently of that request.
+        fresh.headers.delete('content-encoding');
+        fresh.headers.delete('content-length');
+        const document = new Response(fresh.html, { headers: fresh.headers });
+        if (fresh.html.includes(generationPath) && !await packReady(cache)) await fillPack(cache, document.clone()).catch(() => {});
+        return document;
       }
     }
     if (cached && (!home || await packReady(cache))) return request.headers.has('Range') ? fromRange(request, cached) : cached;

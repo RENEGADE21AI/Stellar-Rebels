@@ -1,4 +1,4 @@
-import { ENDLESS_BOSSES, ENEMIES, GHOST, GUNNER_MUZZLES, HEIGHT, PICKUPS, SHIPS, WIDTH, enemyMuzzle, formation, hardpointAt, stageById, weaponStats } from './catalog.mjs';
+import { BOSS_ARENA_SCALE, ENDLESS_BOSSES, ENEMIES, GHOST, GUNNER_MUZZLES, HEIGHT, PICKUPS, SHIPS, WIDTH, enemyMuzzle, formation, hardpointAt, stageById, weaponStats } from './catalog.mjs';
 import { advanceBoss, bossPartPosition, launchBoss, operatorWarnings } from './bosses.mjs';
 import { markPull, markRail, markWall } from './boss-patterns.mjs';
 import { VANE_HULL, breakFormation, linkedVolley, vanePosition } from './formations.mjs';
@@ -6,6 +6,9 @@ import { PHYSICAL, SPECTRAL, WRAITH_WINGS, otherRealm, realmLabel } from './wrai
 
 export const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 export const bounds = { left: 17, right: WIDTH - 17, top: 235, bottom: HEIGHT - 37 };
+const bossSideRoom = WIDTH * (BOSS_ARENA_SCALE - 1) / 2;
+const loopTurn = .27;
+const maxReturning = 3;
 const projectileRadii = { bolt: 4, seed: 4.5, rock: 12, lance: 4.8, blade: 5, pulse: 4.7, orb: 5.1, specter: 5.4 };
 const duration = (value) => Math.max(0, value);
 
@@ -50,6 +53,7 @@ export class Flight {
     this.hazards = [];
     this.events = [];
     this.boss = null;
+    this.arenaMix = 0;
     this.cleanRecovery = 0;
     this.pressure = 1;
     this.endlessWave = 0;
@@ -71,9 +75,16 @@ export class Flight {
     this.keys = { x: x / length, y: y / length };
   }
 
+  get sideRoom() { return bossSideRoom * this.arenaMix; }
+  get movementBounds() {
+    const room = this.sideRoom;
+    return { left: bounds.left - room, right: bounds.right + room, top: bounds.top, bottom: bounds.bottom + 24 * this.arenaMix };
+  }
+
   drag(dx, dy) {
-    this.xIntent = clamp(this.xIntent + dx, bounds.left, bounds.right);
-    this.yIntent = clamp(this.yIntent + dy, bounds.top, bounds.bottom);
+    const area = this.movementBounds;
+    this.xIntent = clamp(this.xIntent + dx, area.left, area.right);
+    this.yIntent = clamp(this.yIntent + dy, area.top, area.bottom);
   }
 
   reanchor() {
@@ -245,7 +256,6 @@ export class Flight {
         this.terrainIndex++;
       }
       if (!this.boss && this.elapsed >= this.stage.bossAt) {
-        for (const e of this.enemies) e.retreat = true;
         launchBoss(this, this.stage.boss);
       }
     }
@@ -258,12 +268,16 @@ export class Flight {
     this.enemies.push({
       kind: data.kind, spec, x, home: x, y: -32, age: 0, hull: spec.hull, fireTimer: data.group && data.kind === 'relay' ? 3.1 : 1.55 + data.lane * .8,
       flash: 0, turn: 0, volley: 0, side: x < WIDTH / 2 ? 1 : -1, dive: false, retreat: false,
-      group: data.group, vane: data.group && data.kind === 'relay' ? VANE_HULL : 0, jam: 0
+      group: data.group, vane: data.group && data.kind === 'relay' ? VANE_HULL : 0, jam: 0,
+      loop: null, returned: false
     });
   }
 
   movePilot(dt) {
     const p = this.player;
+    const priorRoom = this.arenaMix;
+    this.arenaMix = clamp(this.arenaMix + (this.boss ? dt * 1.25 : -dt * 1.45), 0, 1);
+    if (this.arenaMix < priorRoom) this.drag(0, 0);
     if (p.ghostTime) {
       p.ghostTime = duration(p.ghostTime - dt);
       if (!p.ghostTime) {
@@ -334,18 +348,52 @@ export class Flight {
     }
   }
 
+  startReturn(e) {
+    const edge = e.x < WIDTH / 2 ? 15 : WIDTH - 15;
+    e.loop = { edge, fromX: e.x, fromTurn: e.turn, time: 0 };
+    e.group = 0;
+    e.vane = 0;
+    e.jam = 0;
+    e.dive = false;
+    this.signal('returnFlyby', edge, HEIGHT - 13);
+    if (!this.taughtReturn && !this.endless && this.stage.id === 1 && !(this.notice?.time > 0)) {
+      this.taughtReturn = true;
+      this.message('Escaping fighters can loop back along the sides.', 2.35, 'tactic', 'Watch the edges');
+    }
+  }
+
+  moveReturning(e, dt) {
+    const loop = e.loop;
+    loop.time += dt;
+    const turn = Math.min(1, loop.time / loopTurn);
+    e.x = loop.fromX + (loop.edge - loop.fromX) * turn;
+    e.turn = loop.fromTurn + (Math.PI - loop.fromTurn) * turn;
+    if (turn < 1) return;
+    e.y -= 460 * dt;
+    if (e.y >= -49) return;
+    const home = clamp(WIDTH - e.home + 14 * e.side, 44, WIDTH - 44);
+    Object.assign(e, { x: home, home, y: -34, age: 0, turn: 0, fireTimer: 2.1, side: home < WIDTH / 2 ? 1 : -1,
+      returned: true, loop: null });
+  }
+
   moveEnemies(dt) {
     for (const queued of this.spawns) {
       if (queued.at <= this.elapsed) this.addEnemy(queued);
     }
     this.spawns = this.spawns.filter((queued) => queued.at > this.elapsed);
-    const wingCommand = new Map(this.enemies.filter((e) => e.group && e.vane > 0 && e.hull > 0).map((e) => [e.group, e]));
+    const wingCommand = new Map(this.enemies.filter((e) => e.group && e.vane > 0 && e.hull > 0 && !e.retreat).map((e) => [e.group, e]));
+    let returning = this.enemies.filter((e) => e.loop && !e.retreat).length;
     for (const e of this.enemies) {
       e.age += dt;
       e.flash = duration(e.flash - dt);
       e.jam = duration(e.jam - dt);
       if (e.retreat) {
         e.y -= 155 * dt;
+        continue;
+      }
+      if (e.loop) {
+        this.moveReturning(e, dt);
+        if (!e.loop) returning--;
         continue;
       }
       const { speed, y: target, drift, cadence } = e.spec;
@@ -359,7 +407,7 @@ export class Flight {
         e.x += Math.cos(e.vector) * 225 * dt;
         e.y += Math.max(.55, Math.sin(e.vector)) * 225 * dt;
         e.turn = (e.vector - Math.PI / 2) * .62;
-      } else if (e.age > (e.group ? 9.1 : 7.1)) {
+      } else if (e.age > (e.returned ? 5.25 : e.group ? 9.1 : 7.1)) {
         e.y += (speed + 13) * dt;
         e.x += e.side * 26 * dt;
       } else {
@@ -368,6 +416,11 @@ export class Flight {
         const lateral = e.vane > 0 ? Math.min(3, drift) : drift;
         e.x = e.home + lateral * Math.sin(e.age * (e.kind === 'sweeper' ? 1.35 : 1.9)) * e.side;
         e.turn = clamp((e.x - current) * .16, -.16, .16);
+      }
+      if (!this.boss && !e.returned && returning < maxReturning && e.y > HEIGHT + e.spec.size * .43) {
+        this.startReturn(e);
+        returning++;
+        continue;
       }
       const linked = wingCommand.get(e.group);
       const canFire = live && e.y < HEIGHT * .56 && !e.dive;
@@ -391,8 +444,8 @@ export class Flight {
   }
 
   escortProtected(enemy) {
-    return enemy.kind === 'escort' && this.enemies.some((ally) =>
-      ally.kind === 'relay' && ally.hull > 0 && !ally.retreat && Math.hypot(enemy.x-ally.x, enemy.y-ally.y) < 144);
+    return enemy.kind === 'escort' && !enemy.loop && this.enemies.some((ally) =>
+      ally.kind === 'relay' && ally.hull > 0 && !ally.retreat && !ally.loop && Math.hypot(enemy.x-ally.x, enemy.y-ally.y) < 144);
   }
 
   hitEnemy(e, s) {
@@ -489,7 +542,9 @@ export class Flight {
         s.live = false;
       } else if (this.hitBoss(s)) s.live = false;
     }
-    this.friendly = this.friendly.filter((s) => s.live && s.y > -35 && s.x > -30 && s.x < WIDTH + 30);
+    const sideRoom = this.sideRoom;
+    const bottomRoom = 24 * this.arenaMix;
+    this.friendly = this.friendly.filter((s) => s.live && s.y > -35 && s.x > -30 - sideRoom && s.x < WIDTH + 30 + sideRoom);
     if (this.status !== 'active') return;
     for (const s of this.hostile) {
       s.age += dt;
@@ -499,7 +554,8 @@ export class Flight {
         if (this.damage(s.x, s.y, s.realm)) s.live = false;
       }
     }
-    this.hostile = this.hostile.filter((s) => s.live && s.age < 8 && s.y < HEIGHT + 28 && s.y > -40 && s.x > -42 && s.x < WIDTH + 42);
+    this.hostile = this.hostile.filter((s) => s.live && s.age < 8 && s.y < HEIGHT + 28 + bottomRoom &&
+      s.y > -40 && s.x > -42 - sideRoom && s.x < WIDTH + 42 + sideRoom);
   }
 
   step(dt) {
@@ -517,12 +573,13 @@ export class Flight {
     if (this.status !== 'active') return;
     const p = this.player;
     for (const e of this.enemies) {
-      if (e.hull > 0 && !e.retreat && overlap(e.x, e.y, e.spec.hit, { x: p.x, y: p.y, radius: this.ship.hit })) {
+      if (e.hull > 0 && !e.retreat && !e.loop && overlap(e.x, e.y, e.spec.hit, { x: p.x, y: p.y, radius: this.ship.hit })) {
         if (this.damage(e.x, e.y)) e.retreat = true;
       }
     }
     if (this.status !== 'active') return;
-    this.enemies = this.enemies.filter((e) => e.hull > 0 && e.y < HEIGHT + 40 && e.y > -55 && e.x > -38 && e.x < WIDTH + 38);
+    this.enemies = this.enemies.filter((e) => e.hull > 0 && (e.loop && !e.retreat ||
+      e.y < HEIGHT + 40 && e.y > -55 && e.x > -38 && e.x < WIDTH + 38));
     this.pickups = this.pickups.filter((drop) => {
       drop.age += dt;
       drop.y += 100 * dt;

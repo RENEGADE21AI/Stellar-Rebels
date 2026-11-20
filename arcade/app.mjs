@@ -196,6 +196,7 @@ function helpView() {
     ['Ghost Shift', 'Land shots and destroy targets to fill Ghost Energy. Tap Shift or press Space to pass through physical fire for one second. A short recovery follows.'],
     ['Wraith realms', 'Tap Hop or press Space to change realms. Match the Wraith’s realm and shoot its marked core. Solid rounds hit physical ships. Hollow diamonds hit ghost ships.'],
     ['Read the warning', 'Leave striped beam lanes. Fly through the marked open seam in a debris wall.'],
+    ['Watch the edges', 'A surviving fighter can circle up the side and make one more pass. It keeps any damage you dealt.'],
     ['Break the modules', 'Shoot hardpoints framed by corner brackets. A crossed-out module is offline.'],
     ['Break a formation', 'Target the bracketed command relay. Stop its volley and hit the exposed wing before it recovers.'],
     ['Expose shielded escorts', 'Follow the solid blue links to the Command Ship. Destroy it to drop the escorts’ shields.'],
