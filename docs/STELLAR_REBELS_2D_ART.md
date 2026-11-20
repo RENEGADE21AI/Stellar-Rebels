@@ -12,9 +12,10 @@ The reference board compared the strongest Star Strike RUSH hulls with the earli
 | `fighters.png` | Scout, Diver, Sweeper and Command Ship. |
 | `command.png` | Warden, Harrow, Relay Carrier and Rail Ship. |
 | `hardware.png` | Flagship, Gravity Platform, Gunner and Warden turret. |
-| `pickups.png` | Barrier, Weapon Power, Repair and Overdrive. |
+| Legacy pickups | `phase-shield.png` for Barrier, `dual.png` for Weapon Power, `repair.png` for Repair and `rapid.png` for Overdrive. Mint treatment on Repair separates it from the blue Barrier. The generated sheet stays as source history. |
 | `outer-orbit.png` | The low-density Outer Orbit gameplay plate. |
-| Legacy `boss-wraith-physical.png` and `boss-wraith-ghost.png` | Both original synchronized Wraith layers with matching silhouettes. |
+| `cruiser.png` | Wide passing ship with two empty mounts for the separate copper turrets. |
+| `wraith.png` | A new graphite crescent and central crystal with a separately graded purple realm plate. The two exports derive from the same alpha mask. Both legacy Wraith plates remain in the original asset directory. |
 | Legacy `enemy-phantom.png`, `enemy-shieldbearer.png` and `asteroid-rock-1.png` | Reoriented Phantom, Escort and debris, sized against current roles. |
 
 Run `python scripts/prepare-stellar-2d.py` with Pillow to reproduce the runtime sprite files. The exporter isolates the primary connected silhouette, removes stray pixels and low-alpha generator haze, preserves antialiased edges and frames the visible hull in the existing world-space cell. It maps boss sockets to the verified attachment coordinates. Warden turrets and Relay Carrier or Flagship shield nodes render independently, and the active artwork disappears after destruction. The original two Wraith plates use the same transform. Enemy muzzle positions, player exhaust and the rail origin share the authored coordinates used by combat. Existing ship and hull collision radii carry forward.

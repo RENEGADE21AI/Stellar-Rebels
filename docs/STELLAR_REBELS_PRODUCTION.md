@@ -29,7 +29,7 @@ The six proposed stages form one assault on the Dominion's relay network. Each n
 
 | Stage | Environment | Formation challenge | Boss and answer |
 | --- | --- | --- | --- |
-| 1 · Vesper Orbit | Rust-orange limb and debris lanes | Chevrons and scouts, then aimed lances alongside dives | Warden. Read two turret charge marks and focus each marked turret to remove its stream. |
+| 1 · Vesper Orbit | Rust-orange limb and debris lanes | Scout chevrons grow into mixed formations. A cruiser crosses the flight path with two independently destructible guns. | Warden. Read two turret charge marks and focus each turret to remove its stream. |
 | 2 · Asteroid Belt | Violet asteroid shadow | Sweep patterns create lanes to cross while diving scouts punish parking | Harrow. Move through the open seam in announced paired debris walls. |
 | 3 · Relay Station | Teal broadcast ruins | Exposed command craft and escort orbits | Relay Carrier. Cut visibly linked nodes to shut down protection, then exploit the exposed core. |
 | 4 · Red Sun | Red radiation horizon | Alternating rail warnings and diagonally advancing formations | Rail Ship. Bait the rail at your old position, then leave the locked stripe. |
@@ -72,7 +72,7 @@ Weapon Power adds flank fire for 12 seconds. A second pickup refreshes the timer
 
 Ghost Energy starts at 26 out of 100. Landed hits and kills charge it. A normal Shift costs 38, passes through physical hits for 1.05 seconds and then recovers for 1.15 seconds. Pilots can still steer and fire. Charge gain pauses during ordinary phasing. The Wraith encounter uses a persistent realm hop costing 18. In either realm, shots and vulnerable targets must match. The Wraith alternates realms, so a pilot can wait for a matching window if low on charge. A charged fan locks its direction and realm at the start of the telegraph. Phase time and charge freeze during pause and reset on a fresh run.
 
-Boss arrival opens the arena 22% wider, including extra lower space for dodging. The camera pulls back on entry and the HUD stays anchored. Debris rows span the wider field, and rails and pull lanes extend through the added space. Reduced motion uses the wide view without animating the pullback. In Endless, existing fighters withdraw at boss entry and the arena returns to its normal size after a kill.
+Every encounter uses the same 384 × 768 logical field, movement limits and per-ship size. The renderer clips combat to that field at both phone sizes. The surrounding display remains filled by the environment. Boss hulls, attachments and emitter positions are sized together, while friendly and hostile rounds retain their established visual profile and timing. Existing ordinary fighters withdraw when a boss arrives in Arcade or Endless.
 
 Ordinary survivors can turn below the view, fly up the nearest edge and make a second pass from the top at least a quarter of the field away from their original lane. The run's own seed selects an eligible lane. They keep their existing hull and give one normal reward if destroyed. Up to three fighters can loop simultaneously. They hold their fire and do not ram on the way up. They leave after the second pass.
 
@@ -96,7 +96,7 @@ The campaign has six stages. Ordinary Ghost Shift is available in Arcade and End
 
 ## Asset and export plan
 
-Ship new 2D artwork for the player hulls, standard hostile fleet, independent boss modules, pickups and Outer Orbit. Retain the legacy Wraith's matched realm plates, Phantom, Shieldbearer and asteroid art. Keep the Blender workbench available as source history. Aim the player up and enemies down. Favor pale ceramic and copper on the player fleet, dark metal and concentrated warning lights on hostiles. Compare actual pixels on the real playfields. [2D source and review ledger](STELLAR_REBELS_2D_ART.md)
+Ship new 2D artwork for the player hulls, standard hostile fleet, all bosses including matched Wraith plates, independent boss modules, the Vesper cruiser and Outer Orbit. Retain the legacy Phantom, Shieldbearer, asteroid and four power-up symbols. Keep the Blender workbench available as source history. Aim the player up and enemies down. Favor pale ceramic and copper on the player fleet, dark metal and concentrated warning lights on hostiles. [2D source and review ledger](STELLAR_REBELS_2D_ART.md)
 
 Create editable logo directions around a flight chevron, orbital slash and signal pennant. Select for readability in a small app icon and on the title. Export true paths in stacked, horizontal, emblem, light, dark and mono versions with transparent PNGs. Use a mask-safe square app icon and the existing web packaging sizes plus a 180px Apple touch icon.
 

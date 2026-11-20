@@ -4,11 +4,13 @@ import { advanceWraith, enterWraith } from './wraith.mjs';
 
 export function launchBoss(flight, kind) {
   const spec = BOSSES[kind];
+  const artScale = spec.size / (spec.artSize ?? spec.size);
   for (const enemy of flight.enemies) enemy.retreat = true;
   flight.spawns.length = 0;
   flight.boss = {
-    kind, spec, x: WIDTH / 2, y: -100, hull: spec.hull, age: 0, timer: 2.9, attack: 0,
-    entryTime: 1.55, hitFlash: 0, parts: spec.parts.map(([dx, dy]) => ({ dx, dy, hull: spec.partHull, flash: 0 }))
+    kind, spec, artScale, x: WIDTH / 2, y: -100, hull: spec.hull, age: 0, timer: 2.9, attack: 0,
+    entryTime: 1.55, hitFlash: 0, parts: spec.parts.map(([dx, dy]) => ({ dx: dx * artScale, dy: dy * artScale, size: 43 * artScale,
+      radius: 12.5 * artScale, muzzle: 14 * artScale, hull: spec.partHull, flash: 0 }))
   };
   if (kind === 'wraith') enterWraith(flight, flight.boss);
   flight.signal('boss', flight.boss.x, 125, spec.name);
@@ -16,7 +18,7 @@ export function launchBoss(flight, kind) {
 }
 
 export function bossPartPosition(boss, part) {
-  return { x: boss.x + part.dx, y: boss.y + part.dy, radius: 12.5 };
+  return { x: boss.x + part.dx, y: boss.y + part.dy, radius: part.radius ?? 12.5 };
 }
 
 function gatekeeperAttack(flight, boss, phase) {
@@ -24,11 +26,12 @@ function gatekeeperAttack(flight, boss, phase) {
   for (const part of boss.parts) {
     if (part.hull <= 0) continue;
     const { x, y } = bossPartPosition(boss, part);
-    const angle = aim ? flight.angleToPilot(x, y + 14) : Math.PI/2 + Math.sign(part.dx) * .22;
-    flight.fan(x, y + 14, angle, phase ? 5 : 3, .16, 205 + 24 * phase, 'bolt');
+    const muzzleY = y + part.muzzle;
+    const angle = aim ? flight.angleToPilot(x, muzzleY) : Math.PI/2 + Math.sign(part.dx) * .22;
+    flight.fan(x, muzzleY, angle, phase ? 5 : 3, .16, 205 + 24 * phase, 'bolt');
   }
   const width = phase ? .19 : .23;
-  flight.fan(boss.x, boss.y + 27, Math.PI/2, phase ? 9 : 5, width, phase ? 134 : 119, 'seed');
+  flight.fan(boss.x, boss.y + 27 * boss.artScale, Math.PI/2, phase ? 9 : 5, width, phase ? 134 : 119, 'seed');
   boss.timer = phase ? 1.59 : 2.12;
 }
 
@@ -91,6 +94,6 @@ export function operatorWarnings(flight, dt) {
     }
   }
   flight.hazards = flight.hazards.filter((warning) => warning.kind === 'wall'
-    ? !warning.triggered || warning.rowY < HEIGHT + 17 + flight.lowerRoom
+    ? !warning.triggered || warning.rowY < HEIGHT + 17
     : warning.age < warning.windup + warning.live);
 }

@@ -227,13 +227,15 @@ function results() {
     !state.pilot.equipment.includes(key) && (!item.needs || state.pilot.equipment.includes(item.needs)) && state.pilot.salvage >= item.cost);
   const primary = p.discarded ? action('Return to stages', 'view:stages', 'primary')
     : !p.receipt ? (p.error ? action('Retry saving', 'settle', 'primary', 'check') : '')
-    : next ? action(`Next · ${next.name}`, `fly:${next.id}`, 'primary') : finale ? action('Return to stages', 'view:stages', 'primary') : action(repeat, retry, 'primary');
+    : next ? action('Next Flight', `fly:${next.id}`, 'primary', 'next', `aria-label="Next Flight · ${next.name}"`)
+      : finale ? action('Return to stages', 'view:stages', 'primary') : action(repeat, retry, 'primary');
   const mastery = p.receipt && clear && stage?.mastery ? `<p class="subtle">${state.pilot.mastery?.[stage.mastery.key ?? stage.id] ? 'Mastered · ' + stage.mastery.name : stage.mastery.detail}</p>` : '';
   return `<article class="screen result-screen"><div class="result-card">${saveNotice()}<span class="caption">${finale ? 'Campaign complete' : isEndless ? 'Endless' : stage.name}</span>
     <h1 tabindex="-1">${title}</h1>${finale && p.receipt ? '<p class="subtle">The enemy fleet has fallen. Every completed stage is open for replay.</p>' : ''}
-    <div class="result-facts"><div><span class="caption">${!isEndless && p.receipt?.best && report.score > 0 ? 'Personal best' : 'Score'}</span><strong>${num(report.score)}</strong></div><div><span class="caption">Flight time</span><strong>${time(report.duration)}</strong></div></div>
+    <div class="result-facts"><div><span class="caption">${!isEndless && p.receipt?.best && report.score > 0 ? 'Personal best' : 'Score'}</span><strong>${num(report.score)}</strong></div><div><span class="caption">Flight time</span><strong>${time(report.duration)}</strong></div><div><span class="caption">Targets</span><strong>${num(report.kills)}</strong></div></div>
     ${mastery}${progression}${pendingCopy}${unlocked}${primary}${ship}<div class="result-secondary">
-    ${p.receipt && (next || finale) ? action(repeat, retry, 'quiet', '') : p.receipt ? action('Hangar', 'hangar:result', 'quiet', '') : p.error ? action('Leave unsaved', 'discard', 'quiet', '') : ''}
+    ${p.receipt && (next || finale) ? action(repeat, retry, 'quiet', '') : ''}
+    ${p.receipt ? action('Hangar', 'hangar:result', 'quiet', '') : p.error ? action('Leave unsaved', 'discard', 'quiet', '') : ''}
     ${p.receipt && !finale ? action('Stages', 'view:stages', 'quiet', '') : ''}
     ${buyable ? action('Upgrades', 'shop:result', 'quiet', '') : ''}</div>${p.replay ? action('Save flight replay', 'save-replay', 'flat', '') : ''}</div></article>`;
 }
@@ -399,8 +401,8 @@ function refreshHud(restart = false) {
   $('flight-tip').hidden = !brief;
   content('flight-tip', brief ? message.copy : '');
   content('flight-score', num(f.score));
-  const meters = activeBoss ? '' : f.endless ? 'Survival' : `${Math.min(100, Math.floor(f.elapsed / f.stage.bossAt * 100))}% to boss`;
-  content('flight-progress', message?.kind === 'pickup' ? message.brief : message?.kind === 'tactic' ? message.title : meters);
+  const chapter = activeBoss ? '' : f.endless ? 'Survival' : f.stage.chapters.findLast(([start]) => start <= f.elapsed)?.[1] ?? '';
+  content('flight-progress', message?.kind === 'pickup' ? message.brief : message?.kind === 'tactic' ? message.title : chapter);
   content('chain', f.combo >= 2 ? `${f.combo} chain` : '');
   content('hull', Array.from({ length: p.maxHull }, (_, i) => `<i class="segment ${i < p.hull ? 'full' : ''}" aria-hidden="true"></i>`).join(''), true);
   $('hull').setAttribute('aria-valuemax', p.maxHull);

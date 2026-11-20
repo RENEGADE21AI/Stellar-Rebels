@@ -148,7 +148,7 @@ async function verify() {
         await page.getByRole('button',{name:'Upgrades',exact:true}).tap();
         assert.equal(await page.getByRole('button',{name:'Upgrades',exact:true}).getAttribute('aria-pressed'),'true');
         await page.getByRole('button',{name:'Back'}).tap();
-        await page.getByRole('button',{name:/^Next ·/}).waitFor();
+        await page.getByRole('button',{name:/^Next Flight/}).waitFor();
       }
       if(i===2 || i===4) {
         const craft = i === 2 ? 'Interceptor' : 'Gunship';
@@ -158,7 +158,7 @@ async function verify() {
         await page.getByRole('button',{name:`Equip ${craft}`}).tap();
         await page.getByRole('button',{name:'Back'}).tap();
       }
-      if(i<count) await page.getByRole('button',{name:/^Next ·/}).tap();
+      if(i<count) await page.getByRole('button',{name:/^Next Flight/}).tap();
     }
     await page.getByRole('button',{name:'Upgrades',exact:true}).tap();
     const items = [['Calibrated Rails',70],['Cycling Chamber',125],['Resonant Cells',210],['Ablative Hull',95]];

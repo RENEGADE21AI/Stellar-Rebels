@@ -2,6 +2,8 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageOps
 
+from build_wraith_realms import build_variant
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'source-art' / 'stellar' / '2d'
@@ -38,12 +40,6 @@ BOARDS = {
         ('siphon', (666, 0, 1254, 627), 416, 247, (941, 332), .374),
         ('lancer', BL, 208, 52, (343, 880), .092),
         ('turret', BR, 168, 43, (939, 868), .083),
-    ],
-    'pickups': [
-        ('pickup-barrier', TL, 136, 1, None, .8),
-        ('pickup-power', TR, 136, 1, None, .8),
-        ('pickup-repair', BL, 136, 1, None, .8),
-        ('pickup-overdrive', BR, 136, 1, None, .8),
     ],
 }
 
@@ -107,6 +103,16 @@ def write(name, image):
     image.save(SPRITES / f'{name}.png', optimize=True)
 
 
+def repair_palette(image):
+    hsv = image.convert('HSV')
+    alpha = image.getchannel('A')
+    hsv.putdata([(107 if 132 <= hue <= 201 and saturation >= 66 else hue, saturation, value)
+                 for hue, saturation, value in hsv.getdata()])
+    rgb = hsv.convert('RGB')
+    rgb.putalpha(alpha)
+    return rgb
+
+
 def main():
     for sheet, units in BOARDS.items():
         source = Image.open(SOURCE / f'{sheet}.png').convert('RGBA')
@@ -122,14 +128,24 @@ def main():
         ('escort', 'enemy-shieldbearer', 224, 54, (224, 203), .099, False),
         ('phantom', 'enemy-phantom', 224, 59, (212, 225), .101, True),
         ('rock', 'asteroid-rock-1', 152, 42, (155, 160), .099, False),
-        ('wraith', 'boss-wraith-physical', 476, 284, (320, 140), .404, False),
-        ('wraith-ghost', 'boss-wraith-ghost', 476, 284, (320, 140), .404, False),
     ]
     for name, file, side, world, center, scale, invert in legacy:
         sprite = Image.open(LEGACY / f'{file}.png').convert('RGBA')
         if invert:
             sprite = sprite.transpose(Image.Transpose.ROTATE_180)
         write(name, frame(sprite, side, world, center, scale))
+    with Image.open(SOURCE / 'cruiser.png') as cruiser:
+        write('cruiser', frame(isolated_foreground(cruiser.convert('RGBA')), 410, 214, (1065, 316), .098))
+    with Image.open(SOURCE / 'wraith.png') as wraith:
+        physical = frame(isolated_foreground(wraith.convert('RGBA')), 430, 215, (929, 332), .102)
+        ghost = build_variant(physical, 'ghost')
+        assert physical.getchannel('A').tobytes() == ghost.getchannel('A').tobytes()
+        write('wraith', physical)
+        write('wraith-ghost', ghost)
+    for name, source in [('barrier', 'phase-shield'), ('power', 'dual'), ('repair', 'repair'), ('overdrive', 'rapid')]:
+        with Image.open(ROOT / 'assets' / 'powerups' / f'{source}.png') as original:
+            icon = frame(original.convert('RGBA'), 136, 1, None, .82)
+            write(f'pickup-{name}', repair_palette(icon) if name == 'repair' else icon)
     with Image.open(SOURCE / 'outer-orbit.png') as outer:
         image = ImageOps.fit(outer.convert('RGB'), (512, 1024), Image.Resampling.LANCZOS)
         image.save(ENVIRONMENT / 'outer-playfield.webp', quality=85, method=6)

@@ -14,7 +14,7 @@ All six stages, both earnable ships and six optional mastery objectives are play
 
 | Stage | Interest and lesson | What a clear earns | Why revisit |
 | --- | --- | --- | --- |
-| **Vesper Orbit** | A planetary blockade introduces lateral aim, aimed lances, and linked attacks. The Warden’s turrets can be removed individually. | Access to Asteroid Belt and enough first-clear Salvage to afford the first weapon upgrade. | **Disarm the Warden.** Destroy both turrets before the hull. |
+| **Vesper Orbit** | A short scout opening leads into mixed wings, a crossing cruiser and the Warden. Disarm the moving cruiser to open its firing lanes, then carry the same targeting idea into the boss fight. | Access to Asteroid Belt and enough first-clear Salvage to afford the first weapon upgrade. | **Disarm the Warden.** Destroy both turrets before the hull. Revisit the cruiser with a faster ship. |
 | **Asteroid Belt** | Sweep and dive patterns pull away from easy lanes. The Harrow telegraphs the opening in each wall. | Interceptor becomes available. Its rapid lane changes and narrow weapon reward different approach angles. | Defeat The Harrow with hull untouched during the boss fight. Try short deliberate crossing moves. |
 | **Relay Station** | Attack a Command Ship, then sweep exposed escorts. The Relay Carrier shields its main hull until both nodes are down. | The relay goes offline and the route opens to Red Sun. | Keep hull intact through the boss or improve a score with earlier target selection. |
 | **Red Sun** | Rail Ship locks an old player position. Bait the aim and move early, then return to the damage lane. | Gunship unlocks and Outer Orbit becomes available. | Clean boss objective rewards leaving the beam in time to keep landing shots. |

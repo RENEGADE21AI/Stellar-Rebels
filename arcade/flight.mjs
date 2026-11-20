@@ -1,14 +1,13 @@
-import { AIM_PRECISION, BOSS_ARENA_SCALE, ENDLESS_BOSSES, ENEMIES, GHOST, GUNNER_MUZZLES, HEIGHT, INPUT_RESUME, INPUT_SHIFT, PICKUPS, SHIPS, WIDTH, enemyMuzzle, formation, hardpointAt, stageById, weaponStats } from './catalog.mjs';
+import { AIM_PRECISION, ENDLESS_BOSSES, ENEMIES, GHOST, GUNNER_MUZZLES, HEIGHT, INPUT_RESUME, INPUT_SHIFT, PICKUPS, SHIPS, WIDTH, enemyMuzzle, formation, hardpointAt, stageById, weaponStats } from './catalog.mjs';
 import { advanceBoss, bossPartPosition, launchBoss, operatorWarnings } from './bosses.mjs';
 import { markPull, markRail, markWall } from './boss-patterns.mjs';
 import { VANE_HULL, breakFormation, linkedVolley, vanePosition } from './formations.mjs';
 import { PHYSICAL, SPECTRAL, WRAITH_WINGS, otherRealm, realmLabel } from './wraith.mjs';
 import { flightRandom } from './seed.mjs';
+import { advanceCruiser, launchCruiser } from './cruiser.mjs';
 
 export const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 export const bounds = { left: 17, right: WIDTH - 17, top: 235, bottom: HEIGHT - 37 };
-const bossSideRoom = WIDTH * (BOSS_ARENA_SCALE - 1) / 2;
-const bossLowerRoom = HEIGHT * (BOSS_ARENA_SCALE - 1) / 2;
 const loopTurn = .27;
 const maxReturning = 3;
 const returnLanes = [.18, .34, .50, .66, .82].map((lane) => lane * WIDTH);
@@ -61,7 +60,7 @@ export class Flight {
     this.hazards = [];
     this.events = [];
     this.boss = null;
-    this.arenaMix = 0;
+    this.cruiser = null;
     this.cleanRecovery = 0;
     this.pressure = 1;
     this.endlessWave = 0;
@@ -83,12 +82,7 @@ export class Flight {
     this.keys = { x: x / length, y: y / length };
   }
 
-  get sideRoom() { return bossSideRoom * this.arenaMix; }
-  get lowerRoom() { return bossLowerRoom * this.arenaMix; }
-  get movementBounds() {
-    const room = this.sideRoom;
-    return { left: bounds.left - room, right: bounds.right + room, top: bounds.top, bottom: bounds.bottom + this.lowerRoom };
-  }
+  get movementBounds() { return bounds; }
 
   drag(dx, dy) {
     const area = this.movementBounds;
@@ -269,6 +263,10 @@ export class Flight {
         }
         this.terrainIndex++;
       }
+      if (!this.sawCruiser && this.stage.cruiserAt && this.elapsed >= this.stage.cruiserAt && this.elapsed < this.stage.bossAt - 15) {
+        this.sawCruiser = true;
+        launchCruiser(this);
+      }
       if (!this.boss && this.elapsed >= this.stage.bossAt) {
         launchBoss(this, this.stage.boss);
       }
@@ -289,9 +287,6 @@ export class Flight {
 
   movePilot(dt, recordedAim = null) {
     const p = this.player;
-    const priorRoom = this.arenaMix;
-    this.arenaMix = clamp(this.arenaMix + (this.boss ? dt * 1.25 : -dt * 1.45), 0, 1);
-    if (this.arenaMix < priorRoom) this.drag(0, 0);
     if (p.ghostTime) {
       p.ghostTime = duration(p.ghostTime - dt);
       if (!p.ghostTime) {
@@ -489,9 +484,7 @@ export class Flight {
     }
   }
 
-  hitBoss(s) {
-    const b = this.boss;
-    if (!b || b.age < b.entryTime - .25 || b.hull <= 0) return false;
+  hitModules(b, s) {
     for (const part of b.parts) {
       const { x, y, radius } = bossPartPosition(b, part);
       if (part.hull <= 0 || !shotHits(s, x, y, radius)) continue;
@@ -500,12 +493,28 @@ export class Flight {
       this.earnGhost(2.5, true);
       this.signal('hit', s.x, s.y);
       if (part.hull <= 0) {
-        this.scoreKill(460);
+        this.scoreKill(b.kind === 'cruiser' ? 280 : 460);
         this.signal('moduleDown', x, y, b.kind);
-        this.message(b.kind === 'gatekeeper' ? 'Turret offline' : 'Shield node severed', 1.8, 'pickup');
+        this.message(['cruiser','gatekeeper'].includes(b.kind) ? 'Turret offline' : 'Shield node severed', 1.8, 'pickup');
       }
       return true;
     }
+    return false;
+  }
+
+  hitCruiser(s) {
+    const b = this.cruiser;
+    if (!b) return false;
+    if (this.hitModules(b, s)) return true;
+    if (![-70, -25, 21, 62].some((offset) => shotHits(s, b.x + offset, b.y + 4, b.spec.hit))) return false;
+    this.signal('shieldHit', s.x, s.y);
+    return true;
+  }
+
+  hitBoss(s) {
+    const b = this.boss;
+    if (!b || b.age < b.entryTime - .25 || b.hull <= 0) return false;
+    if (this.hitModules(b, s)) return true;
     const hitsCore = shotHits(s, b.x, b.y + 4, b.spec.hit);
     if (b.kind === 'wraith') {
       const sameRealm = b.realm === (s.realm ?? PHYSICAL);
@@ -513,7 +522,7 @@ export class Flight {
         this.signal('veilHit', s.x, s.y, b.realm);
         return true;
       }
-      if (!hitsCore && sameRealm && WRAITH_WINGS.some(([dx, dy]) => shotHits(s, b.x + dx, b.y + dy, 21))) {
+      if (!hitsCore && sameRealm && WRAITH_WINGS.some(([dx, dy]) => shotHits(s, b.x + dx, b.y + dy, 17))) {
         this.signal('shieldHit', s.x, s.y);
         return true;
       }
@@ -563,11 +572,9 @@ export class Flight {
       } else if (enemy) {
         this.hitEnemy(enemy, s);
         s.live = false;
-      } else if (this.hitBoss(s)) s.live = false;
+      } else if (this.hitCruiser(s) || this.hitBoss(s)) s.live = false;
     }
-    const sideRoom = this.sideRoom;
-    const bottomRoom = this.lowerRoom;
-    this.friendly = this.friendly.filter((s) => s.live && s.y > -35 && s.x > -30 - sideRoom && s.x < WIDTH + 30 + sideRoom);
+    this.friendly = this.friendly.filter((s) => s.live && s.y > -35 && s.x > -30 && s.x < WIDTH + 30);
     if (this.status !== 'active') return;
     for (const s of this.hostile) {
       s.age += dt;
@@ -577,8 +584,7 @@ export class Flight {
         if (this.damage(s.x, s.y, s.realm)) s.live = false;
       }
     }
-    this.hostile = this.hostile.filter((s) => s.live && s.age < 8 && s.y < HEIGHT + 28 + bottomRoom &&
-      s.y > -40 && s.x > -42 - sideRoom && s.x < WIDTH + 42 + sideRoom);
+    this.hostile = this.hostile.filter((s) => s.live && s.age < 8 && s.y < HEIGHT + 28 && s.y > -40 && s.x > -42 && s.x < WIDTH + 42);
   }
 
   step(dt, recordedAim = null) {
@@ -589,6 +595,7 @@ export class Flight {
     this.ticks++;
     this.updateSchedule();
     this.moveEnemies(dt);
+    advanceCruiser(this, dt);
     advanceBoss(this, dt);
     this.shoot(dt);
     this.moveProjectiles(dt);

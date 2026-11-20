@@ -21,15 +21,19 @@ function chooseFlightPath(f, bounds, useSupplies = false) {
   }
   const p = f.player;
   const b = f.boss;
+  const cruiser = f.cruiser;
+  const activeHull = b ?? cruiser;
   const velocity = f.run.ship === 'needle' ? 782 : 685;
-  const timeToTarget = (p.y - (b?.y ?? 120)) / velocity;
-  const rootX = b ? 192 + b.spec.motion * Math.sin(Math.max(0, b.age + timeToTarget - b.entryTime) * .78) : 192;
-  const module = b?.parts.filter((part) => part.hull > 0).sort((a, c) => Math.abs(rootX + a.dx - p.x) - Math.abs(rootX + c.dx - p.x))[0];
+  const timeToTarget = (p.y - (activeHull?.y ?? 120)) / velocity;
+  const rootX = b ? 192 + b.spec.motion * Math.sin(Math.max(0, b.age + timeToTarget - b.entryTime) * .78)
+    : cruiser ? cruiser.x + cruiser.speed * timeToTarget : 192;
+  const module = activeHull?.parts.filter((part) => part.hull > 0 && (b || rootX + part.dx > 25 && rootX + part.dx < 359))
+    .sort((a, c) => Math.abs(rootX + a.dx - p.x) - Math.abs(rootX + c.dx - p.x))[0];
   const priority = (e) => Math.abs(e.x - p.x) - (e.vane > 0 ? 105 : e.kind === 'relay' ? 53 : 0);
   const enemy = f.enemies.filter((e) => !e.retreat && e.y > 18 && e.y < p.y - 38).sort((a,c) => priority(a) - priority(c))[0];
-  let targetX = b ? rootX + (module?.dx ?? 0) : enemy ? enemy.x + (enemy.vane > 0 ? enemy.side * 30 : 0) : 192;
+  let targetX = b || module ? rootX + (module?.dx ?? 0) : enemy ? enemy.x + (enemy.vane > 0 ? enemy.side * 30 : 0) : 192;
   if (f.run.ship === 'bastion' && (module || enemy && !b)) {
-    const aimY = module ? b.y + module.dy : enemy.y;
+    const aimY = module ? activeHull.y + module.dy : enemy.y;
     const inside = 10 + Math.tan(.055) * Math.max(0, p.y - aimY - 13);
     targetX += p.x < targetX ? -inside : inside;
   }

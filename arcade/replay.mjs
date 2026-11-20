@@ -1,11 +1,11 @@
-import { AIM_PRECISION, BOSS_ARENA_SCALE, FIXED_TICK, HEIGHT, INPUT_RESUME, INPUT_SHIFT, RULES_VERSION, SHIPS, UPGRADES, WIDTH, stageById } from './catalog.mjs';
+import { AIM_PRECISION, FIXED_TICK, HEIGHT, INPUT_RESUME, INPUT_SHIFT, RULES_VERSION, SHIPS, UPGRADES, WIDTH, stageById } from './catalog.mjs';
 import { Flight } from './flight.mjs';
 import { validFlightSeed } from './seed.mjs';
 
 const schema = 1;
 const tickLimit = (mode) => (mode === 'endless' ? 30 : 7) * 60 * 60;
 const flags = INPUT_SHIFT | INPUT_RESUME;
-const movementLimit = AIM_PRECISION * Math.ceil(HEIGHT * BOSS_ARENA_SCALE);
+const movementLimit = AIM_PRECISION * HEIGHT;
 
 function outcome(terminal) {
   return { status: terminal.status, score: terminal.score, kills: terminal.kills, breaks: terminal.breaks,
@@ -50,7 +50,7 @@ export function verifyReplay(replay) {
   for (const command of commands) {
     if (!Array.isArray(command) || command.length !== 4 || !command.every(Number.isSafeInteger)) return fail('Malformed command');
     const [tick, x, y, action] = command;
-    if (tick < 0 || tick <= lastTick || tick >= ticks || Math.abs(x) > AIM_PRECISION * WIDTH * BOSS_ARENA_SCALE ||
+    if (tick < 0 || tick <= lastTick || tick >= ticks || x < 0 || x > AIM_PRECISION * WIDTH ||
         y < 0 || y > movementLimit || action < 0 || action > flags) return fail('Command outside the flight bounds');
     lastTick = tick;
   }

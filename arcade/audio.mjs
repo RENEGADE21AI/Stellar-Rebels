@@ -18,6 +18,7 @@ const effects = {
   charge: [187, 397, .31, .10, 'triangle'],
   hazard: [190, 83, .38, .16, 'sawtooth'],
   boss: [96, 104, .6, .13, 'triangle'],
+  cruiserEnter: [86, 64, .48, .086, 'triangle'],
   dash: [470, 240, .105, .035, 'triangle'],
   returnFlyby: [155, 318, .22, .052, 'triangle'],
   linkedFire: [311, 129, .22, .13, 'triangle'],

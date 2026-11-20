@@ -147,7 +147,7 @@ dialog::backdrop{background:#040911a6}
 .result-card{display:grid;gap:12px;padding:18px;background:#101c2be9;border:1px solid #66828d;box-shadow:0 12px 35px #0009}
 .result-card .caption{color:#ffad82}
 .result-card .score{font:700 36px/.9 var(--display);color:var(--paper)}
-.result-facts{display:grid;grid-template-columns:1fr 1fr;gap:11px;padding:10px 0;border-block:1px solid #4e6576}
+.result-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;padding:10px 0;border-block:1px solid #4e6576}
 .result-facts strong{font:700 26px/1 var(--display);display:block;margin-top:4px}
 .result-reward{display:flex;gap:7px;align-items:center;color:#8df2dd;font-size:.89rem}
 .result-reward.warning{color:#ffbc92}

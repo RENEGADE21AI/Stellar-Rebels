@@ -222,7 +222,7 @@ test('Ghost Shift spends earned charge and phases through physical danger withou
 test('Wraith realm hops alternate actual vulnerability and a charged volley keeps its telegraphed target', async () => {
   const [{ Flight }, , { GHOST }] = await load;
   const { launchBoss } = await import('../arcade/bosses.mjs');
-  const { advanceWraith } = await import('../arcade/wraith.mjs');
+  const { advanceWraith, WRAITH_WINGS } = await import('../arcade/wraith.mjs');
   const f = new Flight(context(5));
   const p = f.player;
   launchBoss(f, 'wraith');
@@ -257,7 +257,8 @@ test('Wraith realm hops alternate actual vulnerability and a charged volley keep
   assert.equal(b.hull, b.spec.hull - 4);
   for (const realm of ['physical', 'ghost']) {
     b.realm = realm;
-    const wing = { ...hit, realm, x:b.x - 102, px:b.x - 102, y:b.y - 7 };
+    const [dx, dy] = WRAITH_WINGS[0];
+    const wing = { ...hit, realm, x:b.x + dx, px:b.x + dx, y:b.y + dy };
     f.takeEvents();
     assert.equal(f.hitBoss(wing), true);
     assert.equal(f.hitBoss({ ...wing, realm:realm === 'physical' ? 'ghost' : 'physical' }), false);
@@ -279,37 +280,39 @@ test('a returning Outer Orbit pilot keeps the original mastery and earns Wraith 
   assert.deepEqual(pilot.mastery, { 5:true, wraith:true });
 });
 
-test('boss flight opens real side space and debris coverage and smoothly closes in Endless', async () => {
+test('ordinary flight, the crossing cruiser and bosses share the same arena boundaries', async () => {
   const [{ Flight, bounds }, , { WIDTH }] = await load;
   const { launchBoss, operatorWarnings } = await import('../arcade/bosses.mjs');
   const { markWall } = await import('../arcade/boss-patterns.mjs');
-  const f = new Flight({ ...context(), mode:'endless' });
+  const { launchCruiser } = await import('../arcade/cruiser.mjs');
+  const f = new Flight(context());
+  assert.deepEqual(f.movementBounds, bounds);
+  launchCruiser(f);
+  const craft = f.cruiser;
+  const [left, right] = craft.parts;
+  const partX = craft.x + left.dx;
+  const partY = craft.y + left.dy;
+  assert.equal(f.hitCruiser({ x:partX, y:partY, px:partX, py:partY + 4, strength:15 }), true);
+  assert.ok(left.hull <= 0 && right.hull === 14);
+  assert.equal(f.status, 'active');
+  assert.deepEqual(f.movementBounds, bounds);
+  f.cruiser = null;
   launchBoss(f, 'warden');
   for (let i = 0; i < 60; i++) {
     f.drag(-400, 400);
     f.movePilot(step);
   }
-  assert.equal(f.arenaMix, 1);
-  assert.ok(f.player.x < 0 && f.player.y > bounds.bottom);
-  f.fireTimer = 0;
-  f.shoot(step);
-  f.moveProjectiles(step);
-  assert.equal(f.friendly.length, 2);
+  assert.equal(f.player.x, bounds.left);
+  assert.equal(f.player.y, bounds.bottom);
   markWall(f, 2);
   const seam = f.hazards[0];
   operatorWarnings(f, seam.windup);
-  assert.ok(f.hostile.some((s) => s.kind === 'rock' && s.x < 0));
-  assert.ok(f.hostile.some((s) => s.kind === 'rock' && s.x > WIDTH));
+  assert.ok(f.hostile.some((s) => s.kind === 'rock' && s.x <= bounds.left + 2));
+  assert.ok(f.hostile.some((s) => s.kind === 'rock' && s.x >= WIDTH - bounds.left - 2));
   assert.ok(f.hostile.every((s) => Math.abs(seam.x - s.x) > seam.width / 2 + 11));
-  f.boss = null;
-  f.reanchor();
-  const outerX = f.player.x;
-  f.movePilot(step);
-  assert.ok(f.player.x > outerX && f.player.x < bounds.left);
-  for (let i = 0; i < 60; i++) f.movePilot(step);
-  assert.equal(f.arenaMix, 0);
-  assert.equal(f.player.x, bounds.left);
-  assert.equal(f.player.y, bounds.bottom);
+  launchBoss(f, 'wraith');
+  assert.equal(f.activateGhost(), true);
+  assert.deepEqual(f.movementBounds, bounds);
 });
 
 test('a surviving fighter loops up the edge once with its existing hull and no duplicate reward', async () => {

@@ -131,7 +131,7 @@ async function main() {
         assert.equal(result.terminal.status,'clear',JSON.stringify(result));
         assert.ok(moves > 80 && result.receipt?.award > 0);
       }
-      if (stage + 1 < firstStage + stages) await page.getByRole('button',{name:/^Next ·/}).tap();
+      if (stage + 1 < firstStage + stages) await page.getByRole('button',{name:/^Next Flight/}).tap();
     }
     assert.deepEqual(errors,[]);
   } finally { await browser.close(); }

@@ -22,7 +22,7 @@ async function main() {
   const snapshot = () => page.evaluate(() => {
     const { state, renderer } = window.arenaQA;
     const f = state.flight;
-    return { unit: renderer.unit, mix: f.arenaMix, area: f.movementBounds, x: f.player.x, y: f.player.y,
+    return { unit: renderer.unit, playerSize: f.ship.size * renderer.unit, area: f.movementBounds, x: f.player.x, y: f.player.y,
       projectedX: renderer.canvas.clientWidth / 2 + (f.player.x - 192) * renderer.unit,
       outline: getComputedStyle(renderer.canvas).outlineStyle, focused: document.activeElement === renderer.canvas };
   });
@@ -32,7 +32,7 @@ async function main() {
     await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: point(to) });
     await page.waitForFunction(() => {
       const { flight: f } = window.arenaQA.state;
-      return Math.abs(f.player.x - f.xIntent) < 1;
+      return Math.abs(f.player.x - f.xIntent) < .01;
     });
     await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
@@ -46,7 +46,6 @@ async function main() {
     const normal = await snapshot();
     assert.equal(normal.focused, true);
     assert.equal(normal.outline, 'none');
-    assert.equal(normal.mix, 0);
 
     // Let an actual surviving fighter reach the bottom. No armor, movement, reward or timer is assigned.
     await page.waitForFunction(() => window.arenaQA.state.flight.enemies.some((e) => e.loop && e.y < 640 && e.y > 440));
@@ -70,27 +69,43 @@ async function main() {
 
     await page.evaluate(() => {
       const { flight: f } = window.arenaQA.state;
+      f.elapsed = f.stage.cruiserAt - .02;
+      f.waveIndex = f.stage.waves.findIndex((wave) => wave[0] > f.elapsed);
+      f.dropIndex = f.stage.drops.findIndex((drop) => drop[0] > f.elapsed);
+    });
+    await page.waitForFunction(() => window.arenaQA.state.flight.cruiser?.age >= 5);
+    const crossing = await snapshot();
+    assert.equal(crossing.unit, normal.unit);
+    assert.equal(crossing.playerSize, normal.playerSize);
+    assert.deepEqual(crossing.area, normal.area);
+    await shot('cruiser-crossing');
+
+    await page.evaluate(() => {
+      const { flight: f } = window.arenaQA.state;
       f.elapsed = f.stage.bossAt - .02;
+      f.cruiser = null;
       f.waveIndex = f.stage.waves.length;
       f.dropIndex = f.stage.drops.length;
     });
     await page.waitForFunction(() => window.arenaQA.state.flight.boss?.age > 1.6);
-    const wide = await snapshot();
-    assert.equal(wide.mix, 1);
-    assert.ok(Math.abs(normal.unit / wide.unit - 1.22) < .005);
-    assert.ok(wide.area.left < 0 && wide.area.right > 384 && wide.area.bottom > normal.area.bottom);
-    assert.equal(wide.outline, 'none');
+    const boss = await snapshot();
+    assert.equal(boss.unit, normal.unit);
+    assert.equal(boss.playerSize, normal.playerSize);
+    assert.deepEqual(boss.area, normal.area);
+    assert.equal(boss.outline, 'none');
     await moveAcross(24, viewport.width - 9);
     const right = await snapshot();
-    assert.ok(right.x > normal.area.right && right.projectedX < viewport.width - 8);
-    await shot('expanded-right');
+    assert.equal(right.x, normal.area.right);
+    assert.ok(right.projectedX < viewport.width - 8);
+    await shot('boss-right');
     await moveAcross(viewport.width - 16, 13);
     const left = await snapshot();
-    assert.ok(left.x < normal.area.left && left.projectedX > 8);
-    await shot('expanded-left');
+    assert.equal(left.x, normal.area.left);
+    assert.ok(left.projectedX > 8);
+    await shot('boss-left');
     assert.deepEqual(errors, []);
-    fs.writeFileSync(path.join(output, 'arena-browser.json'), JSON.stringify({ meta, viewport, normal, wide, left, right, seen, reentry }, null, 2));
-    console.log(JSON.stringify({ viewport, before: normal.unit, after: wide.unit, left: left.x, right: right.x, seen, reentry }));
+    fs.writeFileSync(path.join(output, 'arena-browser.json'), JSON.stringify({ meta, viewport, normal, crossing, boss, left, right, seen, reentry }, null, 2));
+    console.log(JSON.stringify({ viewport, scale: normal.unit, playerSize: normal.playerSize, left: left.x, right: right.x, seen, reentry }));
   } finally {
     await context.close();
     await page.video()?.saveAs(path.join(output, 'arena-in-motion.webm'));

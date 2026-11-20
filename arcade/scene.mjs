@@ -1,7 +1,7 @@
-import { BOSS_ARENA_SCALE, ENDLESS_BOSSES, ENEMIES, GUNNER_MUZZLES, HEIGHT, PICKUPS, WIDTH, enemyMuzzle, hardpointAt } from './catalog.mjs';
+import { ENDLESS_BOSSES, ENEMIES, GUNNER_MUZZLES, HEIGHT, PICKUPS, WIDTH, enemyMuzzle, hardpointAt } from './catalog.mjs';
 import { bossPartPosition } from './bosses.mjs';
 import { commandCharge, vanePosition } from './formations.mjs';
-import { SPECTRAL, otherRealm, realmTint } from './wraith.mjs';
+import { SPECTRAL, WRAITH_EMITTER, otherRealm, realmTint } from './wraith.mjs';
 
 export function spriteUrl(key) {
   return new URL(`./media/sprites/${key}.png`, import.meta.url).href;
@@ -73,6 +73,7 @@ export class FlightScene {
     this.illustration = `${playfields[environment]}-playfield`;
     const fallback = `env-${environment}`;
     const keyList = new Set([...regular, flight.run.ship, flight.stage.boss, this.illustration]);
+    if (flight.stage.cruiserAt && !flight.endless) keyList.add('cruiser');
     if (flight.endless) for (const boss of ENDLESS_BOSSES) keyList.add(boss);
     if (keyList.has('wraith')) keyList.add('wraith-ghost');
     for (const key of this.sprites.keys()) {
@@ -93,8 +94,7 @@ export class FlightScene {
     const dpr = globalThis.effectiveCanvasDpr(clientWidth, clientHeight, window.devicePixelRatio, 1.85, 1_300_000);
     this.canvas.width = Math.max(1, Math.floor(clientWidth * dpr));
     this.canvas.height = Math.max(1, Math.floor(clientHeight * dpr));
-    this.baseUnit = Math.min(clientWidth / WIDTH, clientHeight / HEIGHT) || 1;
-    this.unit = this.baseUnit;
+    this.unit = Math.min(clientWidth / WIDTH, clientHeight / HEIGHT) || 1;
     this.grade = null;
   }
 
@@ -171,20 +171,20 @@ export class FlightScene {
     const c = this.ctx;
     c.setTransform(this.canvas.width / WIDTH, 0, 0, this.canvas.height / HEIGHT, 0, 0);
     this.background(flight, prefs.reduced);
-    const arena = prefs.reduced ? Number(Boolean(flight.boss || flight.arenaMix)) : flight.arenaMix;
-    const zoom = 1 + (BOSS_ARENA_SCALE - 1) * arena;
-    this.unit = this.baseUnit / zoom;
-    const scale = Math.min(this.canvas.width / WIDTH, this.canvas.height / HEIGHT) / zoom;
+    const scale = Math.min(this.canvas.width / WIDTH, this.canvas.height / HEIGHT);
     const left = (this.canvas.width - scale * WIDTH) / 2;
     const top = (this.canvas.height - scale * HEIGHT) / 2;
     c.setTransform(scale, 0, 0, scale, left, top);
     c.save();
+    c.beginPath();
+    c.rect(0, 0, WIDTH, HEIGHT);
+    c.clip();
     if (!prefs.reduced && this.cameraPulse) {
       c.translate(Math.sin(flight.elapsed * 169 + this.cameraPulse * 7) * this.cameraPulse * 3.4,
         Math.sin(flight.elapsed * 126 + this.cameraPulse * 5) * this.cameraPulse * 3.4);
     }
-    const visibleBottom = HEIGHT * (zoom + 1) / 2;
-    for (const warning of flight.hazards) this.warning(warning, prefs, flight.boss, visibleBottom);
+    for (const warning of flight.hazards) this.warning(warning, prefs, flight.boss);
+    if (flight.cruiser) this.boss(flight.cruiser, prefs);
     this.drawLinks(flight);
     for (const enemy of flight.enemies) this.enemy(enemy, flight.elapsed);
     if (flight.boss) this.boss(flight.boss, prefs);
@@ -394,11 +394,17 @@ export class FlightScene {
     for (const part of b.parts) {
       const { x, y, radius } = bossPartPosition(b, part);
       if (part.hull > 0 && hasShields) line(c, b.x, b.y + 3, x - b.x, y - b.y, '#86cfef9d', 2);
-      if (part.hull > 0) this.sprite(hasShields ? 'shield-node' : 'turret', x, y, 43);
+      if (part.hull > 0) this.sprite(hasShields ? 'shield-node' : 'turret', x, y, part.size ?? 43);
       if (part.hull <= 0) {
         line(c, x - 5, y - 5, 10, 10, '#9eaac5', 1.6);
         line(c, x + 5, y - 5, -10, 10, '#9eaac5', 1.6);
         continue;
+      }
+      if (part.charge > 0) {
+        const muzzleY = y + 12;
+        const tint = prefs.contrast ? '#fff2c1' : '#ffae63';
+        ring(c, x, muzzleY, 5, tint, 1.7);
+        line(c, x, muzzleY, Math.cos(part.aim) * 25, Math.sin(part.aim) * 25, tint, 1.65);
       }
       const tint = part.flash > 0 || prefs.contrast ? '#ffffff' : '#7dfce3';
       const r = radius + 3;
@@ -417,8 +423,8 @@ export class FlightScene {
     const tint = realmTint(b.realm);
     for (const side of [-1, 1]) {
       for (const end of [-1, 1]) {
-        const x = b.x + side * 25;
-        const y = b.y + end * 26;
+        const x = b.x + side * 16;
+        const y = b.y + end * 24;
         c.beginPath();
         c.moveTo(x - side * 6, y);
         c.lineTo(x, y);
@@ -434,10 +440,10 @@ export class FlightScene {
     if (b.shifting) {
       const incoming = realmTint(otherRealm(b.realm));
       const amount = Math.max(0, 1 - (b.shiftAt - b.age) / 1.06);
-      for (const side of [-1, 1]) line(c, b.x + side * 117, b.y + 41, -24 * side * amount, 0, incoming, 2.4);
+      for (const side of [-1, 1]) line(c, b.x + side * 97, b.y + 31, -21 * side * amount, 0, incoming, 2.4);
     }
     if (!b.charge) return;
-    const y = b.y + 28;
+    const y = b.y + WRAITH_EMITTER;
     const color = realmTint(b.charge.realm);
     const reach = prefs.reduced ? 58 : 42 + 32 * Math.max(0, 1 - (b.charge.fireAt - b.age) / 1.04);
     ring(c, b.x, y, 10, '#22172f', 6);

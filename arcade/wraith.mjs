@@ -1,6 +1,7 @@
 export const PHYSICAL = 'physical';
 export const SPECTRAL = 'ghost';
-export const WRAITH_WINGS = [[-98, -7], [98, -7]];
+export const WRAITH_WINGS = [[-72, -5], [72, -5]];
+export const WRAITH_EMITTER = 26;
 export const otherRealm = (realm) => realm === PHYSICAL ? SPECTRAL : PHYSICAL;
 export const realmTint = (realm) => realm === SPECTRAL ? '#d3b6ff' : '#ffb887';
 export const realmLabel = (realm) => realm === SPECTRAL ? 'Ghost' : 'Physical';
@@ -30,7 +31,7 @@ export function advanceWraith(flight, boss, dt) {
     flight.signal('wraithShift', boss.x, boss.y, boss.realm);
   }
 
-  const y = boss.y + 28;
+  const y = boss.y + WRAITH_EMITTER;
   if (boss.charge) {
     const charge = boss.charge;
     if (boss.age < charge.fireAt) return;
