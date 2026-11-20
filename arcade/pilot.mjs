@@ -6,13 +6,19 @@ const SCHEMA = 1;
 const REWARD_VERSION = 2;
 export const DEFAULT_SETTINGS = { music: true, effects: true, reduced: false, contrast: false, sensitivity: 'standard', trainingDone: false };
 
+export function normalizeCallSign(value) {
+  if (typeof value !== 'string') return null;
+  const name = value.normalize('NFKC').trim().replace(/\s+/gu, ' ');
+  return name === '' || /^[\p{L}\p{N}][\p{L}\p{N}\p{M} -]{0,15}$/u.test(name) ? name : null;
+}
+
 function number(value) {
   return Number.isFinite(Number(value)) ? Math.max(0, Math.floor(Number(value))) : 0;
 }
 
 export function newPilot(preferences) {
   return {
-    schema: SCHEMA, salvage: 0, clears: {}, mastery: {}, equipment: [], ship: 'kestrel',
+    schema: SCHEMA, callSign: '', salvage: 0, clears: {}, mastery: {}, equipment: [], ship: 'kestrel',
     records: { arcade: {}, endless: null }, active: {}, receipts: {},
     settings: { ...DEFAULT_SETTINGS, ...preferences }
   };

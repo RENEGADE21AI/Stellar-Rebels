@@ -64,8 +64,9 @@ async function verify() {
     await button('Play').waitFor();
     await page.locator('.brand-lockup img').evaluate((image) => image.decode());
     await shot('title');
-    await button('Stage Select').tap();
+    await button('Arcade').tap();
     await button(/01 Vesper Orbit/).tap();
+    await page.getByRole('button', { name:'Skip training', exact:true }).tap();
     await flight();
     assert.equal(await amount(), 26);
     const layout = await button('Ghost Shift').boundingBox();

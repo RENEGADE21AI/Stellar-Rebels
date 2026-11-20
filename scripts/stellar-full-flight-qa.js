@@ -69,7 +69,7 @@ async function main() {
       }, firstStage);
       await page.reload();
     }
-    await page.getByRole('button',{name:endless ? 'Stage Select' : 'Play',exact:true}).tap();
+    await page.getByRole('button',{name:endless ? 'Arcade' : 'Play',exact:true}).tap();
     if (endless) await page.getByRole('button',{name:'Endless',exact:true}).tap();
     else if (firstStage === 1) {
       await page.locator('#flight:not([hidden])').waitFor();
