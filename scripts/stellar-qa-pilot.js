@@ -34,7 +34,7 @@ function chooseFlightPath(f, bounds, useSupplies = false) {
   let targetX = b || module ? rootX + (module?.dx ?? 0) : enemy ? enemy.x + (enemy.vane > 0 ? enemy.side * 30 : 0) : 192;
   if (f.run.ship === 'bastion' && (module || enemy && !b)) {
     const aimY = module ? activeHull.y + module.dy : enemy.y;
-    const inside = 10 + Math.tan(.055) * Math.max(0, p.y - aimY - 13);
+    const inside = 10 + Math.tan(Math.abs(f.ship.guns[1][2])) * Math.max(0, p.y - aimY - 13);
     targetX += p.x < targetX ? -inside : inside;
   }
   const pickup = f.pickups.find((d) => Math.abs(p.y - d.y) < (useSupplies ? 110 : 65) &&

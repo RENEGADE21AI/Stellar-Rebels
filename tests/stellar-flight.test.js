@@ -33,22 +33,23 @@ test('stock and fully upgraded Fighter can clear every authored Standard stage',
   }
 });
 
-test('each earned ship can beat the finale with its stock loadout', async () => {
+test('each earned ship can beat Wraith and the finale with its stock loadout', async () => {
   const [{ Flight, bounds }, , { STAGES }] = await load;
-  const final = STAGES.at(-1);
-  for (const ship of ['needle','bastion']) {
-    const f = new Flight({ ...context(final.id), ship });
-    while (f.status === 'active' && f.elapsed < final.bossAt + 112) {
-      if (Math.round(f.elapsed * 60) % 5 === 0) {
-        const target = chooseFlightPath(f, bounds, true);
-        f.drag(target.x - f.xIntent, target.y - f.yIntent);
+  for (const stage of STAGES.slice(-2)) {
+    for (const ship of ['needle','bastion']) {
+      const f = new Flight({ ...context(stage.id), ship });
+      while (f.status === 'active' && f.elapsed < stage.bossAt + 100) {
+        if (Math.round(f.elapsed * 60) % 5 === 0) {
+          const target = chooseFlightPath(f, bounds, true);
+          f.drag(target.x - f.xIntent, target.y - f.yIntent);
+        }
+        f.step(step);
+        f.takeEvents();
       }
-      f.step(step);
-      f.takeEvents();
+      const note = `${ship} · ${stage.name} · ${f.status} · ${f.elapsed.toFixed(1)}s · ${f.player.hull} hull`;
+      console.log(note);
+      assert.equal(f.status,'clear',note);
     }
-    const note = `${ship} · ${f.status} · ${f.elapsed.toFixed(1)}s · ${f.player.hull} hull`;
-    console.log(note);
-    assert.equal(f.status,'clear',note);
   }
 });
 

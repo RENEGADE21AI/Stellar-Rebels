@@ -26,7 +26,7 @@ export const SHIPS = {
   bastion: {
     name: 'Gunship', role: 'Gunship', clearance: 4, hull: 6, speed: 258, interval: .30,
     size: 68, hit: 9.2, engines: [[-19.2, 13.7], [0, 23.3], [19.2, 13.7]],
-    guns: [[-18.6, -17.3, -.21, .8], [-10.8, -17.3, -.055, .95], [10.8, -17.3, .055, .95], [18.6, -17.3, .21, .8]],
+    guns: [[-18.6, -17.3, -.21, .8], [-10.8, -17.3, -.009, .95], [10.8, -17.3, .009, .95], [18.6, -17.3, .21, .8]],
     description: 'A broad four-gun salvo and reinforced hull. Move early and dominate the approach lanes.'
   }
 };

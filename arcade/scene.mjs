@@ -361,9 +361,9 @@ export class FlightScene {
   enemy(e, clock) {
     const c = this.ctx;
     if (e.loop) {
-      line(c, e.x - 5, e.y + 13, 0, 29, '#965845a6', 2.1);
-      line(c, e.x + 5, e.y + 13, 0, 29, '#965845a6', 2.1);
-      this.sprite(e.kind, e.x, e.y, e.spec.size, e.turn);
+      line(c, e.x - 5, e.y + 13, 0, 29, '#bd886ea6', 1.7);
+      line(c, e.x + 5, e.y + 13, 0, 29, '#bd886ea6', 1.7);
+      this.sprite(e.kind, e.x, e.y, e.spec.size, e.turn, .62);
       return;
     }
     if (e.kind === 'diver' && e.age > diveWarningAt && !e.retreat) {
