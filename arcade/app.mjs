@@ -372,6 +372,7 @@ async function start(which, trainingMode = null) {
   } else if (fromPractice) {
     state.mode = 'launching';
     clearInput();
+    field.querySelector('.flight-controls').inert = true;
     $('training-actions').innerHTML = '<span class="caption" role="status">Joining Arcade…</span>';
   } else show('launch');
   try {
@@ -397,7 +398,7 @@ async function start(which, trainingMode = null) {
     if (!await prepared || launch.controller.signal.aborted) return;
     state.titlePatrol?.stop();
     state.titlePatrol = null;
-    state.training = trainingMode ? { ...startTraining(flight), mode:trainingMode, from:launch.from } : null;
+    state.training = trainingMode ? { ...startTraining(flight), mode:trainingMode, from:launch.from, which } : null;
     state.returnView = launch.from === 'home' ? 'home' : 'stages';
     state.last = run;
     state.recording = recording;
@@ -405,6 +406,7 @@ async function start(which, trainingMode = null) {
     state.mode = 'playing';
     menu.hidden = true;
     field.hidden = false;
+    field.querySelector('.flight-controls').inert = false;
     delete field.dataset.ending;
     clearInput();
     renderer.resize();
@@ -515,8 +517,8 @@ async function finishPractice() {
   if (saved) state.pilot = saved.pilot;
   state.training = null;
   if (training.mode === 'intro') {
-    state.view = 'home';
-    await start('next');
+    state.view = training.from;
+    await start(training.which);
   } else show(training.from);
 }
 

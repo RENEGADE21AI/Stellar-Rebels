@@ -39,6 +39,15 @@ test('title keeps the call sign, fits its controls, and teaches either first Arc
           await page.getByRole('button', { name:/01 Vesper Orbit/ }).tap();
         } else await play.tap();
         await page.getByRole('button', { name:'Skip training', exact:true }).waitFor();
+        if (viewport.width === 320) {
+          await page.getByRole('button', { name:'Skip training', exact:true }).tap();
+          await page.locator('#training-actions').waitFor({ state:'hidden' });
+          await page.getByRole('button', { name:'Pause', exact:true }).tap();
+          const leave = page.getByRole('button', { name:'Leave flight', exact:true });
+          await leave.tap();
+          await leave.tap();
+          await page.getByRole('heading', { name:'Stage Select', exact:true }).waitFor();
+        }
       } finally { await context.close(); }
     }
   } finally { await browser.close(); }
@@ -228,6 +237,7 @@ test('mobile WebKit can launch, pause and resume the production artifact', { ski
     await page.goto(origin);
     await page.getByRole('button', { name:'Play', exact:true }).tap();
     await page.getByRole('button', { name:'Skip training', exact:true }).tap();
+    await page.locator('#training-actions').waitFor({ state:'hidden' });
     await page.getByRole('button', { name:'Pause', exact:true }).tap();
     await page.getByRole('heading', { name:'Paused' }).waitFor();
     await page.getByRole('button', { name:'Resume', exact:true }).tap();
@@ -270,6 +280,7 @@ test('restoring IndexedDB reconciles temporary results with the actual saved rec
         }
         await page.getByRole('button', { name:/01 Vesper Orbit/ }).tap();
         await page.getByRole('button', { name:'Skip training', exact:true }).tap();
+        await page.locator('#training-actions').waitFor({ state:'hidden' });
         await page.getByRole('button', { name:'Pause', exact:true }).waitFor();
         // Only the storage path is under test here. The real campaign tests clear by play.
         await page.evaluate(() => { window.storageFixture.flight.status = 'clear'; });
