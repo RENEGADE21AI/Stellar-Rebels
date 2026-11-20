@@ -266,3 +266,129 @@ test('keyboard focus follows hangar controls and an upgrade detail return', { sk
     assert.equal(await page.getByRole('button',{name:/^Resonant Cells/}).evaluate((node) => document.activeElement === node),true);
   } finally { await browser.close(); }
 });
+
+test('Space activates Pause on focus and uses the indicated ability from the playfield', { skip: !origin, timeout:60000 }, async () => {
+  const browser = await chromium.launch();
+  try {
+    for (const viewport of [{ width:320, height:568 }, { width:390, height:844 }]) {
+      const context = await browser.newContext({ viewport, isMobile:true, hasTouch:true, serviceWorkers:'block' });
+      try {
+        const page = await context.newPage();
+        await page.route(/\/app\.mjs(\?|$)/, async (route) => {
+          const response = await route.fetch();
+          await route.fulfill({ response, body:(await response.text()) + '\nwindow.controlProbe = { state, store };' });
+        });
+        const button = (name) => page.getByRole('button', { name, exact:typeof name === 'string' });
+        const playing = () => page.waitForFunction(() => document.activeElement?.id === 'sky');
+        await page.goto(origin);
+        await button('Play').press('Enter');
+        await button(/^01 Vesper Orbit/).press('Enter');
+        await playing();
+        await page.evaluate(() => { window.controlProbe.state.flight.player.ghostEnergy = 100; });
+        await page.keyboard.press('Tab');
+        await page.keyboard.press('Tab');
+        assert.equal(await page.evaluate(() => document.activeElement?.id), 'pause');
+        await page.keyboard.press('Space');
+        await page.getByRole('heading', { name:'Paused' }).waitFor();
+        assert.equal(await page.locator('#ghost-meter').getAttribute('aria-valuenow'), '100');
+        await button('Resume').press('Enter');
+        await playing();
+        await page.keyboard.press('Space');
+        await page.waitForFunction(() => window.controlProbe.state.flight.player.realm === 'ghost');
+        await button('Pause').press('Enter');
+        await page.getByRole('heading', { name:'Paused' }).waitFor();
+        await page.evaluate(() => window.controlProbe.store.change((pilot) => { pilot.clears = { 1:1, 2:1, 3:1, 4:1 }; }));
+
+        await page.reload();
+        await button('Play').tap();
+        await button(/^05 Outer Orbit/).tap();
+        await playing();
+        await page.evaluate(() => {
+          const f = window.controlProbe.state.flight;
+          f.elapsed = f.stage.bossAt - .02;
+          f.waveIndex = f.stage.waves.length;
+          f.dropIndex = f.stage.drops.length;
+          f.player.ghostEnergy = 100;
+        });
+        await page.getByText('Hop to match realms. Shoot the core.', { exact:true }).waitFor();
+        const toGhost = button('Hop to Ghost realm');
+        const toPhysical = button('Hop to Physical realm');
+        assert.match(await page.locator('#ghost-status').textContent(), /Current realm is Physical/);
+        assert.equal(await page.locator('#flight-progress').textContent(), 'Physical realm');
+        await toGhost.tap();
+        await toPhysical.waitFor();
+        assert.match(await page.locator('#ghost-status').textContent(), /Current realm is Ghost/);
+        assert.equal(await page.locator('#flight-progress').textContent(), 'Ghost realm');
+        await page.waitForFunction(() => document.querySelector('#ghost-shift').getAttribute('aria-disabled') === 'false');
+        await page.evaluate(() => {
+          const f = window.controlProbe.state.flight;
+          f.boss.age = Math.max(f.boss.entryTime, f.boss.age);
+          f.boss.attack = 2;
+          f.boss.timer = 0;
+        });
+        await page.locator('#flight-tip').filter({ hasText:'Ghost fire. Dodge or Hop.' }).waitFor();
+        await toPhysical.press('Space');
+        await toGhost.waitFor();
+        await page.evaluate(() => {
+          const f = window.controlProbe.state.flight;
+          f.boss.charge = null;
+          f.boss.age = Math.max(f.boss.entryTime, f.boss.age);
+          f.boss.attack = 2;
+          f.boss.timer = 0;
+          f.player.ghostEnergy = 0;
+        });
+        await page.locator('#flight-tip').filter({ hasText:'Physical fire. Dodge.' }).waitFor();
+        assert.equal(await toGhost.getAttribute('aria-disabled'), 'true');
+        await toGhost.press('Space');
+        assert.match(await page.locator('#ghost-status').textContent(), /Current realm is Physical/);
+      } finally { await context.close(); }
+    }
+  } finally { await browser.close(); }
+});
+
+test('slow flight art can be canceled and failed art has a bounded fallback', { skip: !origin, timeout:40000 }, async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport:{ width:320, height:568 }, isMobile:true, hasTouch:true, serviceWorkers:'block' });
+    const target = '**/vesper-playfield.webp';
+    let hold;
+    const stalled = new Promise((resolve) => { hold = resolve; });
+    const routeHandler = (route) => { hold(route); };
+    await page.route(target, routeHandler);
+    await page.goto(origin);
+    const button = (name) => page.getByRole('button', { name, exact:typeof name === 'string' });
+    await button('Play').tap();
+    const stage = button(/^01 Vesper Orbit/);
+    await stage.tap();
+    const image = await stalled;
+    await page.getByRole('status').filter({ hasText:'Loading flight assets' }).waitFor();
+    await button('Cancel launch').tap();
+    await stage.waitFor();
+    assert.equal(await stage.evaluate((node) => node === document.activeElement), true);
+    await button('Change ship').tap();
+    await page.getByRole('heading', { name:'Hangar' }).waitFor();
+    await image.continue().catch(() => {});
+    await page.unroute(target, routeHandler);
+    await page.waitForFunction(async () => {
+      const main = document.querySelector('script[type=module]').src;
+      const { PilotStore } = await import(new URL('pilot.mjs', main));
+      const store = new PilotStore(indexedDB);
+      const pilot = await store.open();
+      store.db.close();
+      return Object.keys(pilot.active).length === 0;
+    });
+    assert.equal(await button('Pause').count(), 0);
+    await button('Back').tap();
+    let second;
+    await page.route(target, (route) => { second = route; });
+    await stage.tap();
+    await page.getByRole('heading', { name:'Preparing flight' }).waitFor();
+    const deadline = 5600;
+    await button('Pause').waitFor({ timeout:deadline });
+    assert.ok(second, 'The launch completed while the image response was still held');
+    await second.abort().catch(() => {});
+    await page.getByText('Fight through the blockade.', { exact:true }).waitFor();
+    await button('Pause').tap();
+    await page.getByRole('heading', { name:'Paused' }).waitFor();
+  } finally { await browser.close(); }
+});

@@ -99,7 +99,7 @@ export const BOSSES = {
   matron: { name: 'Relay Carrier', intro: 'Break the linked nodes to expose the core.', hull: 196, size: 198, artSize:246, hit: 35, motion: 42, parts: [[-70, 6], [70, 6]], partHull: 30 },
   tyrant: { name: 'Rail Ship', intro: 'Leave its striped lane before the rail fires.', hull: 238, size: 245, hit: 40, motion: 47, arrivalY: 230, parts: [] },
   siphon: { name: 'Gravity Platform', intro: 'Stay clear of pull lanes.', hull: 253, size: 224, artSize:247, hit: 37, motion: 47, arrivalY: 248, parts: [] },
-  wraith: { name: 'Wraith', intro: 'Match realms. Shoot the marked core.', hull: 204, size: 215, hit: 37, motion: 48, arrivalY: 229, parts: [] },
+  wraith: { name: 'Wraith', intro: 'Hop to match realms. Shoot the core.', hull: 204, size: 215, hit: 37, motion: 48, arrivalY: 229, parts: [] },
   crown: { name: 'Flagship', intro: 'Break its pylons and read the next safe seam.', hull: 272, size: 208, artSize:258, hit: 40, motion: 45, arrivalY: 231, parts: [[-74, 8], [74, 8]], partHull: 37 }
 };
 

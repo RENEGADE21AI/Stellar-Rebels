@@ -7,15 +7,25 @@ export function spriteUrl(key) {
   return new URL(`./media/sprites/${key}.png`, import.meta.url).href;
 }
 
-export function loadSprite(key) {
+export function loadSprite(key, signal, wait = 3200) {
+  if (signal?.aborted || wait <= 0) return Promise.resolve(null);
   const url = key.endsWith('-playfield') ? new URL(`./media/environment/${key}.webp`, import.meta.url).href : spriteUrl(key);
   const image = new Image();
-  const promise = new Promise((resolve) => {
-    image.onload = () => resolve(image);
-    image.onerror = () => resolve(null);
+  return new Promise((resolve) => {
+    const cancel = () => finish(null);
+    const timer = setTimeout(cancel, wait);
+    function finish(sprite) {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', cancel);
+      image.onload = image.onerror = null;
+      if (!sprite) image.removeAttribute('src');
+      resolve(sprite);
+    }
+    signal?.addEventListener('abort', cancel, { once: true });
+    image.onload = () => finish(image);
+    image.onerror = cancel;
+    image.src = url;
   });
-  image.src = url;
-  return promise;
 }
 
 const regular = [...Object.keys(ENEMIES), 'turret', 'shield-node', 'rock', ...Object.keys(PICKUPS).map((name) => `pickup-${name}`)];
@@ -27,6 +37,14 @@ function seededNoise(i) {
   const n = Math.sin(i * 191.472 + 7.3) * 45784.621;
   return n - Math.floor(n);
 }
+
+const stars = Array.from({ length: 102 }, (_, index) => {
+  const i = index + 1;
+  const streak = i % 11 === 0;
+  return { x: seededNoise(i) * WIDTH, y: seededNoise(i + 205) * HEIGHT, streak,
+    speed: streak ? 59 : i % 3 === 0 ? 22 : 9, alpha: streak ? .56 : .14 + seededNoise(i + 430) * .27,
+    color: i % 5 === 0 ? '#acd9ff' : '#d3dbea' };
+});
 
 function line(c, x, y, dx, dy, color, width) {
   c.strokeStyle = color;
@@ -61,32 +79,37 @@ export class FlightScene {
     this.shocks = [];
     this.cameraPulse = 0;
     this.hurtPulse = 0;
+    this.backdrop = document.createElement('canvas');
+    this.backdropContext = this.backdrop.getContext('2d', { alpha: false });
     this.resize();
   }
 
-  async prepare(flight) {
+  async prepare(flight, signal) {
+    const environment = flight.stage.environment;
+    const illustration = `${playfields[environment]}-playfield`;
+    const fallback = `env-${environment}`;
+    const keyList = new Set([...regular, flight.run.ship, flight.stage.boss, illustration]);
+    if (flight.stage.cruiserAt && !flight.endless) keyList.add('cruiser');
+    if (flight.endless) for (const boss of ENDLESS_BOSSES) keyList.add(boss);
+    if (keyList.has('wraith')) keyList.add('wraith-ghost');
+    const sprites = new Map([...this.sprites].filter(([key]) => keyList.has(key) || key === fallback));
+    const deadline = performance.now() + 3200;
+    const preload = async (key) => {
+      if (sprites.has(key)) return;
+      const image = await loadSprite(key, signal, deadline - performance.now());
+      if (image) sprites.set(key, image);
+    };
+    await Promise.all([...keyList].map(preload));
+    if (!sprites.has(illustration) && fallbackEnvironments.has(environment)) await preload(fallback);
+    if (signal?.aborted) return false;
+    this.sprites = sprites;
+    this.illustration = illustration;
+    this.backdropReady = false;
     this.sparks = [];
     this.shocks = [];
     this.cameraPulse = 0;
     this.hurtPulse = 0;
-    const environment = flight.stage.environment;
-    this.illustration = `${playfields[environment]}-playfield`;
-    const fallback = `env-${environment}`;
-    const keyList = new Set([...regular, flight.run.ship, flight.stage.boss, this.illustration]);
-    if (flight.stage.cruiserAt && !flight.endless) keyList.add('cruiser');
-    if (flight.endless) for (const boss of ENDLESS_BOSSES) keyList.add(boss);
-    if (keyList.has('wraith')) keyList.add('wraith-ghost');
-    for (const key of this.sprites.keys()) {
-      if (!keyList.has(key) && key !== fallback) this.sprites.delete(key);
-    }
-    await Promise.all([...keyList].filter((key) => !this.sprites.has(key)).map(async (key) => {
-      const image = await loadSprite(key);
-      if (image) this.sprites.set(key, image);
-    }));
-    if (!this.sprites.has(this.illustration) && !this.sprites.has(fallback) && fallbackEnvironments.has(environment)) {
-      const image = await loadSprite(fallback);
-      if (image) this.sprites.set(fallback, image);
-    }
+    return true;
   }
 
   resize() {
@@ -95,7 +118,7 @@ export class FlightScene {
     this.canvas.width = Math.max(1, Math.floor(clientWidth * dpr));
     this.canvas.height = Math.max(1, Math.floor(clientHeight * dpr));
     this.unit = Math.min(clientWidth / WIDTH, clientHeight / HEIGHT) || 1;
-    this.grade = null;
+    this.backdropReady = false;
   }
 
   accept(events, reduce) {
@@ -169,7 +192,6 @@ export class FlightScene {
 
   draw(flight, prefs) {
     const c = this.ctx;
-    c.setTransform(this.canvas.width / WIDTH, 0, 0, this.canvas.height / HEIGHT, 0, 0);
     this.background(flight, prefs.reduced);
     const scale = Math.min(this.canvas.width / WIDTH, this.canvas.height / HEIGHT);
     const left = (this.canvas.width - scale * WIDTH) / 2;
@@ -212,9 +234,27 @@ export class FlightScene {
 
   background(flight, reduce) {
     const c = this.ctx;
+    if (!this.backdropReady || this.backdropFull !== this.fullStrengthBackground) this.paintBackdrop(flight);
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.drawImage(this.backdrop, 0, 0);
+    c.setTransform(this.canvas.width / WIDTH, 0, 0, this.canvas.height / HEIGHT, 0, 0);
+    const t = reduce ? 0 : flight.elapsed;
+    for (const star of stars) {
+      const y = (star.y + t * star.speed) % HEIGHT;
+      c.globalAlpha = star.alpha;
+      c.fillStyle = star.color;
+      c.fillRect(star.x, y, star.streak ? 1.6 : 1, star.streak && !reduce ? 5 : 1.3);
+    }
+    c.globalAlpha = 1;
+  }
+
+  paintBackdrop(flight) {
+    this.backdrop.width = this.canvas.width;
+    this.backdrop.height = this.canvas.height;
+    const c = this.backdropContext;
     const illustrated = this.sprites.get(this.illustration);
     const env = illustrated || this.sprites.get(`env-${flight.stage.environment}`);
-    const t = reduce ? 0 : flight.elapsed;
+    c.setTransform(this.canvas.width / WIDTH, 0, 0, this.canvas.height / HEIGHT, 0, 0);
     c.fillStyle = '#040811';
     c.fillRect(0, 0, WIDTH, HEIGHT);
     if (env) {
@@ -225,13 +265,11 @@ export class FlightScene {
         c.drawImage(env, (env.width - width) * .5, (env.height - height) * .24, width, height, 0, 0, WIDTH, HEIGHT);
       } else c.drawImage(env, 0, 0, WIDTH, HEIGHT);
       if (illustrated && this.fullStrengthBackground !== true) {
-        if (!this.grade) {
-          this.grade = c.createLinearGradient(0, 0, WIDTH, HEIGHT * .61);
-          this.grade.addColorStop(0, '#02091266');
-          this.grade.addColorStop(.49, '#0209129e');
-          this.grade.addColorStop(1, '#0209129e');
-        }
-        c.fillStyle = this.grade;
+        const grade = c.createLinearGradient(0, 0, WIDTH, HEIGHT * .61);
+        grade.addColorStop(0, '#02091266');
+        grade.addColorStop(.49, '#0209129e');
+        grade.addColorStop(1, '#0209129e');
+        c.fillStyle = grade;
         c.fillRect(0, 0, WIDTH, HEIGHT);
       }
     }
@@ -241,15 +279,8 @@ export class FlightScene {
       ring(c, -160, 154, 280, flight.stage.accent, 90);
       c.restore();
     }
-    for (let i = 1; i <= 102; i++) {
-      const x = seededNoise(i) * WIDTH;
-      const speed = i % 11 === 0 ? 59 : i % 3 === 0 ? 22 : 9;
-      const y = (seededNoise(i+205) * HEIGHT + t * speed) % HEIGHT;
-      c.globalAlpha = i % 11 === 0 ? .56 : .14 + seededNoise(i + 430) * .27;
-      c.fillStyle = i % 5 === 0 ? '#acd9ff' : '#d3dbea';
-      c.fillRect(x, y, i % 11 === 0 ? 1.6 : 1, i % 11 === 0 && !reduce ? 5 : 1.3);
-    }
-    c.globalAlpha = 1;
+    this.backdropReady = true;
+    this.backdropFull = this.fullStrengthBackground;
   }
 
   sprite(key, x, y, size, turn = 0, alpha = 1, glow = '') {

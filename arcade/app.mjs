@@ -4,6 +4,7 @@ import { FlightScene, loadSprite, spriteUrl } from './scene.mjs';
 import { FlightAudio } from './audio.mjs';
 import { PilotStore, abandonRun, beginRun, equip, hasShip, hasStage, install, legacyArchive, settleRun } from './pilot.mjs';
 import { captureReplay } from './replay.mjs';
+import { otherRealm, realmLabel } from './wraith.mjs';
 
 const $ = (id) => document.getElementById(id);
 const menu = $('menu');
@@ -21,7 +22,7 @@ const clock = globalThis.createFixedStepClock();
 const renderer = new FlightScene(sky);
 const state = {
   pilot: null, view: 'home', mode: 'menu', hangarTab: 'ships', inspected: 'kestrel', hangarBack: 'home',
-  helpBack: 'home', upgrade: null, flight: null, pending: null, last: null, busy: false,
+  helpBack: 'home', upgrade: null, flight: null, pending: null, last: null, busy: null, launch: null,
   pointer: null, keys: new Set(), input: 'touch', support: '', pack: 'waiting', packCheck: 0, installed: false, resumeAt: 0, finishAt: 0
 };
 
@@ -240,12 +241,18 @@ function results() {
     ${buyable ? action('Upgrades', 'shop:result', 'quiet', '') : ''}</div>${p.replay ? action('Save flight replay', 'save-replay', 'flat replay-link', '') : ''}</div></article>`;
 }
 
-const views = { home, stages, hangar, upgrade: upgradeView, records, settings: settingsView, help: helpView, result: results };
+function launchView() {
+  return `<article class="screen launch-screen"><header class="screen-header"><p class="caption">${state.launch.name}</p>
+    <h1 tabindex="-1">Preparing flight</h1></header>
+    <p class="notice" role="status">Loading flight assets…</p>${action('Cancel launch', 'cancel-flight', 'quiet', 'back')}</article>`;
+}
+
+const views = { home, stages, hangar, upgrade: upgradeView, records, settings: settingsView, help: helpView, result: results, launch: launchView };
 
 function announce(message) { $('announcer').textContent = message; }
 
 function showBrowserUpdate() {
-  if (!state.newPack || state.mode !== 'menu' || state.pending?.working || state.pending?.error ||
+  if (!state.newPack || state.mode !== 'menu' || state.launch || state.pending?.working || state.pending?.error ||
       store.temporary || $('update-web')) return;
   const update = document.createElement('aside');
   update.id = 'update-web';
@@ -289,26 +296,62 @@ function readId() {
 async function start(which) {
   const endless = which === 'endless';
   const stage = endless ? null : Number(which);
-  const seed = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
-  const { pilot, result: run } = await store.change((saved) => beginRun(saved, readId(), endless ? 'endless' : 'arcade', stage, Date.now(), seed));
-  state.pilot = pilot;
-  if (!run) { announce('This stage is locked.'); show('stages'); return; }
-  state.last = run;
-  state.recording = captureReplay(run);
-  state.flight = new Flight(run, { recordInput: state.recording.recordInput });
-  await renderer.prepare(state.flight);
-  state.mode = 'playing';
-  menu.hidden = true;
-  field.hidden = false;
-  clearInput();
-  renderer.resize();
-  globalThis.resetFixedStepClock(clock, performance.now());
-  refreshHud(true);
-  audio.play('flight');
-  sky.setAttribute('tabindex', '-1');
-  sky.focus({ preventScroll: true });
-  announce(endless ? 'Endless flight launched.' : `${state.flight.stage.name} launched. ${state.flight.stage.brief}`);
-  if (document.hidden) pause(true);
+  const launch = { controller: new AbortController(), from: state.view, which, name: endless ? 'Endless' : stageById(stage)?.name };
+  if (!launch.name) return;
+  let run;
+  let launched = false;
+  state.launch = launch;
+  show('launch');
+  try {
+    const seed = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
+    const saved = await store.change((pilot) => beginRun(pilot, readId(), endless ? 'endless' : 'arcade', stage, Date.now(), seed));
+    run = saved.result;
+    if (launch.controller.signal.aborted) return;
+    state.pilot = saved.pilot;
+    if (!run) {
+      restoreLaunch(launch, 'This stage is locked.');
+      return;
+    }
+    const recording = captureReplay(run);
+    const flight = new Flight(run, { recordInput: recording.recordInput });
+    if (!await renderer.prepare(flight, launch.controller.signal)) return;
+    state.last = run;
+    state.recording = recording;
+    state.flight = flight;
+    state.mode = 'playing';
+    menu.hidden = true;
+    field.hidden = false;
+    clearInput();
+    renderer.resize();
+    globalThis.resetFixedStepClock(clock, performance.now());
+    refreshHud(true);
+    audio.play('flight');
+    sky.setAttribute('tabindex', '-1');
+    sky.focus({ preventScroll: true });
+    announce(endless ? 'Endless flight launched.' : `${flight.stage.name} launched. ${flight.stage.brief}`);
+    launched = true;
+    if (document.hidden) pause(true);
+  } catch {
+    if (state.launch === launch) restoreLaunch(launch, 'Could not prepare the flight. Try launching again.');
+  } finally {
+    if (state.launch === launch) state.launch = null;
+    if (run && !launched) await store.change((pilot) => abandonRun(pilot, run.id)).catch(() => {});
+  }
+}
+
+function restoreLaunch(launch, warning = '') {
+  launch.controller.abort();
+  state.launch = null;
+  state.busy = null;
+  show(launch.from, false);
+  menu.querySelector(`[data-action="fly:${launch.which}"]`)?.focus({ preventScroll: true });
+  if (warning) {
+    const notice = document.createElement('p');
+    notice.className = 'notice';
+    notice.setAttribute('role', 'alert');
+    notice.textContent = warning;
+    menu.querySelector('h1')?.after(notice);
+  } else announce('Launch canceled.');
 }
 
 function clearInput() {
@@ -383,8 +426,10 @@ function refreshGhost(f) {
   $('ghost-value').style.transform = `scaleX(${energy / 100})`;
   $('ghost-shift').setAttribute('aria-disabled', String(!f.shiftReady));
   content('ghost-action', action);
-  content('ghost-label', f.realmHop && !active ? 'Physical' : 'Ghost');
-  content('ghost-status', f.realmHop ? `${active ? 'Ghost' : 'Physical'} realm. ${energy} energy. Hop costs ${f.ghostCost}.`
+  const destination = realmLabel(otherRealm(p.realm));
+  $('ghost-shift').setAttribute('aria-label', f.realmHop ? `Hop to ${destination} realm` : 'Ghost Shift');
+  content('ghost-label', f.realmHop ? `To ${destination}` : 'Ghost');
+  content('ghost-status', f.realmHop ? `Current realm is ${realmLabel(p.realm)}. ${energy} energy. Hop costs ${f.ghostCost}.`
     : p.ghostTime ? `${action} of phasing remaining.` : p.ghostRecovery ? 'Ghost Shift is recovering.'
       : `${energy} energy. Ghost Shift costs ${f.ghostCost}.`);
 }
@@ -401,7 +446,8 @@ function refreshHud(restart = false) {
   $('flight-tip').hidden = !brief;
   content('flight-tip', brief ? message.copy : '');
   content('flight-score', num(f.score));
-  const chapter = activeBoss ? '' : f.endless ? 'Survival' : f.stage.chapters.findLast(([start]) => start <= f.elapsed)?.[1] ?? '';
+  const chapter = activeBoss ? f.realmHop ? `${realmLabel(p.realm)} realm` : '' : f.endless ? 'Survival'
+    : f.stage.chapters.findLast(([start]) => start <= f.elapsed)?.[1] ?? '';
   content('flight-progress', message?.kind === 'pickup' ? message.brief : message?.kind === 'tactic' ? message.title : chapter);
   content('chain', f.combo >= 2 ? `${f.combo} chain` : '');
   content('hull', Array.from({ length: p.maxHull }, (_, i) => `<i class="segment ${i < p.hull ? 'full' : ''}" aria-hidden="true"></i>`).join(''), true);
@@ -547,8 +593,10 @@ async function handle(command) {
 
 document.addEventListener('click', async (event) => {
   const target = event.target.closest('button[data-action]');
+  if (target?.dataset.action === 'cancel-flight' && state.launch) { restoreLaunch(state.launch); return; }
   if (!target || target.disabled || state.busy) return;
-  state.busy = true;
+  const command = {};
+  state.busy = command;
   try { await handle(target.dataset.action); }
   catch {
     const warning = 'Device storage is unavailable. Try again in a moment.';
@@ -562,7 +610,7 @@ document.addEventListener('click', async (event) => {
       status.dataset.saveError = 'true';
       target.before(status);
     }
-  } finally { state.busy = false; }
+  } finally { if (state.busy === command) state.busy = null; }
 });
 
 menu.addEventListener('change', (event) => {
@@ -608,12 +656,16 @@ for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
 
 window.addEventListener('keydown', (event) => {
   const action = globalThis.gameplayActionForKey(event.key);
-  if (event.key === 'Escape' && state.mode !== 'menu' && state.mode !== 'finishing') {
+  if (event.key === 'Escape' && state.launch) {
+    event.preventDefault();
+    if (!event.repeat) restoreLaunch(state.launch);
+  } else if (event.key === 'Escape' && state.mode !== 'menu' && state.mode !== 'finishing') {
     event.preventDefault();
     if (event.repeat) return;
     if (state.mode === 'paused' && modal.querySelector('[data-action="resume"]')) resume();
     else pause();
   } else if (action === 'ability' && state.mode === 'playing') {
+    if (event.target.closest?.('button, a, input, select, textarea')) return;
     event.preventDefault();
     if (!event.repeat) { state.input = 'keyboard'; useShift(); }
   } else if (action?.startsWith('move_') && state.mode === 'playing') {

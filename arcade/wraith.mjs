@@ -48,7 +48,7 @@ export function advanceWraith(flight, boss, dt) {
   if (boss.attack % 3 === 0) {
     boss.charge = { realm: flight.player.realm, aim: flight.angleToPilot(boss.x, y), fireAt: boss.age + 1.04 };
     flight.signal('realmWarning', boss.x, y, boss.charge.realm);
-    flight.message(`Dodge or Shift out of ${realmLabel(boss.charge.realm).toLowerCase()} fire.`, 1.65, 'warning');
+    flight.message(`${realmLabel(boss.charge.realm)} fire. ${flight.shiftReady ? 'Dodge or Hop.' : 'Dodge.'}`, 1.65, 'warning');
     return;
   }
   const side = boss.attack % 2 ? -1 : 1;
