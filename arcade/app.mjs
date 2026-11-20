@@ -427,6 +427,10 @@ function refreshGhost(f) {
   $('ghost-shift').setAttribute('aria-disabled', String(!f.shiftReady));
   content('ghost-action', action);
   const destination = realmLabel(otherRealm(p.realm));
+  if (lastHud.realmHop !== Boolean(f.realmHop)) {
+    lastHud.realmHop = Boolean(f.realmHop);
+    sky.setAttribute('aria-label', `Flight playfield. Drag or use arrow keys to steer. Weapons fire automatically. Press Space ${f.realmHop ? 'to Hop between realms' : 'for Ghost Shift'}.`);
+  }
   $('ghost-shift').setAttribute('aria-label', f.realmHop ? `Hop to ${destination} realm` : 'Ghost Shift');
   content('ghost-label', f.realmHop ? `To ${destination}` : 'Ghost');
   content('ghost-status', f.realmHop ? `Current realm is ${realmLabel(p.realm)}. ${energy} energy. Hop costs ${f.ghostCost}.`

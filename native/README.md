@@ -1,6 +1,6 @@
 # Stellar Rebels mobile validation
 
-`native/` is the Expo app source. Its WebView opens the entire tested game from app-local files. The game can boot and fly offline on first launch. The shell owns safe-area insets, forwards app interruptions to the game, and keeps the pilot profile in AsyncStorage outside the replaceable flight cache. Replay files go to the OS share sheet on request. The browser version keeps its existing IndexedDB profile and Hosting update flow. Profiles are local to each install or browser.
+`native/` is the Expo app source. Its WebView opens the entire tested game from app-local files. The game can boot and fly offline on first launch. The shell owns safe-area insets, forwards app interruptions to the game, and keeps the pilot profile in AsyncStorage outside the replaceable flight cache. Replay files go to the OS share sheet on request. The browser keeps its own IndexedDB profile. The game has no account sync. Android can include local app data in OS backups or device transfers according to the device settings. Verify the restore behavior of the signed build. [Android Auto Backup](https://developer.android.com/identity/data/autobackup)
 
 ## Reproduce the source package
 

@@ -284,6 +284,7 @@ test('Space activates Pause on focus and uses the indicated ability from the pla
         await button('Play').press('Enter');
         await button(/^01 Vesper Orbit/).press('Enter');
         await playing();
+        assert.match(await page.locator('#sky').getAttribute('aria-label'), /Space for Ghost Shift/);
         await page.evaluate(() => { window.controlProbe.state.flight.player.ghostEnergy = 100; });
         await page.waitForFunction(() => document.getElementById('ghost-meter').getAttribute('aria-valuenow') === '100');
         await page.keyboard.press('Tab');
@@ -312,6 +313,7 @@ test('Space activates Pause on focus and uses the indicated ability from the pla
           f.player.ghostEnergy = 100;
         });
         await page.getByText('Hop to match realms. Shoot the core.', { exact:true }).waitFor();
+        assert.match(await page.locator('#sky').getAttribute('aria-label'), /Space to Hop between realms/);
         const toGhost = button('Hop to Ghost realm');
         const toPhysical = button('Hop to Physical realm');
         assert.match(await page.locator('#ghost-status').textContent(), /Current realm is Physical/);
