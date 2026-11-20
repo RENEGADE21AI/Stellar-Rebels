@@ -46,3 +46,21 @@ The reviewer ran 5 live browser and 16 model regressions. Chromium and WebKit pr
 | SR-WEB-04 | Low. With device scale factor 3, unthrottled tall Vesper measured 50, 33.3 and 33.4 ms p95 on different samples. With 4× CPU throttling, their first sample measured 100 ms compact and 133.4 ms tall. | Precompose each static plate and preserve the existing crop, grade, moving stars and logical field. Reprofile matched openings plus active boss combat. Carry physical performance as a device validation item. |
 
 Keep the ship silhouettes, fixed combat field, cruiser crossing, bounded single-currency upgrades, and direct Next Flight and Retry actions. Retain recognizable regular formations as part of the classic cadence. A future challenge adjustment needs human evidence at normal and fully upgraded profiles.
+
+[Complete round 1 record](stellar-product-critics/round-01.md)
+
+## Round 2 · live e3e3e29
+
+Independent reviewer `product_live_round2` verified `e3e3e2959c900537be8cda45e3d7274c51993ce4` / `c1902aaf54e4875`. Discovery graded the browser scope **8.4/10** and returned **FIXES REQUIRED**. The shipped game passed the core journeys. Reliability and the no-open-High gate failed because an interrupted update could hide the installed game behind an unplayable splash screen.
+
+| Visual | Usability | Functionality | Reliability | Security, privacy, accessibility | Performance and costs | Cohesion |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 9.0 | 8.4 | 8.8 | 7.0 | 8.6 | 8.8 | 8.7 |
+
+All six stages cleared at natural speed using live touchscreen events. The reviewer also completed five minutes of Endless with 54,509 score and five hull, observed a natural compact defeat, verified upgrades and receipts on the public site, measured the main flows on two portrait sizes and independently ran the native file proof in both browser engines. The primary agent ran 228 local regression cases and seven targeted public browser cases, verified the actual public update from `9917fe866b8d0e7`, and completed a separate five-minute live Endless run with 52,899 score and five hull. [Independent evidence](../../evidence/independent-e3e3e29/) · [Public update](../../evidence/round-two-update/update-verified.json) · [Author Endless](../../evidence/round-two-live-endless/flight.json)
+
+The same reviewer independently resolved SR-WEB-01 through -03 on this exact candidate. The Wraith matched its button, prompt and current realm at both sizes. Cancelling held art allowed immediate navigation and left no active run. The next flight used fallback art after 3.40 seconds. The author’s matched simulation measured opening p95 of 66.7→16.7 ms compact and 116.7→33.3 ms tall in Chromium with 4× synthetic CPU throttling and DPR 3. The same Flagship fixture improved 116.7→50.1 ms compact and 200→66.7 ms tall. The independent reviewer measured 133.2→33.4 ms p95 in a separate, matched tall Wraith sample. Physical thermal behavior, memory and timing remain open. [Author opening](../../evidence/round-two-performance-stress.json) · [Author Flagship](../../evidence/round-two-performance-boss.json) · [Independent recheck](../../evidence/independent-e3e3e29/prior-findings-verification.json)
+
+**SR-D02-01 · High.** With a verified 72-entry installed cache, a successful HTML response for an alternate generation and a `503` on its module stranded the live worker’s user on the splash. The initial reproduction bypassed the service worker. The reviewer repeated it and explicitly confirmed `fromServiceWorker: true` and the intact installed cache. The corrected worker serves its complete cached document, protects active flights, and exposes a new generation only when its own worker has cached the whole pack. Recovery from missing or evicted current files verifies the same generation and has a bounded wait. An older worker's code can govern the first navigation during migration. Once the new worker takes control it applies the complete-generation policy. [Before](../../evidence/independent-e3e3e29/partial-rollout.json) · [Controlled regression](../../evidence/round-three-rollout/rollout.json)
+
+[Complete round 2 record and recheck](stellar-product-critics/round-02.md)

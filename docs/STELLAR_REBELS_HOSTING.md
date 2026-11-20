@@ -10,7 +10,7 @@ Use Node 22 and the locked dependencies. Build with `node scripts/build_stellar.
 .\scripts\publish-stellar.ps1 -VerifiedCommit (git rev-parse HEAD)
 ```
 
-Verify the public URL in a fresh browser session, including combat, stage selection, audio, retry and local saves. Test an existing profile with a prior controller on meaningful updates. A fully cached worker can take control without reloading the page. Its handler serves any open older document from that document's versioned asset paths. A menu-only update action reloads a settled, durably stored profile. Keep a previous known-good package and record the release history from Firebase Hosting.
+Verify the public URL in a fresh browser session, including combat, stage selection, audio, retry and local saves. Test an existing profile with a prior controller on meaningful updates. A controlled navigation serves the complete installed document. A successor worker takes control after caching its whole generation and continues to serve versioned assets to open older documents. A menu-only update action reloads a settled, durably stored profile. Test a blocked module during rollout with `node scripts/stellar-rollout-qa.js INSTALLED_DIST NEXT_DIST`. Keep a previous known-good package and record the release history from Firebase Hosting.
 
 If a new build breaks core play, use Roll back in the **stellar-rebels** Hosting dashboard or republish the previously tested checkout with its artifact. Recheck the live version and fresh play after rollback. Leave the latest playable release up while a broken candidate is being repaired. Firebase keeps earlier versions in Hosting release history. [Hosting releases and rollback](https://firebase.google.com/docs/hosting/manage-hosting-resources)
 

@@ -17,8 +17,9 @@ async function manifest(dir) {
   return JSON.parse(await fs.readFile(path.join(dir, 'version.json'), 'utf8'));
 }
 
-async function controllerReady(page, pack) {
+async function controllerReady(page, pack, refresh = null) {
   const deadline = Date.now() + 30000;
+  let lastUpdate = 0;
   while (Date.now() < deadline) {
     const ready = await page.evaluate(async (expected) => {
       const worker = navigator.serviceWorker.controller;
@@ -35,6 +36,10 @@ async function controllerReady(page, pack) {
       return Boolean(await cache.match('/index.html'));
     }, pack);
     if (ready) return;
+    if (refresh && Date.now() - lastUpdate > 1800) {
+      lastUpdate = Date.now();
+      await refresh().catch(() => {});
+    }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw Error(`Flight pack ${pack} did not become ready`);
@@ -78,7 +83,10 @@ async function main() {
     page.on('pageerror', (error) => errors.push(error.message));
     const button = (name) => page.getByRole('button', { name, exact:typeof name === 'string' });
     const checkBase = async (pack) => assert.equal(await page.evaluate(() => document.baseURI), `${url}arcade/${pack}/`);
-    const refresh = () => page.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
+    const refresh = () => page.evaluate(async () => {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration && !registration.installing) await registration.update();
+    });
 
     await page.goto(url);
     await button('Play').waitFor();
@@ -107,8 +115,7 @@ async function main() {
     await page.getByRole('heading', { name:'Paused' }).waitFor();
 
     withholdModule = false;
-    await refresh();
-    await controllerReady(page, incoming.assetVersion);
+    await controllerReady(page, incoming.assetVersion, refresh);
     await checkBase(installed.assetVersion);
     assert.equal(await button('Update browser build').isVisible(), false);
     await context.setOffline(true);
