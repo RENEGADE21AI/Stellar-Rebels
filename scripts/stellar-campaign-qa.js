@@ -123,6 +123,7 @@ async function verify() {
     assert.equal(await page.locator('.stage:disabled').count(), count-1);
     await shot('stage-select');
     await page.getByRole('button',{name:/01 Vesper Orbit/}).tap();
+    await page.getByRole('button', { name:'Skip training', exact:true }).tap();
     for(let i=1;i<=count;i++) {
       await page.waitForFunction(id=>window.campaign.state.mode==='playing'&&window.campaign.state.flight.stage.id===id,i);
       await page.keyboard.down(i%2?'ArrowLeft':'ArrowRight');

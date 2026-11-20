@@ -24,6 +24,7 @@ async function compare(browser, viewport, prefix) {
     await page.getByRole('button', { name:'Arcade', exact:true }).tap();
     await save('stages');
     await page.getByRole('button', { name:/01 Vesper Orbit/ }).tap();
+    await page.getByRole('button', { name:'Skip training', exact:true }).tap();
     await page.waitForFunction(() => window.capture.state.mode === 'playing');
     await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now() + 250)));
     await page.clock.runFor(16050);

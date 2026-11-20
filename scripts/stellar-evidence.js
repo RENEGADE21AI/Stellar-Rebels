@@ -33,6 +33,7 @@ async function open(browser, viewport, prefix) {
   await page.getByRole('button', { name:'Arcade', exact: true }).click();
   await save('stages');
   await page.getByRole('button', { name: /01 Vesper Orbit/ }).click();
+  await page.getByRole('button', { name:'Skip training', exact:true }).click();
   await page.waitForFunction(() => globalThis.capture?.state.mode === 'playing');
   const before = await read(page);
   const touch = await context.newCDPSession(page);
