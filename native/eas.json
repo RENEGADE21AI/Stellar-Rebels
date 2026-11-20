@@ -1,0 +1,16 @@
+{
+  "cli": { "appVersionSource": "local" },
+  "build": {
+    "base": { "node": "22.23.5", "env": { "EAS_UPDATE_UPLOAD_EMBEDDED_BUNDLE": "0" } },
+    "validation": {
+      "extends": "base",
+      "distribution": "internal",
+      "android": { "buildType": "apk" }
+    },
+    "production": {
+      "extends": "base",
+      "distribution": "store",
+      "android": { "buildType": "app-bundle" }
+    }
+  }
+}
