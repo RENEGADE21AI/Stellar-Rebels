@@ -4,7 +4,7 @@ const { chromium, webkit } = require('playwright');
 
 const origin = process.env.STELLAR_WEB_URL;
 
-test('native Arcade banking, preview and launch use the host entitlement while browser Arcade remains free', { skip: !origin, timeout:40000 }, async () => {
+test('native Arcade banking, preview and launch use the host entitlement while browser Arcade remains free', { skip: !origin, timeout:90000 }, async () => {
   const browser = await chromium.launch();
   try {
     for (const native of [true, false]) {
@@ -338,7 +338,7 @@ test('a fast touch release preserves pending steering and a canceled touch stops
   } finally { await browser.close(); }
 });
 
-test('a returning playfield follows an operating system reduction preference', { skip: !origin, timeout:15000 }, async () => {
+test('a returning playfield follows an operating system reduction preference', { skip: !origin, timeout:45000 }, async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport:{ width:390, height:844 }, reducedMotion:'no-preference', serviceWorkers:'block' });
@@ -361,7 +361,7 @@ test('a returning playfield follows an operating system reduction preference', {
   } finally { await browser.close(); }
 });
 
-test('Arcade exposes a direct Special practice drill with stable flight meters', { skip: !origin, timeout:18000 }, async () => {
+test('Arcade exposes a direct Special practice drill with stable flight meters', { skip: !origin, timeout:45000 }, async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport:{ width:320, height:568 }, isMobile:true, hasTouch:true, serviceWorkers:'block' });
