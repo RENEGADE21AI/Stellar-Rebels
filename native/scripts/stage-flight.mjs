@@ -75,7 +75,7 @@ for (const [file, content] of Object.entries(pack)) {
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, content);
 }
-fs.copyFileSync(path.join(repo, 'source-art/stellar/brand/png/icon-1024.png'), path.join(generated, 'icon.png'));
+fs.copyFileSync(path.join(repo, 'source-art/stellar/brand/png/icon-flight-insignia.png'), path.join(generated, 'icon.png'));
 fs.copyFileSync(path.join(repo, 'source-art/stellar/brand/png/emblem-light.png'), path.join(generated, 'launch.png'));
 fs.copyFileSync(path.join(source, 'media/brand/loading.jpg'), path.join(generated, 'loading.jpg'));
 fs.copyFileSync(path.join(source, 'media/brand/title-wordmark.png'), path.join(generated, 'loading-wordmark.png'));
