@@ -124,6 +124,11 @@ button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(
 .setting{min-height:50px;display:grid;grid-template-columns:1fr auto;align-items:center;gap:9px;padding:7px 11px;background:#142331e8;border:1px solid #485b6c}
 .setting strong{font:700 22px/1 var(--display);display:block}
 .setting small{display:block;color:var(--secondary);margin-top:4px;font-size:.73rem}
+.account-panel{grid-template-columns:minmax(0,1fr);gap:12px}
+.account-panel #account-status{color:var(--paper)}
+.google-sign-in{width:min(180px,100%);display:grid;align-items:center;min-height:44px;padding:0;border:0;background:transparent;border-radius:4px}
+.google-sign-in img{display:block;width:100%;height:auto}
+.google-sign-in:hover{filter:brightness(1.15)}
 .toggle{min-height:44px;min-width:64px;background:#263547;border:1px solid #576e79;font:700 .78rem var(--mono);padding:5px 7px}
 .toggle[aria-pressed=true]{background:#22453f;border-color:#6bbfae;color:#d3fff6}
 .flight{overflow:hidden;background:#070a13}
