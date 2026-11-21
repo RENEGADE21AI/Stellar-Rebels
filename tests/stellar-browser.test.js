@@ -383,6 +383,53 @@ test('restoring IndexedDB reconciles temporary results with the actual saved rec
   } finally { await browser.close(); }
 });
 
+test('Title Screen is reachable from a clear, a loss, and Endless results', { skip: !origin, timeout:45000 }, async () => {
+  const browser = await chromium.launch();
+  try {
+    for (const [name, status, viewport] of [
+      ['Stage clear', 'clear', { width:390, height:844 }],
+      ['Flight lost', 'defeat', { width:320, height:568 }],
+      ['New survival best', 'defeat', { width:844, height:390 }]
+    ]) {
+      const context = await browser.newContext({ viewport, isMobile:true, hasTouch:true, serviceWorkers:'block' });
+      try {
+        const page = await context.newPage();
+        const errors = [];
+        page.on('pageerror', (error) => errors.push(error.message));
+        await page.route(/\/app\.mjs(\?|$)/, async (route) => {
+          const response = await route.fetch();
+          await route.fulfill({ response, body:(await response.text()) + '\nwindow.resultFixture = state;' });
+        });
+        await page.goto(origin);
+        const button = (name) => page.getByRole('button', { name, exact:true });
+        if (name === 'New survival best') {
+          await button('Arcade').tap();
+          await button('Endless').tap();
+        } else {
+          await button('Play').tap();
+          await button('Skip training').tap();
+          await page.locator('#training-actions').waitFor({ state:'hidden' });
+        }
+        await button('Pause').waitFor();
+        // This fixture exercises a real settlement and result transition without playing three full flights.
+        await page.evaluate((status) => Object.assign(window.resultFixture.flight, {
+          score:128394, status, elapsed:168, kills:67, movement:2300
+        }), status);
+        await page.getByRole('heading', { name, exact:true }).waitFor();
+        const title = button('Title Screen');
+        await title.waitFor();
+        const fit = await page.locator('.result-card').evaluate((card) => card.scrollWidth <= card.clientWidth);
+        assert.equal(fit, true);
+        const target = await title.boundingBox();
+        assert.ok(target.width >= 44 && target.height >= 44);
+        await title.tap();
+        await button('Play').waitFor();
+        assert.deepEqual(errors, []);
+      } finally { await context.close(); }
+    }
+  } finally { await browser.close(); }
+});
+
 test('flight instructions stay in the HUD during real touch and a rail strike', { skip: !origin, timeout:60000 }, async () => {
   const browser = await chromium.launch();
   try {

@@ -287,11 +287,14 @@ function results() {
   const title = finale ? 'Fleet defeated' : relayCleared ? 'Relay offline' : clear ? 'Stage clear' : isEndless ? p.receipt?.best ? 'New survival best' : 'Run complete' : 'Flight lost';
   const repeat = isEndless ? 'Fly again' : clear ? 'Replay stage' : 'Retry stage';
   const retry = `fly:${isEndless ? 'endless' : stage.id}`;
-  const progression = !isEndless && p.receipt ? `<div class="result-reward">${icon('salvage')} ${p.receipt.award ? `+${num(p.receipt.award)} Salvage ${store.temporary ? 'this session' : 'banked'}` : '0 Salvage earned'}${p.receipt.first ? ' · First clear' : ''}</div>` : '';
-  const unlocked = p.receipt?.newStage ? `<div class="unlock">${stageById(p.receipt.newStage).name} unlocked</div>` : '';
+  const progression = !isEndless && p.receipt ? `<p class="result-reward">${icon('salvage')} <span>${p.receipt.award ? `+${num(p.receipt.award)} Salvage ${store.temporary ? 'this session' : 'banked'}` : '0 Salvage earned'}</span>${p.receipt.first ? '<small>First clear</small>' : ''}</p>` : '';
+  const unlocked = [
+    p.receipt?.newStage ? `${stageById(p.receipt.newStage).name} unlocked` : null,
+    p.receipt?.newSpecial === 'ion' ? 'Ion Burst unlocked' : null
+  ].filter(Boolean);
   const ship = p.receipt?.newShip ? action(`${SHIPS[p.receipt.newShip].name} unlocked`, `unlocked:${p.receipt.newShip}`, 'quiet', 'ship') : '';
-  const pendingCopy = p.discarded ? '<p class="result-reward warning">This flight was temporary. Your existing device save is active.</p>'
-    : !p.receipt ? `<p class="result-reward warning">${p.error || 'Saving flight…'}</p>` : '';
+  const pendingCopy = p.discarded ? '<p class="result-warning" role="status">This flight was temporary. Your existing device save is active.</p>'
+    : !p.receipt ? `<p class="result-warning" role="status">${p.error || 'Saving flight…'}</p>` : '';
   const buyable = p.receipt && clear && Object.entries(UPGRADES).some(([key,item]) =>
     !state.pilot.equipment.includes(key) && (!item.needs || state.pilot.equipment.includes(item.needs)) && state.pilot.salvage >= item.cost);
   const primary = p.discarded ? action('Return to stages', 'view:stages', 'primary')
@@ -299,14 +302,34 @@ function results() {
     : next ? action('Next Flight', `fly:${next.id}`, 'primary', 'next', `aria-label="Next Flight · ${next.name}"`)
       : finale ? action('Return to stages', 'view:stages', 'primary') : action(repeat, retry, 'primary');
   const mastery = p.receipt && clear && stage?.mastery ? `<p class="subtle">${state.pilot.mastery?.[stage.mastery.key ?? stage.id] ? 'Mastered · ' + stage.mastery.name : stage.mastery.detail}</p>` : '';
-  return `<article class="screen result-screen"><div class="result-card">${saveNotice()}<span class="caption">${finale ? 'Campaign complete' : isEndless ? 'Endless' : stage.name}</span>
-    <h1 tabindex="-1">${title}</h1>${finale && p.receipt ? '<p class="subtle">The enemy fleet has fallen. Every completed stage is open for replay.</p>' : ''}
-    <div class="result-facts"><div><span class="caption">${!isEndless && p.receipt?.best && report.score > 0 ? 'Personal best' : 'Score'}</span><strong>${num(report.score)}</strong></div><div><span class="caption">Flight time</span><strong>${time(report.duration)}</strong></div><div><span class="caption">Targets</span><strong>${num(report.kills)}</strong></div></div>
-    ${mastery}${progression}${pendingCopy}${unlocked}${primary}${ship}<div class="result-secondary">
-    ${p.receipt && (next || finale) ? action(repeat, retry, 'quiet', '') : ''}
-    ${p.receipt ? action(buyable ? 'Upgrades' : 'Hangar', buyable ? 'shop:result' : 'hangar:result', 'quiet', '') : p.error ? action('Leave unsaved', 'discard', 'quiet', '') : ''}
-    ${p.receipt && !finale ? action('Arcade', 'view:stages', 'quiet', '') : ''}
-    </div>${p.replay ? action('Save flight replay', 'save-replay', 'flat replay-link', '') : ''}</div></article>`;
+  const secondary = [
+    p.receipt && !finale ? action('Arcade', 'view:stages', 'quiet', '') : '',
+    p.receipt || p.discarded ? action('Title Screen', 'view:home', 'quiet', '') : '',
+    p.receipt && (next || finale) ? action(repeat, retry, 'quiet', '') : '',
+    p.receipt ? action(buyable ? 'Upgrades' : 'Hangar', buyable ? 'shop:result' : 'hangar:result', 'quiet', '') : '',
+    !p.receipt && p.error ? action('Leave unsaved', 'discard', 'quiet', '') : '',
+    ship
+  ].filter(Boolean);
+  return `<article class="screen result-screen" data-outcome="${clear ? 'clear' : 'finished'}">
+    <div class="result-card">
+      ${saveNotice()}
+      <header class="result-heading"><span class="caption">${finale ? 'Campaign complete' : isEndless ? 'Endless' : stage.name}</span>
+        <h1 tabindex="-1">${title}</h1>
+      </header>
+      <section class="result-facts" aria-label="Flight stats">
+        <div class="result-score"><span class="caption">${!isEndless && p.receipt?.best && report.score > 0 ? 'Personal best' : 'Score'}</span><strong>${num(report.score)}</strong></div>
+        <div><span class="caption">Flight time</span><strong>${time(report.duration)}</strong></div>
+        <div><span class="caption">Targets</span><strong>${num(report.kills)}</strong></div>
+      </section>
+      ${progression || mastery || unlocked.length ? `<div class="result-earned">${progression}
+        ${unlocked.length ? `<ul class="result-unlocks">${unlocked.map((label) => `<li>${icon('check')}${label}</li>`).join('')}</ul>` : ''}
+        ${mastery}
+      </div>` : ''}
+      ${pendingCopy}${primary}
+      ${secondary.length ? `<nav class="result-secondary" aria-label="After the flight">${secondary.join('')}</nav>` : ''}
+      ${p.replay ? action('Save flight replay', 'save-replay', 'flat replay-link', '') : ''}
+    </div>
+  </article>`;
 }
 
 function launchView() {
