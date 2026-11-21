@@ -51,6 +51,7 @@ export class Flight {
     this.waveIndex = 0;
     this.dropIndex = 0;
     this.terrainIndex = 0;
+    this.cruiserIndex = 0;
     this.fireTimer = .25;
     this.spawns = [];
     this.pickups = [];
@@ -327,9 +328,10 @@ export class Flight {
         }
         this.terrainIndex++;
       }
-      if (!this.sawCruiser && this.stage.cruiserAt && this.elapsed >= this.stage.cruiserAt && this.elapsed < this.stage.bossAt - 15) {
-        this.sawCruiser = true;
-        launchCruiser(this);
+      const crossing = this.stage.cruisers?.[this.cruiserIndex];
+      if (crossing && !this.cruiser && this.elapsed >= crossing.at) {
+        this.cruiserIndex++;
+        if (this.elapsed < this.stage.bossAt - 15) launchCruiser(this, crossing.variant);
       }
       if (!this.boss && this.elapsed >= this.stage.bossAt) {
         launchBoss(this, this.stage.boss);
@@ -492,7 +494,7 @@ export class Flight {
     this.spawns = this.spawns.filter((queued) => queued.at > this.elapsed);
     const wingCommand = new Map(this.enemies.filter((e) => e.group && e.vane > 0 && e.hull > 0 && !e.retreat).map((e) => [e.group, e]));
     const timeToSetPiece = this.endless ? this.nextEndlessBoss - this.elapsed
-      : Math.min(this.stage.bossAt, this.sawCruiser ? Infinity : this.stage.cruiserAt ?? Infinity) - this.elapsed;
+      : Math.min(this.stage.bossAt, this.stage.cruisers?.[this.cruiserIndex]?.at ?? Infinity) - this.elapsed;
     const canReturn = !this.boss && !this.cruiser && timeToSetPiece > 3;
     let returning = this.enemies.filter((e) => e.loop && !e.retreat).length;
     const active = [];

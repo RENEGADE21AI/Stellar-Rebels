@@ -540,6 +540,58 @@ test('ordinary flight, the crossing cruiser and bosses share the same arena boun
   assert.deepEqual(f.movementBounds, bounds);
 });
 
+test('Vesper stages two separated cruiser crossings with opposing paths and lighter patrol guns', async () => {
+  const [{ Flight, bounds }, , { WIDTH }] = await load;
+  const f = new Flight({ ...context(), seed:'4288578730338ed3aecc03a02e15645c' });
+  f.player.guard = Infinity;
+  f.fireTimer = Infinity;
+  const visits = [];
+  let seen = null;
+  while (!f.boss && f.elapsed < f.stage.bossAt + 1) {
+    f.step(step);
+    const craft = f.cruiser;
+    if (craft && craft !== seen) {
+      visits.push({ variant:craft.variant, entry:f.elapsed, x:craft.x, y:craft.y, speed:craft.speed,
+        turretHull:craft.parts[0].hull, mountCount:craft.parts.length, min:craft.x, max:craft.x });
+    }
+    if (craft) {
+      const visit = visits.at(-1);
+      visit.min = Math.min(visit.min, craft.x);
+      visit.max = Math.max(visit.max, craft.x);
+      if (seen === craft) assert.ok((craft.x - craft.px) * craft.speed > 0);
+    } else if (seen) visits.at(-1).exit = f.elapsed;
+    seen = craft;
+    f.takeEvents();
+  }
+  assert.deepEqual(visits.map((visit) => visit.variant), ['patrol','heavy']);
+  const [patrol, heavy] = visits;
+  assert.ok(Math.abs(patrol.entry - 46) <= step && Math.abs(heavy.entry - 82) <= step);
+  assert.ok(patrol.x > WIDTH && patrol.speed < 0);
+  assert.ok(heavy.x < 0 && heavy.speed > 0);
+  assert.ok(patrol.y + 24 < heavy.y && patrol.turretHull < heavy.turretHull);
+  assert.ok(patrol.exit < heavy.entry - 20 && heavy.exit < f.stage.bossAt - 29);
+  for (const visit of visits) {
+    assert.ok(visit.min < 0 && visit.max > WIDTH);
+    assert.equal(visit.mountCount, 2);
+  }
+  assert.equal(f.boss.kind, 'gatekeeper');
+  assert.equal(f.cruiser, null);
+  assert.deepEqual(f.movementBounds, bounds);
+});
+
+test('fighter return paths stay clear for either scheduled Cruiser crossing', async () => {
+  const [{ Flight }, , { HEIGHT }] = await load;
+  const f = new Flight(context());
+  const diver = f.addEnemy({ kind:'diver', lane:.31 });
+  for (const [index, crossing] of f.stage.cruisers.entries()) {
+    f.cruiserIndex = index;
+    f.elapsed = crossing.at - 2.95;
+    diver.y = HEIGHT - 13;
+    f.moveEnemies(step);
+    assert.equal(diver.loop, null);
+  }
+});
+
 test('a surviving fighter visibly banks, climbs fast, and returns at most twice with its hull intact', async () => {
   const [{ Flight }, , { HEIGHT, WIDTH }] = await load;
   const f = new Flight(context());

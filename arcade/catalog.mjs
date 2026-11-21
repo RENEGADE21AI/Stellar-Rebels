@@ -93,10 +93,11 @@ export function formation(name, flipped = false) {
 export const STAGES = [
   {
     id: 1, name: 'Vesper Orbit', region: 'Blockade', brief: 'Fight through the blockade.', accent: '#ff8752',
-    environment: 'breach', boss: 'gatekeeper', bossAt: 126, cruiserAt: 82, first: 78, repeat: 16, defeatCap: 20,
-    chapters: [[0,'Approach'],[16,'Blockade screen'],[42,'Fighter wings'],[82,'Cruiser crossing'],[103,'Final approach']],
+    environment: 'breach', boss: 'gatekeeper', bossAt: 126, first: 78, repeat: 16, defeatCap: 20,
+    cruisers: [{ at:46, variant:'patrol' }, { at:82, variant:'heavy' }],
+    chapters: [[0,'Approach'],[16,'Blockade screen'],[46,'Cruiser patrol'],[82,'Cruiser crossing'],[103,'Final approach']],
     waves: [[.6,'arrow',0,'opening'],[6.4,'column',1],[15,'spear'],[19.5,'hook'],[30,'linked'],[38,'rake'],[43,'anvil'],
-      [47.4,'cross'],[58,'linked',1],[63,'sweep'],[73,'break'],[77,'column',1],[89,'screen'],[98,'anvil',1],
+      [47.4,'screen',1],[58,'linked',1],[63,'sweep'],[73,'break'],[77,'column',1],[89,'screen'],[98,'anvil',1],
       [103,'linked'],[112,'hook',1],[118,'cross']],
     drops: [[14,'power',.50,'opening'],[39,'barrier',.65],[72,'repair',.37],[99,'power',.57],[116,'overdrive',.50]],
     mastery: { name: 'Disarm the Warden', detail: 'Destroy both turrets before the main hull.', condition: 'parts' }
