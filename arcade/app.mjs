@@ -139,7 +139,7 @@ function stages() {
     else if (record?.status === 'clear') note = `${num(record.score)} loadout best${mastered ? ' · Mastered' : ''}`;
     else if (clear && s.mastery) {
       note = mastered ? 'Set a loadout best'
-        : s.mastery.condition === 'parts' ? 'Disarm both turrets' : 'Clean boss fight';
+        : s.mastery.condition === 'parts' ? 'Disarm both turrets' : 'No hull loss at boss';
     } else if (record) note = `${num(record.score)} best attempt`;
     return `<li><button class="stage ${s.id === next?.id ? 'next' : ''}" style="--stage-color:${s.accent}" data-action="fly:${s.id}" ${available ? '' : 'disabled'}>
       <span class="stage-num">${chapter(s.id)}</span><span><span class="stage-name">${s.name}</span><span class="stage-note">${note}</span></span>

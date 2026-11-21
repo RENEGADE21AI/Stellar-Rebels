@@ -484,10 +484,10 @@ test('restoring IndexedDB reconciles temporary results with the actual saved rec
 test('Title Screen is reachable from a clear, a loss, and Endless results', { skip: !origin, timeout:45000 }, async () => {
   const browser = await chromium.launch();
   try {
-    for (const [name, status, viewport] of [
-      ['Stage clear', 'clear', { width:390, height:844 }],
-      ['Flight lost', 'defeat', { width:320, height:568 }],
-      ['Run complete', 'defeat', { width:844, height:390 }]
+    for (const [mode, name, status, viewport] of [
+      ['arcade', 'Stage clear', 'clear', { width:390, height:844 }],
+      ['arcade', 'Flight lost', 'defeat', { width:320, height:568 }],
+      ['endless', 'Run complete', 'defeat', { width:844, height:390 }]
     ]) {
       const context = await browser.newContext({ viewport, isMobile:true, hasTouch:true, serviceWorkers:'block' });
       try {
@@ -500,7 +500,7 @@ test('Title Screen is reachable from a clear, a loss, and Endless results', { sk
         });
         await page.goto(origin);
         const button = (name) => page.getByRole('button', { name, exact:true });
-        if (name === 'New survival best') {
+        if (mode === 'endless') {
           await button('Arcade').tap();
           await button('Endless').tap();
         } else {
@@ -576,7 +576,7 @@ test('flight instructions stay in the HUD during real touch and a rail strike', 
         await page.reload();
         await page.getByRole('button',{name:'Arcade',exact:true}).tap();
         const redSun = page.getByRole('button',{name:/04 Red Sun/});
-        assert.match(await redSun.innerText(),/Keep hull intact in the boss fight/);
+        assert.match(await redSun.innerText(),/No hull loss at boss/);
         assert.equal(await page.getByRole('button',{name:'Endless',exact:true}).getAttribute('aria-describedby'),'endless-note');
         assert.match(await page.locator('#endless-note').innerText(),/0 Salvage/);
         await redSun.tap();
