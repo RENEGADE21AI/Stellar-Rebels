@@ -82,6 +82,29 @@ function filled(c, x, y, radius, color) {
   c.fill();
 }
 
+function debrisWarningBadge(c, x, y, color, opacity) {
+  c.save();
+  c.translate(x, y);
+  c.globalAlpha = opacity;
+  c.beginPath();
+  c.moveTo(-2.4, -9);
+  c.quadraticCurveTo(0, -13, 2.4, -9);
+  c.lineTo(10.4, 4.8);
+  c.quadraticCurveTo(12.6, 8.7, 8, 8.7);
+  c.lineTo(-8, 8.7);
+  c.quadraticCurveTo(-12.6, 8.7, -10.4, 4.8);
+  c.closePath();
+  c.fillStyle = '#171521';
+  c.fill();
+  c.lineWidth = 1.65;
+  c.strokeStyle = color;
+  c.stroke();
+  c.lineCap = 'round';
+  line(c, 0, -4.8, 0, 4.6, color, 1.8);
+  filled(c, 0, 3.5, 1.05, color);
+  c.restore();
+}
+
 const fighterExhaust = [[0, 22]];
 
 function exhaustTexture(core, flame) {
@@ -295,7 +318,7 @@ export class FlightScene {
     if (this.bossWreck) this.drawBossWreck();
     for (const warning of flight.hazards) {
       if (warning.kind === 'wall' && warning.age >= 0 && warning.age < warning.windup) {
-        this.debrisWindup(warning, prefs, flight.boss);
+        this.debrisWindup(warning, prefs);
       }
     }
     for (const drop of flight.pickups) this.drop(drop, prefs);
@@ -699,7 +722,7 @@ export class FlightScene {
   }
 
   warning(w, prefs, boss, bottom = HEIGHT) {
-    if (w.age < 0) return;
+    if (w.age < 0 || w.kind === 'wall') return;
     const c = this.ctx;
     const solid = w.age >= w.windup;
     const color = prefs.contrast ? '#fff4b7' : '#ffae63';
@@ -730,23 +753,6 @@ export class FlightScene {
         line(c, left, start, 0, bottom - start, color, 2.7);
         line(c, left + w.width, start, 0, bottom - start, color, 2.7);
       }
-    } else if (w.kind === 'wall') {
-      const l = w.x - w.width / 2;
-      const r = w.x + w.width / 2;
-      const y = solid ? w.rowY : w.y;
-      const seamColor = solid ? '#bfffe6' : color;
-      if (!solid) {
-        c.setLineDash([8,5]);
-        const left = w.left ?? 0;
-        const right = w.right ?? WIDTH;
-        line(c, left, y, l - 5 - left, 0, color, 2.1);
-        line(c, r + 5, y, right - (r + 5), 0, color, 2.1);
-        c.setLineDash([]);
-      }
-      for (const [x, sign] of [[l, 1], [r, -1]]) {
-        line(c, x, y - 10, 11 * sign, 10, seamColor, 2.5);
-        line(c, x, y + 10, 11 * sign, -10, seamColor, 2.5);
-      }
     } else if (w.kind === 'pull') {
       c.globalAlpha = solid ? .12 : .07;
       c.fillStyle = '#b395f9';
@@ -766,29 +772,48 @@ export class FlightScene {
     c.restore();
   }
 
-  debrisWindup(w, prefs, boss) {
+  debrisWindup(w, prefs) {
     if (!w.origin || !w.rocks?.length) return;
     const c = this.ctx;
     const phase = saturate(w.age / w.windup);
-    const spread = 1 - (1 - phase) ** 2;
     const { reduced, contrast } = prefs;
-    const color = contrast ? '#fff4b7' : '#ffae63';
-    const followsBoss = !reduced && boss && Number.isFinite(w.emitter);
-    const originX = followsBoss ? boss.x : w.origin.x;
-    const originY = followsBoss ? boss.y + w.emitter : w.origin.y;
-    c.save();
-    c.globalAlpha = (1 - phase) * .60;
-    ring(c, originX, originY, 4 + (reduced ? 0 : 10 * phase), color, 2);
-    c.setLineDash([3, 5]);
+    const ambient = w.origin.y < 0;
+    let left;
+    let right;
     for (const rock of w.rocks) {
-      const x = reduced ? rock.x : lerp(originX, rock.x, spread);
-      const y = reduced ? rock.y : lerp(originY, rock.y, spread) - Math.sin(Math.PI * phase) * 15;
-      const size = reduced ? rockSize : lerp(9, rockSize, phase);
-      const turn = reduced ? 0 : Math.sign(rock.x - originX) * (1 - phase) * .8;
-      line(c, originX, originY, x - originX, y - originY, color, 1.25);
-      this.sprite('rock', x, y, size, turn, lerp(reduced ? .14 : .27, 1, phase));
+      if (rock.x < w.x) left = rock.x;
+      else right ??= rock.x;
+      if (reduced) {
+        this.sprite('rock', rock.x, rock.y, rockSize, 0, .58);
+        continue;
+      }
+      const offset = seededNoise(rock.x * .41 + w.y * .17);
+      const delay = .035 + offset * .23;
+      const travel = saturate((phase - delay) / (1 - delay));
+      if (!travel) continue;
+      const originX = ambient ? lerp(w.origin.x, rock.x, .82) : w.origin.x;
+      const spread = 1 - (1 - travel) ** 2.15;
+      const side = Math.sign(rock.x - originX);
+      const arc = Math.sin(Math.PI * travel) * (6 + offset * 19);
+      const x = lerp(originX, rock.x, spread);
+      const y = lerp(w.origin.y, rock.y, travel) + arc * (offset - .65);
+      const size = lerp(9 + offset * 7, rockSize, spread);
+      this.sprite('rock', x, y, size, side * (1 - travel) * (.65 + offset), lerp(.55, 1, spread));
+      if (travel > .18 && travel < .9) {
+        const dust = Math.sin(Math.PI * travel);
+        const color = ambient ? '#8b9aa9' : '#a48c78';
+        c.save();
+        c.globalAlpha = .45 * dust;
+        filled(c, x - side * (size * .31 + 7), y - 5 - 13 * offset, 1.3, color);
+        filled(c, x - side * (size * .42 + 12), y - 10 + 18 * offset, .85, color);
+        c.restore();
+      }
     }
-    c.restore();
+    const opacity = reduced ? 1 : lerp(1, .38, saturate((phase - .84) / .16));
+    const color = contrast ? '#fff4b7' : '#ffd090';
+    for (const x of [left, right]) {
+      if (x !== undefined) debrisWarningBadge(c, x, w.y + 31, color, opacity);
+    }
   }
 
   drop(d, prefs) {
