@@ -8,7 +8,7 @@
     "icon": "./generated/icon.png",
     "ios": {
       "bundleIdentifier": "com.renegade21ai.stellarrebels",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "supportsTablet": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
