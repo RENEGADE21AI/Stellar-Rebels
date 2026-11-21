@@ -13,6 +13,7 @@ import Purchases from 'react-native-purchases';
 import { WebView } from 'react-native-webview';
 import { readBridgeRequest, sameFlightDocument } from './bridge.mjs';
 import { createCommerce } from './commerce.mjs';
+import { installFlightFiles } from './flight-install.mjs';
 
 const pack = require('../generated/flight.zip');
 const version = require('../generated/version.json');
@@ -28,29 +29,11 @@ const impacts = {
   heavy: { ios: ImpactFeedbackStyle.Heavy, android: AndroidHaptics.Long_Press }
 };
 
-async function installFlight() {
-  const flightIdentity = version.flightDigest ?? version.assetVersion;
-  const directory = new Directory(Paths.cache, 'stellar-rebels', flightIdentity);
-  const home = new File(directory, 'index.html');
-  const stamp = new File(directory, 'installed');
-  if (stamp.exists && await stamp.text() === flightIdentity &&
-      version.files.every((name) => new File(directory, ...name.split('/')).exists)) return { home, directory };
-
+async function loadFlightEntries() {
   const asset = Asset.fromModule(pack);
   if (!asset.localUri) await asset.downloadAsync();
   if (!asset.localUri) throw Error('Bundled flight pack is unavailable');
-  const entries = unzipSync(await new File(asset.localUri).bytes());
-  if (!entries['index.html'] || !entries[`arcade/${version.assetVersion}/native-app.js`]) throw Error('Bundled flight pack is incomplete');
-  directory.create({ idempotent: true, intermediates: true });
-  for (const [name, bytes] of Object.entries(entries)) {
-    if (!name.split('/').every((part) => /^[a-z0-9][a-z0-9._-]*$/i.test(part))) throw Error('Invalid flight asset path');
-    const file = new File(directory, ...name.split('/'));
-    file.create({ overwrite: true, intermediates: true });
-    file.write(bytes);
-  }
-  stamp.create({ overwrite: true });
-  stamp.write(flightIdentity);
-  return { home, directory };
+  return unzipSync(await new File(asset.localUri).bytes());
 }
 
 function Game() {
@@ -65,7 +48,7 @@ function Game() {
 
   useEffect(() => {
     let active = true;
-    installFlight().then((installed) => {
+    installFlightFiles({ Directory, File, cache: Paths.cache, version, loadEntries: loadFlightEntries }).then((installed) => {
       if (active) setFlight(installed);
     }).catch(() => {
       if (active) setFailed(true);
@@ -160,8 +143,7 @@ function Game() {
         }
         case 'share': {
           const file = new File(Paths.cache, 'stellar-rebels-replay.json');
-          file.create({ overwrite: true });
-          file.write(JSON.stringify(request.data));
+          await file.write(JSON.stringify(request.data));
           await shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: 'Share flight replay' });
           reply(true);
           break;
