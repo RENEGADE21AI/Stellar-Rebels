@@ -88,19 +88,35 @@ test('native Arcade banking, preview and launch use the host entitlement while b
           await heading('Unlock the Full Game').waitFor();
         };
         assert.equal(await heading('Unlock the Full Game').count(), 0);
-        await open();
+        const offer = button('See Full Game Unlock');
+        assert.equal(await offer.isVisible(), true);
+        assert.equal(await button('Return to Arcade').isVisible(), true);
+        assert.equal(await button('Replay stage').isVisible(), true);
+        assert.equal(await button('Title Screen').isVisible(), true);
+        assert.equal(await page.evaluate(() => window.testCommerce.calls.some(([op]) => op === 'commerce-purchase')), false);
+        await offer.tap();
+        await heading('Unlock the Full Game').waitFor();
         await page.getByText('2,99 €', { exact:true }).waitFor();
         const viewport = await page.locator('#menu').boundingBox();
         for (const label of ['Unlock Full Game', 'Not Now', 'Restore Purchases']) {
           const bounds = await button(label).boundingBox();
           assert.ok(bounds.width >= 44 && bounds.height >= 44 && bounds.y + bounds.height <= viewport.y + viewport.height);
         }
+        await button('Terms of Use').tap();
+        await heading(/Terms of [Uu]se/).waitFor();
+        await button('Back').tap();
+        await heading('Unlock the Full Game').waitFor();
+        assert.equal(await button('Terms of Use').evaluate((control) => document.activeElement === control), true);
         await button('Unlock Full Game').tap();
         await page.getByRole('status').filter({ hasText:/cancelled/i }).waitFor();
         await button('Not Now').tap();
         await heading('Relay offline').waitFor();
         assert.equal((await page.evaluate(() => window.commerceFixture.pilot())).clears[3], 1);
-        await button('Arcade').tap();
+        await launch(button('Replay stage'), 3);
+        await page.evaluate(() => window.commerceFixture.clear());
+        await button('Return to Arcade').waitFor();
+        assert.equal(await offer.count(), 0);
+        await button('Return to Arcade').tap();
         await launch(button('Endless'), null);
         await leave();
         await heading('Stage Select').waitFor();
@@ -113,6 +129,11 @@ test('native Arcade banking, preview and launch use the host entitlement while b
         await page.getByRole('status').filter({ hasText:/restored/i }).waitFor();
         await launch(button(/Launch Red Sun/), 4);
         await leave();
+        await launch(button(/^03 Relay Station/), 3);
+        await page.evaluate(() => window.commerceFixture.clear());
+        await button(/Next Flight.*Red Sun/).waitFor();
+        assert.equal(await offer.count(), 0);
+        await button('Arcade').tap();
         assert.equal(await button(/^05 Outer Orbit/).isDisabled(), true);
         const flagship = button(/^06 The Flagship/);
         await flagship.evaluate((control) => { control.disabled = false; });
@@ -139,6 +160,81 @@ test('native Arcade banking, preview and launch use the host entitlement while b
         await open();
         assert.equal(await button('Unlock Full Game').isDisabled(), true);
         assert.equal(await page.getByText('2,99 €', { exact:true }).count(), 0);
+      } finally { await context.close(); }
+    }
+  } finally { await browser.close(); }
+});
+
+test('Help and Legal is reachable from compact title and Settings, and rating is manual and native only', { skip: !origin, timeout:40000 }, async () => {
+  const browser = await chromium.launch();
+  try {
+    for (const native of [false, true]) {
+      const context = await browser.newContext({ viewport:{ width:320, height:568 }, hasTouch:true, isMobile:true, serviceWorkers:'block' });
+      try {
+        const page = await context.newPage();
+        if (native) {
+          const entry = new URL(origin);
+          await page.route((url) => url.origin === entry.origin && url.pathname === entry.pathname, async (route) => {
+            const response = await route.fetch();
+            await route.fulfill({ response, body:(await response.text()).replace('<html ', '<html data-native-flight="true" ') });
+          });
+        }
+        await page.addInitScript(() => {
+          const rating = { available:false, result:'failed', calls:[] };
+          window.ratingFixture = rating;
+          window.stellarCommerce = async (op) => {
+            rating.calls.push(op);
+            if (op === 'rating-status') return { available:rating.available };
+            if (op === 'rate-app') return { result:rating.result };
+            return { owned:false };
+          };
+        });
+        const button = (name) => page.getByRole('button', { name, exact:true });
+        const heading = (name) => page.getByRole('heading', { name, exact:typeof name === 'string' });
+        await page.goto(origin);
+        const help = button('Help & Legal');
+        await help.waitFor();
+        const frame = await page.locator('#frame').boundingBox();
+        const titleHelp = await help.boundingBox();
+        assert.ok(titleHelp.height >= 44 && titleHelp.y + titleHelp.height <= frame.y + frame.height + 1);
+        assert.equal(await page.evaluate(() => window.ratingFixture.calls.includes('rate-app')), false);
+        await help.tap();
+        await heading('Help & Legal').waitFor();
+        const rating = button('Rate the App');
+        if (native) {
+          await page.getByText('Rating becomes available when the store listing opens.').waitFor();
+          assert.equal(await rating.isDisabled(), true);
+          assert.equal(await button('Purchases & Restore').isVisible(), true);
+        } else {
+          assert.equal(await rating.count(), 0);
+          assert.equal(await button('Purchases & Restore').count(), 0);
+        }
+        for (const [label, title] of [['Privacy Policy', /Privacy [Pp]olicy/], ['Terms of Use', /Terms of [Uu]se/], ['Support', /Support/]]) {
+          await button(label).tap();
+          await heading(title).waitFor();
+          assert.ok(await page.locator('.policy-section').count() > 0);
+          assert.equal(await page.locator('#menu').evaluate((menu) => menu.scrollWidth <= menu.clientWidth), true);
+          await button('Back').tap();
+          assert.equal(await button(label).evaluate((control) => document.activeElement === control), true);
+        }
+        await button('Back').tap();
+        assert.equal(await help.evaluate((control) => document.activeElement === control), true);
+        await button('Settings').tap();
+        assert.equal(await help.isVisible(), true);
+        await page.evaluate(() => { window.ratingFixture.available = true; });
+        await help.tap();
+        if (native) {
+          await page.waitForFunction(() => !document.querySelector('#rate-app')?.disabled);
+          assert.equal(await page.evaluate(() => window.ratingFixture.calls.includes('rate-app')), false);
+          await rating.tap();
+          await page.getByText(/Could not open the store/).waitFor();
+          await page.evaluate(() => { window.ratingFixture.result = 'opened'; });
+          await rating.tap();
+          await page.getByText(/Could not open the store/).waitFor({ state:'hidden' });
+          assert.equal(await page.evaluate(() => window.ratingFixture.calls.filter((op) => op === 'rate-app').length), 2);
+        } else assert.deepEqual(await page.evaluate(() => window.ratingFixture.calls), []);
+        await button('Back').tap();
+        await heading('Settings').waitFor();
       } finally { await context.close(); }
     }
   } finally { await browser.close(); }

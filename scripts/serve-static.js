@@ -9,6 +9,7 @@ const mime = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
+  ".jpg": "image/jpeg",
   ".mjs": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".mp3": "audio/mpeg",
@@ -21,7 +22,7 @@ const mime = {
 
 http.createServer((request, response) => {
   const pathname = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
-  const relative = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+  const relative = pathname.replace(/^\/+/, "") + (pathname.endsWith("/") ? "index.html" : "");
   const overlay = hitboxes && /^arcade\/[a-f0-9]{15}\/dev-hitboxes\.mjs$/.test(relative);
   const file = path.resolve(root, relative);
   if (file !== root && !file.startsWith(`${root}${path.sep}`)) {

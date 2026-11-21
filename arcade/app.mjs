@@ -8,6 +8,7 @@ import { otherRealm, realmLabel } from './wraith.mjs';
 import { mountTitlePatrol } from './title-patrol.mjs';
 import { advanceTraining, startTraining } from './training.mjs';
 import { createGoogleAccount, googleSignInAvailable, pendingGoogleReturn } from './account.mjs';
+import { helpPages } from './help-content.mjs';
 
 const $ = (id) => document.getElementById(id);
 const menu = $('menu');
@@ -31,6 +32,7 @@ const renderer = new FlightScene(sky);
 const state = {
   pilot: null, view: 'home', mode: 'menu', hangarTab: 'ships', inspected: 'kestrel', hangarBack: 'home',
   helpBack: 'home', upgrade: null, flight: null, pending: null, last: null, busy: null, launch: null,
+  legalFrom: null, policyFrom: null, rating: { available:null, message:'' },
   commerce: { owned:false, price:'', ready:false }, commerceWork: null, commerceScreen: null,
   pointer: null, keys: new Set(), input: 'touch', support: '', pack: 'waiting', packCheck: 0, installed: false, resumeAt: 0, finishAt: 0
 };
@@ -111,7 +113,7 @@ function home() {
         <button class="home-link" data-action="hangar:home">${icon('ship')} Hangar</button>
         <button class="home-link" data-action="view:records">${icon('score')} Records</button>
         <button class="home-link" data-action="view:settings">${icon('settings')} Settings</button>
-      </nav></div></article>`;
+      </nav>${action('Help & Legal', 'legal', 'title-help', '')}</div></article>`;
 }
 
 function callSignView() {
@@ -286,24 +288,77 @@ function settingsView() {
     return `<div class="setting"><span><strong>${label}</strong><small>${systemMotion ? 'On in your device settings' : copy}</small></span>
       <button class="toggle" data-action="toggle:${key}" aria-label="${label}" aria-pressed="${on}" ${systemMotion ? 'disabled' : ''}>${on ? 'On' : 'Off'}</button></div>`;
   }).join('');
-  return screen('Settings', 'home', `${switches}<div class="setting"><div><strong>Touch steering</strong><small>Floating stick appears where you touch</small></div>
+  return screen('Settings', 'home', `<nav class="settings-shortcuts" aria-label="Help and purchases">
+    ${action('Help & Legal', 'legal', 'quiet', '')}
+    ${nativeFlight ? action('Full Game Unlock', 'commerce:show', 'quiet', '') : ''}</nav>
+    ${switches}<div class="setting"><div><strong>Touch steering</strong><small>Floating stick appears where you touch</small></div>
     <select class="toggle" id="steering" aria-label="Touch steering"><option value="drag">Drag</option><option value="stick" ${prefs.steering === 'stick' ? 'selected' : ''}>Floating stick</option></select></div>
     <div class="setting"><div><strong>Drag sensitivity</strong><small>Changes how far the ship follows a swipe</small></div>
     <select class="toggle" id="sensitivity" aria-label="Drag sensitivity"><option value="gentle" ${prefs.sensitivity === 'gentle' ? 'selected' : ''}>Gentle</option><option value="standard" ${prefs.sensitivity === 'standard' ? 'selected' : ''}>Standard</option><option value="direct" ${prefs.sensitivity === 'direct' ? 'selected' : ''}>Direct</option></select></div>
     <div class="notice" id="pack-status" role="status">${packCopy()}</div>${state.installed ? '' : '<p class="subtle">Install from your browser menu or Add to Home Screen in Safari.</p>'}
     ${googleSignInAvailable ? action('Account', 'view:account') : ''}
-    ${nativeFlight ? action('Full Game Unlock', 'commerce:show', 'quiet') : ''}
-    ${nativeFlight ? action('Privacy policy', 'view:privacy', 'quiet') : ''}
     ${action('Practice', 'help:settings', 'quiet')}${state.support ? `<p class="notice">${state.support}</p>` : ''}`);
 }
 
-function privacyView() {
-  return screen('Privacy policy', 'settings', `<div class="info">
-    <strong>Device storage</strong><p class="subtle">Your call sign, scores, progress and settings are saved on this device.</p>
-    <strong>Purchases</strong><p class="subtle">Apple or Google handles payment. RevenueCat receives purchase information and a randomly assigned app user ID to verify and restore the Full Game Unlock.</p>
-    <strong>Replay sharing</strong><p class="subtle">If you choose to share a replay, your device opens its share sheet. The replay contains flight inputs and results. You choose where to send it.</p>
-    <strong>Removal and backups</strong><p class="subtle">Remove the app and its data to delete the local save. Device backups or transfers can retain a copy according to your system settings. Manage those copies in your device backup settings.</p>
-  </div>`);
+function legalHub() {
+  return screen('Help & Legal', state.legalFrom.view, `<nav class="legal-links" aria-label="Help and legal information">
+    ${action('Privacy Policy', 'policy:privacy')}${action('Terms of Use', 'policy:terms')}${action('Support', 'policy:support')}
+    ${nativeFlight ? action('Purchases & Restore', 'commerce:show') : ''}
+  </nav>${nativeFlight ? `<div class="rating-entry">
+    ${action('Rate the App', 'rate-app', 'quiet', 'arrowout', 'id="rate-app" aria-describedby="rating-status" disabled')}
+    <p class="subtle" id="rating-status" role="status"></p>
+  </div>` : ''}`);
+}
+
+function escapePolicy(value) {
+  return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+}
+
+function policyParagraph({ text, email, link, linkText }) {
+  const contact = email ? ` <span class="policy-address">${escapePolicy(email)}</span>` : '';
+  let reference = '';
+  if (link && /^https:\/\//.test(link)) {
+    reference = nativeFlight ? ` <span class="policy-address">${escapePolicy(link)}</span>`
+      : ` <a class="policy-address" href="${escapePolicy(link)}" target="_blank" rel="noopener noreferrer">${escapePolicy(linkText ?? link)}</a>`;
+  }
+  return `<p class="subtle">${escapePolicy(text)}${contact}${reference}</p>`;
+}
+
+function policyPage(name) {
+  const page = helpPages[name];
+  const platformSections = nativeFlight ? page.nativeSections : page.webSections;
+  const sections = [...(platformSections ?? []), ...page.sections];
+  const blocks = sections.map(({ heading, paragraphs }) => `<section class="info policy-section">
+    <h2>${escapePolicy(heading)}</h2>${paragraphs.map(policyParagraph).join('')}
+  </section>`).join('');
+  return screen(escapePolicy(page.title), state.policyFrom.view,
+    `${page.updated ? `<p class="caption">${escapePolicy(page.updated)}</p>` : ''}${page.intro ? `<p class="subtle">${escapePolicy(page.intro)}</p>` : ''}${blocks}`);
+}
+
+function paintRating() {
+  const button = $('rate-app');
+  if (!button) return;
+  const { available, message } = state.rating;
+  button.disabled = available !== true;
+  $('rating-status').textContent = message || (available === null ? 'Checking store availability…'
+    : available ? '' : 'Rating becomes available when the store listing opens.');
+}
+
+async function refreshRating() {
+  const status = await nativeCommerce?.('rating-status').catch(() => null);
+  state.rating.available = status?.available === true;
+  paintRating();
+}
+
+async function rateApp() {
+  const response = await nativeCommerce?.('rate-app').catch(() => null);
+  if (response?.result === 'opened') state.rating.message = '';
+  else if (response?.result === 'unavailable') {
+    state.rating.available = false;
+    state.rating.message = '';
+  } else state.rating.message = 'Could not open the store. Try again when you are connected.';
+  paintRating();
 }
 
 function accountView() {
@@ -397,6 +452,7 @@ function results() {
   const relayCleared = clear && stage?.id === 3;
   const next = p.receipt && clear && stageById(stage.id + 1);
   const preview = next && requiresPurchase(next.id);
+  const firstUnlockOffer = preview && p.receipt.first && !store.temporary;
   const title = finale ? 'Fleet defeated' : relayCleared ? 'Relay offline' : clear ? 'Stage clear' : isEndless ? 'Run complete' : 'Flight lost';
   const repeat = isEndless ? 'Fly again' : clear ? 'Replay stage' : 'Retry stage';
   const retry = `fly:${isEndless ? 'endless' : stage.id}`;
@@ -412,7 +468,7 @@ function results() {
     !state.pilot.equipment.includes(key) && (!item.needs || state.pilot.equipment.includes(item.needs)) && state.pilot.salvage >= item.cost);
   const primary = p.discarded ? action('Return to stages', 'view:stages', 'primary')
     : !p.receipt ? (p.error ? action('Retry saving', 'settle', 'primary', 'check') : '')
-    : preview ? action(`Preview ${next.name}`, `fly:${next.id}`, 'primary', 'lock')
+    : preview ? action('Return to Arcade', 'view:stages', 'primary')
     : next ? action('Next Flight', `fly:${next.id}`, 'primary', 'next', `aria-label="Next Flight · ${next.name}"`)
       : finale ? action('Return to stages', 'view:stages', 'primary') : action(repeat, retry, 'primary');
   const mastery = p.receipt && clear && stage?.mastery ? `<p class="subtle">${p.receipt.mastery ? `Mastery earned · ${stage.mastery.name}`
@@ -421,7 +477,7 @@ function results() {
   const cause = p.terminal.damageCause;
   const advice = !clear && Object.hasOwn(retryAdvice, cause) ? retryAdvice[cause] : '';
   const secondary = [
-    p.receipt && !finale ? action('Arcade', 'view:stages', 'quiet', '') : '',
+    p.receipt && !finale && !preview ? action('Arcade', 'view:stages', 'quiet', '') : '',
     p.receipt || p.discarded ? action('Title Screen', 'view:home', 'quiet', '') : '',
     p.receipt && (next || finale) ? action(repeat, retry, 'quiet', '') : '',
     p.receipt ? action(buyable ? 'Upgrades' : 'Hangar', buyable ? 'shop:result' : 'hangar:result', 'quiet', '') : '',
@@ -446,6 +502,7 @@ function results() {
       </div>` : ''}
       ${pendingCopy}${primary}
       ${secondary.length ? `<nav class="result-secondary" aria-label="After the flight">${secondary.join('')}</nav>` : ''}
+      ${firstUnlockOffer ? action('See Full Game Unlock', 'commerce:preview', 'flat result-offer', 'lock') : ''}
       ${p.replay ? action('Save flight replay', 'save-replay', 'flat replay-link', '') : ''}
     </div>
   </article>`;
@@ -485,6 +542,9 @@ function commerceView() {
           ${action('Not Now', 'commerce:back', 'quiet', '', 'id="commerce-back"')}
           ${action('Restore Purchases', 'commerce:restore', 'quiet', '', 'id="commerce-restore"')}
         </div>
+        <nav class="commerce-policies" aria-label="Purchase policies">
+          ${action('Privacy Policy', 'policy:privacy', 'text-action', '')}${action('Terms of Use', 'policy:terms', 'text-action', '')}
+        </nav>
       </div>
     </div>
   </article>`;
@@ -571,9 +631,7 @@ function openCommerce(stage, control) {
 function closeCommerce() {
   const { from, scroll, control } = state.commerceScreen;
   state.commerceScreen = null;
-  show(from, false);
-  menu.scrollTop = scroll;
-  (menu.querySelector(`[data-action="${control}"]`) ?? menu.querySelector('h1'))?.focus({ preventScroll:true });
+  returnToControl(from, control, scroll);
 }
 
 async function runCommerce(command) {
@@ -604,7 +662,11 @@ function launchView() {
     <p class="notice" role="status">Loading flight assets…</p>${action('Cancel launch', 'cancel-flight', 'quiet', 'back')}</article>`;
 }
 
-const views = { home, callSign: callSignView, stages, hangar, upgrade: upgradeView, records, settings: settingsView, account: accountView, privacy: privacyView, help: helpView, result: results, launch: launchView, commerce: commerceView };
+const views = {
+  home, callSign: callSignView, stages, hangar, upgrade: upgradeView, records, settings: settingsView,
+  account: accountView, legal: legalHub, privacy: () => policyPage('privacy'), terms: () => policyPage('terms'),
+  support: () => policyPage('support'), help: helpView, result: results, launch: launchView, commerce: commerceView
+};
 
 function announce(message) { $('announcer').textContent = message; }
 
@@ -620,7 +682,6 @@ function showBrowserUpdate() {
 
 function show(view, focus = true) {
   if (!views[view] || (view === 'account' && !googleSignInAvailable)) return;
-  if (view === 'privacy' && !nativeFlight) return;
   if (view === 'commerce' && (!nativeFlight || !state.commerceScreen)) return;
   $('frame').dataset.reducedMotion = String(motionLimited());
   state.mode = 'menu';
@@ -629,6 +690,10 @@ function show(view, focus = true) {
   menu.hidden = false;
   menu.innerHTML = views[view]();
   if (view === 'commerce') paintCommerce();
+  if (view === 'legal' && nativeFlight) {
+    paintRating();
+    void refreshRating();
+  }
   refreshPatrol();
   showBrowserUpdate();
   menu.scrollTop = 0;
@@ -640,6 +705,12 @@ function show(view, focus = true) {
   }
   lookForBrowserUpdate();
   audio.play('hangar');
+}
+
+function returnToControl(view, control, scroll) {
+  show(view, false);
+  menu.scrollTop = scroll;
+  (menu.querySelector(`[data-action="${control}"]`) ?? menu.querySelector('h1'))?.focus({ preventScroll:true });
 }
 
 function refreshPatrol() {
@@ -1066,7 +1137,11 @@ async function handle(command) {
   if (type === 'view') {
     if (value === 'hangar' && state.view === 'upgrade') updateHangar(`upgrade:${state.upgrade}`);
     else if (value === 'home' && state.view === 'callSign') returnToPilot();
-    else show(value);
+    else if (state.view === 'legal' && value === state.legalFrom.view) {
+      returnToControl(value, 'legal', state.legalFrom.scroll);
+    } else if (Object.hasOwn(helpPages, state.view) && value === state.policyFrom.view) {
+      returnToControl(value, `policy:${state.view}`, state.policyFrom.scroll);
+    } else show(value);
     return;
   }
   if (type === 'account' && state.view === 'account') {
@@ -1076,9 +1151,29 @@ async function handle(command) {
     return;
   }
   if (type === 'commerce' && nativeFlight) {
-    if (value === 'show' && state.view === 'settings') openCommerce(null, command);
-    else if (state.view === 'commerce' && value === 'back') closeCommerce();
+    if (value === 'show' && ['settings', 'legal'].includes(state.view)) openCommerce(null, command);
+    else if (value === 'preview' && state.view === 'result') {
+      const receipt = state.pending?.receipt;
+      if (receipt?.stage === firstPaidStage - 1 && receipt.first && !store.temporary && requiresPurchase(firstPaidStage)) {
+        openCommerce(firstPaidStage, command);
+      }
+    } else if (state.view === 'commerce' && value === 'back') closeCommerce();
     else if (state.view === 'commerce' && (value === 'purchase' || value === 'restore')) void runCommerce(value);
+    return;
+  }
+  if (type === 'legal' && ['home', 'settings'].includes(state.view)) {
+    state.legalFrom = { view:state.view, scroll:menu.scrollTop };
+    state.rating = { available:null, message:'' };
+    show('legal');
+    return;
+  }
+  if (type === 'policy' && ['legal', 'commerce'].includes(state.view) && Object.hasOwn(helpPages, value)) {
+    state.policyFrom = { view:state.view, scroll:menu.scrollTop };
+    show(value);
+    return;
+  }
+  if (type === 'rate-app' && state.view === 'legal' && nativeFlight && state.rating.available) {
+    await rateApp();
     return;
   }
   if (type === 'hangar') { showHangar(value); return; }

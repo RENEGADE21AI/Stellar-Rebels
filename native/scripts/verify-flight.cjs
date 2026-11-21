@@ -53,6 +53,7 @@ async function check(engine, viewport) {
     else if (request.op === 'haptic') haptics.push(request.data);
     else if (request.op === 'commerce-status') reply.value = { owned: false, price: null, available: false };
     else if (request.op === 'authorize-stage') reply.value = { allowed: request.data <= 3 };
+    else if (request.op === 'rating-status') reply.value = { available: false };
     else throw Error(`Unexpected native request: ${request.op}`);
     return reply;
   });
@@ -88,10 +89,22 @@ async function check(engine, viewport) {
     await page.getByText('The purchase price is unavailable right now.').waitFor();
     assert.equal(await page.getByRole('button', { name: 'Unlock Full Game' }).isDisabled(), true);
     await page.getByRole('button', { name: 'Not Now', exact: true }).tap();
-    await page.getByRole('button', { name: 'Privacy policy', exact: true }).tap();
-    await page.getByRole('heading', { name: 'Privacy policy', exact: true }).waitFor();
+    const back = page.getByRole('button', { name: 'Back', exact: true });
+    await page.getByRole('button', { name: 'Help & Legal', exact: true }).tap();
+    await page.getByText('Rating becomes available when the store listing opens.').waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Rate the App' }).isDisabled(), true);
+    await page.getByRole('button', { name: 'Privacy Policy', exact: true }).tap();
+    await page.getByRole('heading', { name: 'Privacy Policy', exact: true }).waitFor();
     await page.getByText('Replay sharing', { exact: true }).waitFor();
-    await page.getByRole('button', { name: 'Back', exact: true }).tap();
+    await back.tap();
+    await page.getByRole('button', { name: 'Terms of Use', exact: true }).tap();
+    await page.getByRole('heading', { name: 'Terms of Use', exact: true }).waitFor();
+    await page.getByText('Free play and the mobile unlock', { exact: true }).waitFor();
+    await back.tap();
+    await page.getByRole('button', { name: 'Support', exact: true }).tap();
+    await page.getByText('renegade21ai@gmail.com', { exact: true }).waitFor();
+    await back.tap();
+    await back.tap();
     const contrast = page.getByRole('button', { name: 'High contrast hazards' });
     const vibration = page.getByRole('button', { name: 'Vibration', exact: true });
     assert.equal(await vibration.getAttribute('aria-pressed'), 'true');
@@ -132,9 +145,9 @@ async function check(engine, viewport) {
     assert.deepEqual(diagnostics.webRequests, []);
     assert.deepEqual(diagnostics.failedFiles, []);
     assert.deepEqual(diagnostics.scriptErrors, []);
-    assert.deepEqual([...diagnostics.bridge].sort(), ['commerce-status', 'haptic', 'load', 'save']);
+    assert.deepEqual([...diagnostics.bridge].sort(), ['commerce-status', 'haptic', 'load', 'rating-status', 'save']);
     await page.screenshot({ path: path.join(output, `${engine.name()}.png`) });
-    return { engine: engine.name(), viewport, audio: track, privacyPolicyOpens: true, settingsPersisted: true, interruptionPaused: true, hapticBridge: haptics, offlineRequests: 0 };
+    return { engine: engine.name(), viewport, audio: track, helpPagesOpen: true, unpublishedRatingDisabled: true, settingsPersisted: true, interruptionPaused: true, hapticBridge: haptics, offlineRequests: 0 };
   } finally {
     await browser.close();
   }

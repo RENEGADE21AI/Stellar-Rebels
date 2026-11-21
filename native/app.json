@@ -63,7 +63,7 @@
     },
     "android": {
       "package": "com.renegade21ai.stellarrebels",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "foregroundImage": "./generated/adaptive.png",
         "backgroundColor": "#080f19"

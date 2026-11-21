@@ -17,12 +17,16 @@ function resolveConfig(config, env) {
     iosProductId: env.EXPO_PUBLIC_REVENUECAT_IOS_PRODUCT_ID,
     androidProductId: env.EXPO_PUBLIC_REVENUECAT_ANDROID_PRODUCT_ID
   };
+  const storeRatings = {
+    ios: !testStore && env.EXPO_PUBLIC_STELLAR_IOS_STORE_LIVE === '1',
+    android: !testStore && env.EXPO_PUBLIC_STELLAR_ANDROID_STORE_LIVE === '1'
+  };
   return {
     ...config,
     name: testStore ? 'Stellar Rebels Test Store' : config.name,
     android: { ...config.android, package: testStore ? `${config.android.package}.teststore` : config.android.package },
     plugins: [...config.plugins, ['./with-android-commerce', { testStore }]],
-    extra: { ...config.extra, revenueCat }
+    extra: { ...config.extra, revenueCat, storeRatings }
   };
 }
 

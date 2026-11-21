@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AppState, NativeModules, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator, AppState, Image, Linking, NativeModules, Platform, Pressable, StatusBar, StyleSheet, Text,
+  useWindowDimensions, View
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Asset } from 'expo-asset';
 import Constants from 'expo-constants';
@@ -8,16 +11,19 @@ import { Directory, File, Paths } from 'expo-file-system';
 import { AndroidHaptics, ImpactFeedbackStyle, impactAsync, performAndroidHapticsAsync } from 'expo-haptics';
 import { shareAsync } from 'expo-sharing';
 import { unzipSync } from 'fflate';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Purchases from 'react-native-purchases';
 import { WebView } from 'react-native-webview';
-import { readBridgeRequest, sameFlightDocument } from './bridge.mjs';
+import { openStoreRating, readBridgeRequest, sameFlightDocument, storeRatingAvailable } from './bridge.mjs';
 import { createCommerce } from './commerce.mjs';
 import { installFlightFiles } from './flight-install.mjs';
 
 const pack = require('../generated/flight.zip');
 const version = require('../generated/version.json');
+const loadingArtwork = require('../generated/loading.jpg');
+const loadingWordmark = require('../generated/loading-wordmark.png');
 const profileKey = 'stellar-rebels.profile.v1';
+const ratingAvailable = storeRatingAvailable(Platform.OS, Constants.expoConfig?.extra?.storeRatings);
 const commerce = createCommerce(Purchases, {
   platform: Platform.OS,
   nativeAvailable: Boolean(NativeModules.RNPurchases),
@@ -34,6 +40,30 @@ async function loadFlightEntries() {
   if (!asset.localUri) await asset.downloadAsync();
   if (!asset.localUri) throw Error('Bundled flight pack is unavailable');
   return unzipSync(await new File(asset.localUri).bytes());
+}
+
+function FlightLoading({ failed, onRetry }) {
+  const window = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const availableWidth = window.width - insets.left - insets.right;
+  const availableHeight = window.height - insets.top - insets.bottom;
+  const width = Math.min(availableWidth, availableHeight / 2, 500);
+
+  return <View style={style.loading}>
+    <View style={[style.loadingFrame, { width, height: width * 2 }]}>
+      <Image source={loadingArtwork} style={style.loadingArtwork} resizeMode="cover" fadeDuration={0} accessible={false} />
+      <Image source={loadingWordmark} style={style.loadingWordmark} resizeMode="contain" fadeDuration={0} accessible={false} />
+      <View style={style.loadingStatus}>
+        {!failed && <ActivityIndicator size="small" color="#a9edf6" accessible={false} />}
+        <Text accessibilityLiveRegion="polite" style={style.message}>
+          {failed ? 'Flight assets could not be opened.' : 'Preparing flight…'}
+        </Text>
+        {failed && <Pressable accessibilityRole="button" onPress={onRetry} style={style.retry}>
+          <Text style={style.retryLabel}>Try again</Text>
+        </Pressable>}
+      </View>
+    </View>
+  </View>;
 }
 
 function Game() {
@@ -101,6 +131,18 @@ function Game() {
 
     const reply = (ok, value) => sendToFlight(
       `window.stellarNativeReply?.(${JSON.stringify({ id: request.id, client: request.client, ok, value })});`, token);
+    if (request.op === 'rating-status') {
+      reply(true, { available: ratingAvailable });
+      return;
+    }
+    if (request.op === 'rate-app') {
+      void openStoreRating(Platform.OS, {
+        available: ratingAvailable,
+        isForeground: () => AppState.currentState === 'active',
+        openURL: (url) => Linking.openURL(url)
+      }).then((value) => reply(true, value));
+      return;
+    }
     if (request.op === 'commerce-status') {
       reply(true, commerce.status());
       void commerce.refresh();
@@ -153,12 +195,7 @@ function Game() {
     }).catch(() => reply(false));
   }
 
-  if (!flight) return <View style={style.center}>
-    <Text style={style.message}>{failed ? 'Flight assets could not be opened.' : 'Loading Stellar Rebels…'}</Text>
-    {failed && <Pressable accessibilityRole="button" onPress={() => { setFailed(false); setAttempt((n) => n + 1); }}>
-      <Text style={style.retry}>Try again</Text>
-    </Pressable>}
-  </View>;
+  if (!flight) return <FlightLoading failed={failed} onRetry={() => { setFailed(false); setAttempt((n) => n + 1); }} />;
 
   return <WebView
     key={reload}
@@ -197,7 +234,15 @@ export default function App() {
 
 const style = StyleSheet.create({
   webview: { flex: 1, backgroundColor: '#080f19' },
-  center: { flex: 1, gap: 16, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: '#080f19' },
-  message: { fontSize: 17, color: '#fff0db', textAlign: 'center' },
-  retry: { minHeight: 44, padding: 10, fontWeight: '700', color: '#ff9a65' }
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#080f19' },
+  loadingFrame: { overflow: 'hidden', alignItems: 'center', backgroundColor: '#080f19' },
+  loadingArtwork: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  loadingWordmark: { position: 'absolute', top: '9%', left: '13%', width: '74%', height: '16%' },
+  loadingStatus: { position: 'absolute', bottom: '6%', left: 16, right: 16, alignItems: 'center', gap: 10 },
+  message: {
+    fontSize: 17, color: '#fff0db', textAlign: 'center',
+    textShadowColor: '#02050a', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 5
+  },
+  retry: { minHeight: 44, minWidth: 96, padding: 10, alignItems: 'center', justifyContent: 'center' },
+  retryLabel: { fontSize: 16, fontWeight: '700', color: '#ff9a65' }
 });

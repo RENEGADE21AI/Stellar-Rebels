@@ -3,6 +3,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const { spriteColliderDigests } = require('../arcade/silhouettes.mjs');
+const helpPages = require('./stellar-help-pages.js');
 
 const root = path.resolve(__dirname, '..');
 const source = path.join(root, 'arcade');
@@ -31,7 +32,7 @@ for (const file of walk(source)) {
   if (local === 'index.html') continue;
   if (local === 'media/brand/google-sign-in.png' && !googleSignIn) continue;
   if (!local.startsWith('media/') && !/^[a-z-]+\.(?:mjs|css)$/.test(local)) throw Error(`Unexpected runtime file: ${local}`);
-  if (!/\.(mjs|css|png|webp|svg|woff2|txt)$/.test(local)) throw Error(`Unsupported build asset: ${local}`);
+  if (!/\.(mjs|css|jpg|png|webp|svg|woff2|txt)$/.test(local)) throw Error(`Unsupported build asset: ${local}`);
   files.set(local, /\.(mjs|css|svg|txt)$/.test(local) ? readText(file) : fs.readFileSync(file));
 }
 for (const [sprite, expected] of Object.entries(spriteColliderDigests)) {
@@ -63,6 +64,7 @@ const workerTemplate = readText(path.join(__dirname, 'stellar-worker.template.js
 const hash = crypto.createHash('sha256').update(template).update(workerTemplate);
 for (const [name, body] of files) hash.update(name).update(body);
 for (const [name, body] of lazyFiles) hash.update(name).update(body);
+for (const [name, body] of helpPages) hash.update(name).update(body);
 const fingerprint = hash.digest('hex');
 const version = fingerprint.slice(0, 15);
 const base = `/arcade/${version}/`;
@@ -78,6 +80,7 @@ if (path.relative(root, target) !== 'dist-stellar') throw Error('Refusing to rep
 fs.rmSync(target, { recursive: true, force: true });
 for (const [name, body] of files) emit(base + name, body);
 for (const [name, body] of lazyFiles) emit(base + name, body);
+for (const [name, body] of helpPages) emit(name, body);
 
 const html = template.replace('<meta charset="utf-8">', `<meta charset="utf-8">\n  <base href="${base}">\n  <link rel="manifest" href="/site.webmanifest">`)
   .replace(/src="\/src\/(00-[\w-]+\.js)"/g, (_, name) => `src="${base}shared/${name}"`);

@@ -1,0 +1,47 @@
+.boot-flight {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  justify-items: center;
+  align-items: start;
+  overflow: hidden;
+  background: #080f19 url(media/brand/loading.jpg) center / cover no-repeat;
+  padding: min(16dvh, 9rem) 1rem min(10dvh, 5rem);
+}
+
+.boot-wordmark {
+  display: block;
+  width: min(84%, 24rem);
+  height: auto;
+  filter: drop-shadow(0 2px 12px #080f19);
+}
+
+.boot-state {
+  display: flex;
+  gap: .65rem;
+  align-items: center;
+  color: #fff0db;
+  font-size: .87rem;
+  font-weight: 650;
+  letter-spacing: .09em;
+  text-shadow: 0 2px 5px #080f19;
+}
+
+.boot-indicator {
+  width: .55rem;
+  height: .55rem;
+  border: 1px solid #b1e8f1;
+  background: #b1e8f1;
+  transform: rotate(45deg);
+  animation: boot-indicator 1.45s ease-in-out infinite alternate;
+}
+
+@keyframes boot-indicator {
+  from { opacity: .35; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-indicator { animation: none; }
+}

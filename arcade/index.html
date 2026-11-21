@@ -9,6 +9,7 @@
   <link rel="icon" href="media/brand/icon-32.png" type="image/png">
   <link rel="apple-touch-icon" href="media/brand/icon-180.png">
   <link rel="stylesheet" href="flight.css">
+  <link rel="stylesheet" href="loading.css">
   <script defer src="/src/00-runtime.js"></script>
   <script defer src="/src/00-input-actions.js"></script>
   <script defer src="/src/00-gameplay-rules.js"></script>
@@ -18,7 +19,10 @@
 <body>
   <main class="frame" id="frame">
     <section class="menu" id="menu" aria-label="Stellar Rebels">
-      <div class="boot"><img src="media/brand/emblem-light.svg" alt="" width="58" height="58"><p>Stellar Rebels</p></div>
+      <div class="boot-flight" role="status">
+        <img class="boot-wordmark" src="media/brand/title-wordmark.webp" alt="Stellar Rebels">
+        <div class="boot-state"><span class="boot-indicator" aria-hidden="true"></span>Preparing flight…</div>
+      </div>
       <noscript><p>Enable JavaScript to fly.</p></noscript>
     </section>
     <section class="flight" id="flight" aria-label="Flight" hidden>
