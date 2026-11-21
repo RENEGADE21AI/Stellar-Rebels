@@ -252,7 +252,7 @@ function records() {
   if (pilot.mastery?.[5]) earned.push('Gravity Platform mastery · Original route');
   const mastery = earned.length ? `<section class="record-heading" aria-labelledby="record-mastery">
     <h2 id="record-mastery">Mastery</h2><ul class="mastery-list">${earned.map((name) => `<li>${name}</li>`).join('')}</ul></section>` : '';
-  return screen('Records', 'home', `<div class="record-heading"><h2>Current loadout</h2><p class="subtle">${SHIPS[pilot.ship].name} · ${loadoutContext(pilot)}</p></div>
+  return screen('Records', 'home', `<div class="record-heading"><h2>Current loadout</h2><p class="subtle">${SHIPS[pilot.ship].name} · ${loadoutContext(pilot)} · Current rules</p></div>
     ${rows || survival ? rows + survival : '<p class="subtle">Fly with this loadout to set a record.</p>'}${mastery}${career}`);
 }
 
@@ -327,7 +327,7 @@ function resultComparison(receipt) {
   if (!receipt?.loadout) return '';
   const { previous, improved } = receipt.loadout;
   const endless = receipt.mode === 'endless';
-  if (!previous) return endless ? 'Survival record set' : receipt.status === 'clear' ? 'First clear with this loadout' : '';
+  if (!previous) return endless ? 'First survival result' : receipt.status === 'clear' ? 'First clear with this loadout' : '';
 
   if (endless && receipt.duration !== previous.duration) {
     const difference = Math.abs(receipt.duration - previous.duration);
@@ -407,7 +407,7 @@ function results() {
         <div><span class="caption">Targets</span><strong>${num(report.kills)}</strong></div>
       </section>
       ${progression || mastery || comparison || advice || unlocked.length ? `<div class="result-earned">
-        ${comparison ? `<p class="result-comparison">${comparison}</p>` : ''}
+        ${comparison ? `<p class="result-comparison"><small class="subtle">This loadout · Current rules</small>${comparison}</p>` : ''}
         ${mastery}${advice ? `<p class="subtle">${advice}</p>` : ''}${progression}
         ${unlocked.length ? `<ul class="result-unlocks">${unlocked.map((label) => `<li>${icon('check')}${label}</li>`).join('')}</ul>` : ''}
       </div>` : ''}

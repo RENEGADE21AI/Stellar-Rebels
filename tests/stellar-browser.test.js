@@ -481,7 +481,7 @@ test('restoring IndexedDB reconciles temporary results with the actual saved rec
   } finally { await browser.close(); }
 });
 
-test('Title Screen is reachable from a clear, a loss, and Endless results', { skip: !origin, timeout:45000 }, async () => {
+test('results scope record comparisons and link back to the Title Screen', { skip: !origin, timeout:45000 }, async () => {
   const browser = await chromium.launch();
   try {
     for (const [mode, name, status, viewport] of [
@@ -496,13 +496,26 @@ test('Title Screen is reachable from a clear, a loss, and Endless results', { sk
         page.on('pageerror', (error) => errors.push(error.message));
         await page.route(/\/app\.mjs(\?|$)/, async (route) => {
           const response = await route.fetch();
-          await route.fulfill({ response, body:(await response.text()) + '\nwindow.resultFixture = state;' });
+          await route.fulfill({ response, body:(await response.text()) + '\nwindow.resultFixture = { state, store };' });
         });
         await page.goto(origin);
         const button = (name) => page.getByRole('button', { name, exact:true });
-        if (mode === 'endless') {
+        const seedOlderBest = status === 'clear' || mode === 'endless';
+        if (seedOlderBest) {
+          await button('Play').waitFor();
+          await page.evaluate(async (mode) => {
+            await window.resultFixture.store.change((pilot) => {
+              pilot.settings.trainingDone = true;
+              pilot.clears = { 1:1 };
+              const prior = { mode, rules:'arcade-8', ship:'kestrel', special:'ghost', equipment:[], score:150000, duration:200, kills:90 };
+              if (mode === 'endless') pilot.records.endless = { ...prior, status:'defeat', stage:null };
+              else pilot.records.arcade[1] = { ...prior, status:'clear', stage:1 };
+            });
+          }, mode);
+          await page.reload();
           await button('Arcade').tap();
-          await button('Endless').tap();
+          if (mode === 'endless') await button('Endless').tap();
+          else await page.getByRole('button', { name:/^01 Vesper Orbit/ }).tap();
         } else {
           await button('Play').tap();
           await button('Skip training').tap();
@@ -510,12 +523,17 @@ test('Title Screen is reachable from a clear, a loss, and Endless results', { sk
         }
         await button('Pause').waitFor();
         // This fixture exercises a real settlement and result transition without playing three full flights.
-        await page.evaluate((status) => Object.assign(window.resultFixture.flight, {
+        await page.evaluate((status) => Object.assign(window.resultFixture.state.flight, {
           score:128394, status, elapsed:168, kills:67, movement:2300
         }), status);
         await page.getByRole('heading', { name, exact:true }).waitFor();
         const title = button('Title Screen');
         await title.waitFor();
+        const comparison = page.locator('.result-comparison');
+        if (seedOlderBest) {
+          await comparison.getByText('This loadout · Current rules', { exact:true }).waitFor();
+          assert.match(await comparison.innerText(), mode === 'endless' ? /First survival result/ : /First clear with this loadout/);
+        } else assert.equal(await comparison.count(), 0);
         const fit = await page.locator('.result-card').evaluate((card) => card.scrollWidth <= card.clientWidth);
         assert.equal(fit, true);
         const target = await title.boundingBox();

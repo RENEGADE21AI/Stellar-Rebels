@@ -233,6 +233,7 @@ dialog::backdrop{background:#040911af}
 .result-score .caption { color:var(--outcome); }
 .result-earned { display:grid;gap:4px; }
 .result-comparison { color:var(--outcome);font-size:.86rem;font-weight:700; }
+.result-comparison small { display:block;font-weight:500; }
 .result-reward { display:flex;gap:7px;flex-wrap:wrap;align-items:center;color:var(--signal);font-size:.9rem;font-weight:700; }
 .result-reward small { color:var(--secondary);font-size:.73rem;font-weight:500; }
 .result-unlocks { display:grid;gap:4px;margin:0;padding:0;list-style:none;color:#d5f2ec;font-size:.82rem; }
