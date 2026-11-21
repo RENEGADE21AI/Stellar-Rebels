@@ -1,4 +1,4 @@
-import { ENDLESS_BOSSES, ENEMIES, GUNNER_MUZZLES, HEIGHT, PICKUPS, WIDTH, enemyMuzzle, hardpointAt } from './catalog.mjs';
+import { BOSSES, ENDLESS_BOSSES, ENEMIES, GUNNER_MUZZLES, HEIGHT, PICKUPS, WIDTH, enemyMuzzle, hardpointAt } from './catalog.mjs';
 import { bossPartPosition } from './bosses.mjs';
 import { commandCharge, vanePosition } from './formations.mjs';
 import { SPECTRAL, WRAITH_EMITTER, otherRealm, realmTint } from './wraith.mjs';
@@ -7,7 +7,7 @@ import { shieldModules } from './collision.mjs';
 import { spriteBodies } from './silhouettes.mjs';
 
 export function spriteUrl(key) {
-  return new URL(`./media/sprites/${key}.png`, import.meta.url).href;
+  return new URL(`./media/sprites/${key}.${key.endsWith('-alt') ? 'webp' : 'png'}`, import.meta.url).href;
 }
 
 export function loadSprite(key, signal, wait = 3200) {
@@ -32,12 +32,18 @@ export function loadSprite(key, signal, wait = 3200) {
 }
 
 const regular = [...Object.keys(ENEMIES), 'turret', 'shield-node', 'rock', ...Object.keys(PICKUPS).map((name) => `pickup-${name}`)];
+const variantKeys = Object.keys(ENEMIES).map((key) => `${key}-alt`);
 const playfields = { breach:'vesper', belt:'belt', relay:'relay', sun:'sun', outer:'outer', flagship:'fleet' };
 const fallbackEnvironments = new Set(['breach','belt','relay']);
 const lerp = (a, b, t) => a + (b - a) * t;
 const saturate = (value) => Math.max(0, Math.min(1, value));
 const arrivalDuration = .57;
 const rockSize = 42;
+const collapseBeats = [
+  { at:.16, x:-.23, y:-.04, color:'#ff9e60', count:14, radius:20 },
+  { at:.34, x:.27, y:.09, color:'#ffc086', count:19, radius:23 },
+  { at:.61, x:.02, y:.03, color:'#ffe4ad', count:39, radius:42 }
+];
 
 function seededNoise(i) {
   const n = Math.sin(i * 191.472 + 7.3) * 45784.621;
@@ -108,6 +114,9 @@ export class FlightScene {
     this.hurtPulse = 0;
     this.arrival = 0;
     this.death = null;
+    this.bossWreck = null;
+    this.enemyLooks = new WeakMap();
+    this.nextLook = 0;
     this.backdrop = document.createElement('canvas');
     this.backdropContext = this.backdrop.getContext('2d', { alpha: false });
     this.resize();
@@ -117,8 +126,11 @@ export class FlightScene {
     const environment = flight.stage.environment;
     const illustration = `${playfields[environment]}-playfield`;
     const fallback = `env-${environment}`;
-    const keyList = new Set([...regular, flight.run.ship, flight.stage.boss, illustration]);
-    if (flight.stage.cruiserAt && !flight.endless) keyList.add('cruiser');
+    const keyList = new Set([...regular, ...variantKeys, flight.run.ship, flight.stage.boss, illustration]);
+    if (flight.stage.cruisers?.length && !flight.endless) {
+      keyList.add('cruiser');
+      keyList.add('cruiser-alt');
+    }
     if (flight.endless) for (const boss of ENDLESS_BOSSES) keyList.add(boss);
     if (keyList.has('wraith')) keyList.add('wraith-ghost');
     const sprites = new Map([...this.sprites].filter(([key]) => keyList.has(key) || key === fallback));
@@ -140,6 +152,9 @@ export class FlightScene {
     this.hurtPulse = 0;
     this.arrival = 0;
     this.death = null;
+    this.bossWreck = null;
+    this.enemyLooks = new WeakMap();
+    this.nextLook = 0;
     return true;
   }
 
@@ -171,9 +186,12 @@ export class FlightScene {
         case 'escortExposed': this.explode(e.x, e.y, '#86c8ff', 11, 19); break;
         case 'moduleDown': this.explode(e.x, e.y, '#ffd478', 25, 21); break;
         case 'bossDown':
-          this.explode(e.x, e.y, '#ffa257', 58, 49);
-          this.explode(e.x - 71, e.y + 11, '#ff6453', 28, 32);
-          this.explode(e.x + 75, e.y - 8, '#ffd6a3', 31, 34);
+          this.bossWreck = { x:e.x, y:e.y, kind:e.detail, size:BOSSES[e.detail]?.size ?? 185, age:0, next:0, reduced:reduce };
+          this.explode(e.x, e.y, '#ffd19d', reduce ? 14 : 20, reduce ? 20 : 29);
+          break;
+        case 'ionBurst':
+          this.shocks.push({ x:e.x, y:e.y, color:'#8effdf', life:0, total:.34, radius:e.detail.radius, hollow:true });
+          this.burst(e.x, e.y, '#c6fff0', reduce ? 4 : 15, 136, .29);
           break;
         case 'pickup': this.explode(e.x, e.y, PICKUPS[e.detail].color, 16, 19); break;
         case 'barrier': this.explode(e.x, e.y, '#7ad5ff', 15, 26); break;
@@ -186,8 +204,8 @@ export class FlightScene {
           this.explode(e.x, e.y, '#ff705d', 17, 15);
           break;
         case 'playerDown':
-          this.death = { x:e.x, y:e.y, reduced:reduce, age:0, burst:false };
-          this.explode(e.x, e.y, '#fff0c3', reduce ? 12 : 30, reduce ? 16 : 30);
+          this.death = { x:e.x, y:e.y, reduced:reduce, age:0, burst:false, final:false };
+          this.explode(e.x, e.y, '#fff0c3', reduce ? 12 : 20, reduce ? 16 : 24);
           break;
         default: break;
       }
@@ -225,6 +243,21 @@ export class FlightScene {
         this.explode(death.x + 6, death.y + 8, '#ff9d58', 37, 38);
         this.burst(death.x, death.y + 11, '#cad9e4', 15, 132, .94);
       }
+      if (!death.reduced && !death.final && death.age >= .54) {
+        death.final = true;
+        this.explode(death.x - 8, death.y + 20, '#ffc86c', 15, 19);
+      }
+    }
+    if (this.bossWreck) {
+      const wreck = this.bossWreck;
+      wreck.age += dt;
+      const beat = !wreck.reduced && collapseBeats[wreck.next];
+      if (beat && wreck.age >= beat.at) {
+        wreck.next++;
+        this.explode(wreck.x + beat.x * wreck.size, wreck.y + beat.y * wreck.size + wreck.age * 16,
+          beat.color, beat.count, beat.radius);
+      }
+      if (wreck.age >= (wreck.reduced ? .42 : 1.32)) this.bossWreck = null;
     }
     this.cameraPulse = Math.max(0, this.cameraPulse - dt * 2.2);
     this.hurtPulse = Math.max(0, this.hurtPulse - dt * 1.7);
@@ -258,7 +291,8 @@ export class FlightScene {
     if (flight.cruiser) this.boss(flight.cruiser, prefs);
     this.drawLinks(flight);
     for (const enemy of flight.enemies) this.enemy(enemy, flight.elapsed);
-    if (flight.boss) this.boss(flight.boss, prefs);
+    if (flight.boss?.hull > 0) this.boss(flight.boss, prefs);
+    if (this.bossWreck) this.drawBossWreck();
     for (const warning of flight.hazards) {
       if (warning.kind === 'wall' && warning.age >= 0 && warning.age < warning.windup) {
         this.debrisWindup(warning, prefs, flight.boss);
@@ -289,8 +323,8 @@ export class FlightScene {
     }
     if (this.death) {
       const death = this.death;
-      const fadeAt = death.reduced ? .12 : .56;
-      const endAt = death.reduced ? .40 : 1.14;
+      const fadeAt = death.reduced ? .12 : .70;
+      const endAt = death.reduced ? .40 : 1.39;
       const fade = saturate((death.age - fadeAt) / (endAt - fadeAt));
       c.save();
       c.setTransform(1, 0, 0, 1, 0, 0);
@@ -484,10 +518,15 @@ export class FlightScene {
 
   enemy(e, clock) {
     const c = this.ctx;
+    if (!this.enemyLooks.has(e)) {
+      const alt = `${e.kind}-alt`;
+      this.enemyLooks.set(e, this.nextLook++ % 2 && this.sprites.has(alt) ? alt : e.kind);
+    }
+    const look = this.enemyLooks.get(e);
     if (e.loop) {
-      line(c, e.x - 5, e.y + 13, 0, 29, '#bd886ea6', 1.7);
-      line(c, e.x + 5, e.y + 13, 0, 29, '#bd886ea6', 1.7);
-      this.sprite(e.kind, e.x, e.y, e.spec.size, e.turn, .62);
+      const tail = hardpointAt(e, 0, -e.spec.size * .33, e.turn);
+      line(c, tail.x, tail.y, 22 * Math.sin(e.turn), -22 * Math.cos(e.turn), '#c9956d99', 1.8);
+      this.sprite(look, e.x, e.y, e.spec.size, e.turn, .8);
       return;
     }
     if (e.kind === 'diver' && Number.isFinite(e.diveAim) && !e.retreat) {
@@ -511,7 +550,14 @@ export class FlightScene {
       c.fill();
       c.restore();
     }
-    this.sprite(e.kind, e.x, e.y, e.spec.size, e.turn, e.retreat ? .66 : 1);
+    this.sprite(look, e.x, e.y, e.spec.size, e.turn, e.retreat ? .66 : 1);
+    if (e.carrying && !e.retreat) {
+      const supply = PICKUPS[e.carrying];
+      const rack = hardpointAt(e, 0, -e.spec.size * .22, e.turn);
+      filled(c, rack.x, rack.y, 5.6, '#131b2b');
+      ring(c, rack.x, rack.y, 4.5, supply.color, 1.45);
+      filled(c, rack.x, rack.y, 2.05, supply.color);
+    }
     const arming = e.kind === 'shard' && e.age < shardArmTime;
     if (arming) {
       const progress = e.age / shardArmTime;
@@ -563,7 +609,8 @@ export class FlightScene {
   boss(b, prefs) {
     const c = this.ctx;
     const ghost = b.realm === SPECTRAL;
-    const look = ghost ? 'wraith-ghost' : b.kind;
+    const patrol = b.variant === 'patrol' && this.sprites.has('cruiser-alt');
+    const look = ghost ? 'wraith-ghost' : patrol ? 'cruiser-alt' : b.kind;
     this.sprite(look, b.x, b.y, b.spec.size, 0, b.hull > 0 ? 1 : .35, ghost ? '#8262e3' : '');
     if (b.kind === 'wraith' && b.hull > 0 && b.age >= b.entryTime - .25) this.wraithCue(b, prefs);
     const hasShields = shieldModules(b);
@@ -592,6 +639,27 @@ export class FlightScene {
     }
     if (hasShields && b.parts.some((part) => part.hull > 0)) ring(c, b.x, b.y + 4, b.spec.hit, '#80caec78', 2);
     if (b.hitFlash > 0) ring(c, b.x, b.y + 4, 9, '#fff6dc88');
+  }
+
+  drawBossWreck() {
+    const c = this.ctx;
+    const { x, y, kind, age, size, reduced } = this.bossWreck;
+    if (reduced || age < .41) {
+      this.sprite(kind, x, y + (reduced ? 0 : age * 16), size, 0, saturate(.94 - age * .68));
+      return;
+    }
+    const drift = age - .41;
+    const half = size / 2;
+    for (const side of [-1, 1]) {
+      c.save();
+      c.translate(x + side * drift * 42, y + age * 18 + drift * 13);
+      c.rotate(side * drift * .36);
+      c.beginPath();
+      c.rect(side < 0 ? -half : 0, -half, half, size);
+      c.clip();
+      this.sprite(kind, 0, 0, size, 0, saturate(.72 - drift * .84));
+      c.restore();
+    }
   }
 
   wraithCue(b, prefs) {

@@ -34,6 +34,8 @@ button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(
 .title-equipped{display:flex;flex-direction:column;justify-content:center;min-width:0;padding:5px 8px;border-left:1px solid #7894ae49}
 .title-actions .primary{justify-content:center;gap:10px;min-height:58px;letter-spacing:.065em;font-size:32px;text-transform:uppercase}
 .title-actions .primary::before{background:linear-gradient(110deg,#ffd09a,#ff9b5d 60%,#fb8050);clip-path:polygon(0 13px,13px 0,100% 0,100% calc(100% - 13px),calc(100% - 13px) 100%,0 100%)}
+.title-actions .primary::after{content:"";position:absolute;z-index:-1;inset:3px;border-radius:12px;box-shadow:0 0 23px #ffa16a88;opacity:.24;pointer-events:none;animation:play-glow 4.8s ease-in-out infinite}
+@keyframes play-glow{0%,100%{opacity:.24}50%{opacity:.57}}
 .title-actions .primary .icon{width:17px;height:17px}
 .home-links{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin-top:clamp(8px,calc(22cqw - 54px),32px);padding-block:3px;border-block:1px solid #7894ae48;background:#070f19c7}
 .home-link{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:48px;border:0;border-right:1px solid #748caa2b;color:#dae3ec;background:transparent;font-size:clamp(.68rem,2.8vw,.81rem);font-weight:650;padding:4px 3px}

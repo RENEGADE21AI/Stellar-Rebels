@@ -955,7 +955,7 @@ function loop(timestamp) {
       state.mode = 'finishing';
       state.finishingFrame = timestamp;
       if (end.status === 'defeat') field.dataset.ending = 'defeat';
-      state.finishAt = timestamp + (prefs.reduced ? 450 : end.status === 'defeat' ? 1260 : 850);
+      state.finishAt = timestamp + (prefs.reduced ? 450 : end.status === 'defeat' ? 1480 : 1370);
       state.pending = { terminal: end, run: f.run, replay: state.recording?.finish(f.ticks, end) };
       state.recording = null;
       void settle();

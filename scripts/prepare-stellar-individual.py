@@ -2,7 +2,7 @@
 from pathlib import Path
 import json
 
-from PIL import Image, ImageEnhance, ImageOps
+from PIL import Image, ImageChops, ImageEnhance, ImageOps
 from build_wraith_realms import build_variant
 
 
@@ -56,7 +56,30 @@ def write_wordmark():
     mark.save(MEDIA / 'brand' / 'title-wordmark.webp', quality=92, method=6)
 
 
+def write_variants():
+    sprites = MEDIA / 'sprites'
+    for path in sorted((SOURCE / 'variants').glob('*.webp')):
+        key = path.stem
+        with Image.open(sprites / (key + '.png')) as base_file, Image.open(path) as source_file:
+            base = base_file.convert('RGBA')
+            source = source_file.convert('RGBA')
+        bounds = opaque_bounds(source)
+        if not bounds:
+            raise ValueError(f'{key} variant needs an alpha cutout')
+        left, top, right, bottom = opaque_bounds(base)
+        fitted = condition_art(source.crop(bounds), key).resize((right-left, bottom-top), Image.Resampling.LANCZOS)
+        detail = Image.new('RGBA', base.size)
+        detail.paste(fitted, (left, top))
+        # Preserve each role's silhouette, collision mask, and existing transparent edge.
+        alpha = base.getchannel('A')
+        coverage = ImageChops.multiply(detail.getchannel('A'), alpha).point(lambda a: a * 4 // 5)
+        recolored = Image.composite(detail.convert('RGB'), base.convert('RGB'), coverage)
+        recolored.putalpha(alpha)
+        recolored.save(sprites / (key + '-alt.webp'), quality=90, method=6)
+
+
 if __name__ == '__main__':
     write_sprites()
     write_environments()
     write_wordmark()
+    write_variants()

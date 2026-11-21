@@ -1,11 +1,21 @@
 import { loadSprite } from './scene.mjs';
 
-const patrols = [
-  { ship:'diver', direction:-1, duration:28, period:38, offset:13, y:.39, drift:.02, bow:.015, size:.055, light:.57, members:3 },
-  { ship:'scout', direction:1, duration:23, period:32, offset:8, y:.52, drift:-.06, bow:.058, size:.090, light:.82, members:3 },
-  { ship:'lancer', direction:-1, duration:14, period:35, offset:5.5, y:.65, drift:-.14, bow:.068, size:.173, light:.95, members:1 },
-  { ship:'sweeper', direction:1, duration:29, period:45, offset:32, y:.43, drift:.13, bow:.052, size:.095, light:.63, members:2 }
+const depths = [
+  { ships:['scout','diver','escort','phantom'], y:.39, size:.047, speed:23, rest:5, light:.55, warm:.49, members:4 },
+  { ships:['scout','diver','sweeper','escort'], y:.51, size:.081, speed:17, rest:6, light:.73, warm:.27, members:3 },
+  { ships:['lancer','sweeper','phantom','escort'], y:.61, size:.143, speed:13, rest:10, light:.92, warm:.17, members:2 }
 ];
+const between = (low, high) => low + Math.random() * (high - low);
+
+function crossing(depth, now, previous) {
+  const ships = depth.ships.filter((ship) => ship !== previous?.ship);
+  const duration = depth.speed * between(.88, 1.48);
+  const start = previous ? now : now - duration * depth.warm;
+  return { depth, start, duration, next:start + duration + depth.rest * between(.55, 1.65),
+    ship:ships[Math.floor(Math.random() * ships.length)], direction:Math.random() < .5 ? -1 : 1,
+    y:depth.y + between(-.043, .041), drift:between(-.095, .095), bow:between(-.029, .064),
+    size:depth.size * between(.78, 1.23), members:Math.floor(between(1, depth.members + 1)) };
+}
 const specks = Array.from({ length:49 }, (_, index) => ({
   x: ((index * 73 + 31) % 223) / 223,
   y: ((index * 59 + 17) % 191) / 191,
@@ -67,6 +77,7 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
   if (!c) return null;
   const controller = new AbortController();
   const images = new Map();
+  const patrols = depths.map((depth) => crossing(depth, 0));
   let time = 0;
   let lastFrame = 0;
   let started = null;
@@ -95,8 +106,10 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
       c.fillStyle = speck.lit ? '#d3e7ff8a' : '#9ab4cc51';
       c.fillRect(x, y, speck.lit ? 1.4 : 1, length);
     }
-    for (const patrol of patrols) {
-      const phase = (time * (1 + launchPhase * .075) + patrol.offset) % patrol.period / patrol.duration;
+    for (let i = 0; i < patrols.length; i++) {
+      if (time >= patrols[i].next) patrols[i] = crossing(patrols[i].depth, time, patrols[i]);
+      const patrol = patrols[i];
+      const phase = (time - patrol.start) / patrol.duration;
       if (phase >= 1) continue;
       const size = width * patrol.size;
       const sign = patrol.direction;
@@ -104,7 +117,7 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
       const y = height * (patrol.y + patrol.drift * phase + patrol.bow * Math.sin(Math.PI * phase)) + launchPhase * height * .17;
       const slope = height * (patrol.drift + Math.PI * patrol.bow * Math.cos(Math.PI * phase));
       const turn = Math.atan2(slope, width * sign * 1.6) - Math.PI / 2;
-      const alpha = patrol.light * (1 - launchPhase * .65);
+      const alpha = patrol.depth.light * (1 - launchPhase * .65);
       for (let i = patrol.members - 1; i >= 0; i--) {
         const wing = i === 0 ? 0 : i % 2 === 1 ? -1 : 1;
         drawCraft(c, images.get(patrol.ship), x - sign * i * size * .75, y + wing * size * .39,
@@ -118,8 +131,8 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
     const heroY = height * (heroOrigin - (heroOrigin + .25) * launchProgress) + hover * (1 - launchPhase) * 3.2;
     const heroSize = width * (heroScale + (.26 - heroScale) * launchProgress);
     const bank = (.12 + hover * .027) * (1 - launchPhase);
-    drawCraft(c, images.get(ship), width * .5, heroY, heroSize, bank,
-      images.has(ship) ? 1 : .28, ship, .13 + hover * .021 + launchPhase * .91);
+    if (images.has(ship)) drawCraft(c, images.get(ship), width * .5, heroY, heroSize, bank,
+      1, ship, .13 + hover * .021 + launchPhase * .91);
   }
 
   function frame(timestamp) {
@@ -151,7 +164,7 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
   resize();
   paint();
 
-  for (const key of new Set([ship, ...patrols.map((patrol) => patrol.ship)])) {
+  for (const key of new Set([ship, ...depths.flatMap((depth) => depth.ships)])) {
     void loadSprite(key, controller.signal, 4500).then((image) => {
       if (!image || controller.signal.aborted) return;
       images.set(key, image);

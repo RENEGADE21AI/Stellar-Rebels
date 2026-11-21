@@ -11,6 +11,7 @@ const effects = {
   hurt: [98, 42, .25, .19, 'square'],
   barrier: [1000, 280, .19, .12, 'sine'],
   ghostStart: [260, 980, .28, .115, 'triangle'],
+  ionBurst: [540, 128, .22, .14, 'triangle'],
   ghostEnd: [680, 220, .21, .075, 'sine'],
   realmHop: [340, 760, .22, .12, 'sine'],
   realmWarning: [132, 425, .62, .145, 'sine'],
@@ -102,6 +103,7 @@ export class FlightAudio {
     this.tone(recipe, t, power);
     if (kind === 'enemyDown' || kind === 'moduleDown' || kind === 'bossDown') {
       this.tone([365, 93, .11, kind === 'enemyDown' ? .032 : .047, 'square'], t);
+      if (kind === 'bossDown') this.tone([185, 43, .38, .095, 'triangle'], t + .35);
     } else if (kind === 'launch') {
       this.tone([260, 610, .24, .027, 'sine'], t + .10);
     } else if (kind === 'playerDown') {
