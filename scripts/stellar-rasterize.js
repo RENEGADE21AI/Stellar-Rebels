@@ -23,7 +23,7 @@ async function main() {
       const name = path.basename(file, '.svg');
       const dims = name.startsWith('horizontal') ? [1208, 192] : name.includes('stacked') ? [672, 402] : [512, 512];
       await exportPng(sourcePath, path.join(brand, 'png', `${name}.png`), ...dims);
-      if (production && ['emblem-light', 'stacked-light', 'horizontal-light'].includes(name)) {
+      if (production && name === 'emblem-light') {
         fs.mkdirSync(runtime, { recursive: true });
         fs.copyFileSync(sourcePath, path.join(runtime, file));
       }

@@ -130,10 +130,6 @@ def main():
         if invert:
             sprite = sprite.transpose(Image.Transpose.ROTATE_180)
         write(name, frame(sprite, side, world, center, scale))
-        if name == 'kestrel':
-            craft = frame(sprite, 720, 59, center, .105)
-            craft = craft.rotate(-8, resample=Image.Resampling.BICUBIC)
-            craft.save(ENVIRONMENT / 'title-craft.webp', quality=90, method=6)
     with Image.open(SOURCE / 'cruiser.png') as cruiser:
         write('cruiser', frame(isolated_foreground(cruiser.convert('RGBA')), 410, 214, (1065, 316), .098))
     with Image.open(SOURCE / 'wraith-refined.png') as wraith:
