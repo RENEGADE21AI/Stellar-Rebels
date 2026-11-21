@@ -83,6 +83,11 @@ async function check(engine, viewport) {
     await settings.tap();
     await page.getByText('Bundled flight assets ready.').waitFor();
     assert.equal(await page.getByRole('button', { name: 'Account', exact: true }).count(), 0);
+    await page.getByRole('button', { name: 'Full Game Unlock', exact: true }).tap();
+    await page.getByRole('heading', { name: 'Unlock the Full Game' }).waitFor();
+    await page.getByText('The purchase price is unavailable right now.').waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Unlock Full Game' }).isDisabled(), true);
+    await page.getByRole('button', { name: 'Not Now', exact: true }).tap();
     await page.getByRole('button', { name: 'Privacy policy', exact: true }).tap();
     await page.getByRole('heading', { name: 'Privacy policy', exact: true }).waitFor();
     await page.getByText('Replay sharing', { exact: true }).waitFor();
@@ -127,7 +132,7 @@ async function check(engine, viewport) {
     assert.deepEqual(diagnostics.webRequests, []);
     assert.deepEqual(diagnostics.failedFiles, []);
     assert.deepEqual(diagnostics.scriptErrors, []);
-    assert.deepEqual([...diagnostics.bridge].sort(), ['haptic', 'load', 'save']);
+    assert.deepEqual([...diagnostics.bridge].sort(), ['commerce-status', 'haptic', 'load', 'save']);
     await page.screenshot({ path: path.join(output, `${engine.name()}.png`) });
     return { engine: engine.name(), viewport, audio: track, privacyPolicyOpens: true, settingsPersisted: true, interruptionPaused: true, hapticBridge: haptics, offlineRequests: 0 };
   } finally {
