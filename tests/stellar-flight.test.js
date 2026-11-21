@@ -720,6 +720,20 @@ test('Arcade and Endless supplies transfer from missed carriers and drop at a re
   }
 });
 
+test('long Endless attempts keep one unclaimed supply per kind', async () => {
+  const [{ Flight }] = await load;
+  const f = new Flight({ ...context(), mode:'endless', stage:null });
+  f.nextEndlessBoss = Infinity;
+  for (let i = 0; i < 48; i++) {
+    f.elapsed = f.endlessNext;
+    f.updateSchedule();
+    f.spawns.length = 0;
+  }
+  assert.equal(f.supplies.length, 4);
+  assert.deepEqual(f.supplies.map((supply) => supply.kind), ['power','barrier','repair','overdrive']);
+  assert.deepEqual(f.pickups, []);
+});
+
 test('fast beams hit rotated bodies, clear empty margins, and ignore an aircraft on its return path', async () => {
   const [{ Flight }] = await load;
   const f = new Flight(context());

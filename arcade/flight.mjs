@@ -295,8 +295,10 @@ export class Flight {
         this.endlessWave++;
         this.endlessNext = this.elapsed + Math.max(3.25, 6.1 - this.elapsed / 95);
         if (this.endlessWave % 4 === 0) {
-          const supply = ['power','barrier','repair','overdrive'][(this.endlessWave / 4 - 1) % 4];
-          this.supplies.push({ kind:supply, lane:this.endlessWave % 8 === 0 ? .62 : .36 });
+          const kind = ['power','barrier','repair','overdrive'][(this.endlessWave / 4 - 1) % 4];
+          if (!this.supplies.some((supply) => supply.kind === kind)) {
+            this.supplies.push({ kind, lane:this.endlessWave % 8 === 0 ? .62 : .36 });
+          }
         }
       }
     } else {
