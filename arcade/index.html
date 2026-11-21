@@ -26,16 +26,16 @@
       <div class="flight-ui">
         <div class="hull">
           <div id="hull" role="meter" aria-label="Hull" aria-valuemin="0" aria-valuemax="5" aria-valuenow="5"></div>
-          <div class="flight-points"><span class="visually-hidden">Score</span><span id="flight-score">0</span><span id="chain"></span></div>
+          <div id="ghost-meter" role="meter" aria-label="Energy" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="ghost-value"></div></div>
         </div>
         <div class="flight-controls">
           <div id="ghost-control" class="ghost-control">
             <button id="ghost-shift" type="button" aria-label="Ghost Shift" aria-describedby="ghost-status" aria-disabled="true">
               <span id="ghost-label" class="caption">Ghost</span><strong id="ghost-action">Shift</strong>
             </button>
-            <div id="ghost-meter" role="meter" aria-label="Ghost Energy" aria-valuemin="0" aria-valuemax="100" aria-valuenow="26"><div id="ghost-value"></div></div>
             <span id="ghost-status" class="visually-hidden">Hit enemies to charge Ghost Shift.</span>
           </div>
+          <div class="flight-points"><span class="visually-hidden">Score</span><span id="flight-score">0</span><span id="chain"></span></div>
           <button id="pause" class="icon-button" type="button" aria-label="Pause"></button>
         </div>
         <div id="flight-message" class="flight-label">

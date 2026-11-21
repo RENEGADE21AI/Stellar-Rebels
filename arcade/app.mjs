@@ -14,6 +14,7 @@ const sky = $('sky');
 const field = $('flight');
 const modal = $('flight-modal');
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+const hapticAvailable = typeof navigator.vibrate === 'function' && navigator.maxTouchPoints > 0;
 const store = new PilotStore(globalThis.indexedDB);
 const audio = new FlightAudio();
 const clock = globalThis.createFixedStepClock();
@@ -81,13 +82,13 @@ function home() {
   return `<article class="title-screen"><h1 tabindex="-1" class="brand-lockup"><img src="${media('brand/title-wordmark.webp')}" alt="Stellar Rebels" width="768" height="310"></h1>
     <canvas class="title-patrol" aria-hidden="true"></canvas>
     <div class="title-actions">${saveNotice()}
+      ${action('Play', 'fly:next', 'primary', 'play')}
       <div class="title-pilot">
         <button type="button" class="title-id" data-action="view:callSign" aria-label="Edit call sign" aria-describedby="title-call-sign">
           <span><small>Call sign</small><strong id="title-call-sign">${callSign}</strong></span>${icon('edit')}
         </button>
         <span class="title-equipped"><small>Equipped</small><strong>${ship}</strong></span>
       </div>
-      ${action('Play', 'fly:next', 'primary', 'play')}
       <nav class="home-links" aria-label="Game options">
         <button class="home-link" data-action="view:stages">${icon('stages')} Arcade</button>
         <button class="home-link" data-action="hangar:home">${icon('ship')} Hangar</button>
@@ -131,9 +132,10 @@ function stages() {
   }).join('');
   return screen('Stage Select', 'home', `
     <div class="cardline"><strong>${SHIPS[pilot.ship].name} equipped</strong><button data-action="hangar:stages">Change ship ${icon('next')}</button></div>
+    ${action('Practice', 'help:stages', 'quiet', 'play')}
     <ol class="stage-list" aria-label="Arcade stages">${rows}</ol>
     <div class="support-actions"><div class="endless-entry">${action('Endless', 'fly:endless', 'quiet', 'endless', 'aria-describedby="endless-note"')}
-    <small id="endless-note">Survival record · 0 Salvage</small></div>${action('Flight school', 'help:stages', 'flat', '')}</div>`, wallet());
+    <small id="endless-note">Survival record · 0 Salvage</small></div></div>`, wallet());
 }
 
 function hangar() {
@@ -205,20 +207,22 @@ function records() {
 
 const settings = {
   music: ['Music', 'Hangar and flight tracks'], effects: ['Sound effects', 'Weapons, hits, pickups and warnings'],
+  haptics: ['Vibration', 'Short pulses for hits and abilities'],
   reduced: ['Reduced motion', 'Steady camera and fewer flashes'], contrast: ['High contrast hazards', 'Brighter projectile centers and warning outlines']
 };
 
 function settingsView() {
   const prefs = appearance(state.pilot.settings);
-  const switches = Object.entries(settings).map(([key, [label, copy]]) => {
+  const switches = Object.entries(settings).filter(([key]) => key !== 'haptics' || hapticAvailable).map(([key, [label, copy]]) => {
     const systemMotion = key === 'reduced' && reduced.matches;
+    const on = key === 'haptics' ? prefs.haptics !== false : prefs[key];
     return `<div class="setting"><span><strong>${label}</strong><small>${systemMotion ? 'On in your device settings' : copy}</small></span>
-      <button class="toggle" data-action="toggle:${key}" aria-label="${label}" aria-pressed="${prefs[key]}" ${systemMotion ? 'disabled' : ''}>${prefs[key] ? 'On' : 'Off'}</button></div>`;
+      <button class="toggle" data-action="toggle:${key}" aria-label="${label}" aria-pressed="${on}" ${systemMotion ? 'disabled' : ''}>${on ? 'On' : 'Off'}</button></div>`;
   }).join('');
   return screen('Settings', 'home', `${switches}<div class="setting"><div><strong>Drag sensitivity</strong><small>Changes how far the ship follows a swipe</small></div>
     <select class="toggle" id="sensitivity" aria-label="Drag sensitivity"><option value="gentle" ${prefs.sensitivity === 'gentle' ? 'selected' : ''}>Gentle</option><option value="standard" ${prefs.sensitivity === 'standard' ? 'selected' : ''}>Standard</option><option value="direct" ${prefs.sensitivity === 'direct' ? 'selected' : ''}>Direct</option></select></div>
     <div class="notice" id="pack-status" role="status">${packCopy()}</div>${state.installed ? '' : '<p class="subtle">Install from your browser menu or Add to Home Screen in Safari.</p>'}
-    ${action('Flight school', 'help:settings', 'quiet')}${state.support ? `<p class="notice">${state.support}</p>` : ''}`);
+    ${action('Practice', 'help:settings', 'quiet')}${state.support ? `<p class="notice">${state.support}</p>` : ''}`);
 }
 
 function helpView() {
@@ -234,7 +238,8 @@ function helpView() {
     ['Expose shielded escorts', 'Follow the solid blue links to the Command Ship. Destroy it to drop the escorts’ shields.'],
     ...Object.values(PICKUPS).map((drop) => [drop.name, drop.hint])
   ];
-  return screen('Flight school', state.helpBack, action('Practice flight', 'practice', 'primary', 'play') +
+  return screen('Practice', state.helpBack, action('Flight basics', 'practice:basics', 'primary', 'play') +
+    action('Ghost Shift drill', 'practice:shift', 'quiet', 'play') +
     rows.map(([title, text]) => `<div class="info"><strong>${title}</strong><p class="subtle">${text}</p></div>`).join(''));
 }
 
@@ -346,13 +351,13 @@ function needsTraining() {
     !Object.keys(pilot.records.arcade).length && !pilot.records.endless && !pilot.salvage;
 }
 
-async function start(which, trainingMode = null) {
+async function start(which, trainingMode = null, drill = 'basics') {
   const endless = which === 'endless';
   const chooseStage = (pilot) => endless ? null : which === 'next'
     ? (nextStage(pilot) ?? STAGES.at(-1)).id : Number(which);
   const stage = chooseStage(state.pilot);
   const launch = { controller: new AbortController(), from: state.training?.from ?? state.view, which,
-    name: trainingMode ? 'Flight School' : endless ? 'Endless' : stageById(stage)?.name };
+    name: trainingMode ? 'Practice' : endless ? 'Endless' : stageById(stage)?.name };
   if (!launch.name) return;
   let run;
   let launched = false;
@@ -398,7 +403,7 @@ async function start(which, trainingMode = null) {
     if (!await prepared || launch.controller.signal.aborted) return;
     state.titlePatrol?.stop();
     state.titlePatrol = null;
-    state.training = trainingMode ? { ...startTraining(flight), mode:trainingMode, from:launch.from, which } : null;
+    state.training = trainingMode ? { ...startTraining(flight, drill), mode:trainingMode, from:launch.from, which } : null;
     state.returnView = launch.from === 'home' ? 'home' : 'stages';
     state.last = run;
     state.recording = recording;
@@ -513,8 +518,10 @@ function showTrainingAction() {
 async function finishPractice() {
   const training = state.training;
   if (!training) return;
-  const saved = await store.change((pilot) => { pilot.settings.trainingDone = true; }).catch(() => null);
-  if (saved) state.pilot = saved.pilot;
+  if (training.mode === 'intro' || (training.drill === 'basics' && training.step === 'complete')) {
+    const saved = await store.change((pilot) => { pilot.settings.trainingDone = true; }).catch(() => null);
+    if (saved) state.pilot = saved.pilot;
+  }
   state.training = null;
   if (training.mode === 'intro') {
     state.view = training.from;
@@ -540,9 +547,10 @@ function refreshGhost(f) {
   if (lastHud.ghost === key) return;
   lastHud.ghost = key;
   const control = $('ghost-control');
+  const meter = $('ghost-meter');
   control.dataset.mode = mode;
-  control.style.setProperty('--shift-cost', `${f.ghostCost}%`);
-  $('ghost-meter').setAttribute('aria-valuenow', energy);
+  meter.style.setProperty('--shift-cost', `${f.ghostCost}%`);
+  meter.setAttribute('aria-valuenow', energy);
   $('ghost-value').style.transform = `scaleX(${energy / 100})`;
   $('ghost-shift').setAttribute('aria-disabled', String(!f.shiftReady));
   content('ghost-action', action);
@@ -565,23 +573,30 @@ function refreshHud(restart = false) {
   const showRealm = activeBoss && f.realmHop;
   const message = f.notice?.time > 0 ? f.notice : null;
   const bossCue = showRealm && f.boss.shifting;
+  const pickup = message?.kind === 'pickup';
+  const title = message?.title || (pickup ? message.copy : bossCue ? 'Wraith' : f.stage.name);
+  const tip = pickup ? message.title && message.brief !== message.title ? message.brief : '' : message?.copy;
   const flash = $('flight-message');
   const visible = Boolean(message || bossCue);
   flash.classList.toggle('shown', visible);
   flash.dataset.kind = message?.kind ?? (bossCue ? 'warning' : '');
   flash.style.setProperty('--notice-opacity', motionLimited(f.run.assistance) || bossCue || !message ? '1' : String(Math.min(1, message.time / .45)));
-  content('flight-name', visible ? message?.title || (bossCue ? 'Wraith' : message?.kind === 'pickup' ? 'Supply acquired' : f.stage.name) : '');
+  content('flight-name', visible ? title : '');
   $('flight-name').hidden = !visible;
-  $('flight-tip').hidden = !message;
-  content('flight-tip', message?.copy ?? '');
+  $('flight-tip').hidden = !tip;
+  content('flight-tip', tip ?? '');
   content('clock', time(f.elapsed));
   content('flight-score', num(f.score));
   content('flight-progress', showRealm ? `You · ${realmLabel(p.realm)}` : '');
   $('flight-progress').hidden = !bossCue;
   content('chain', f.combo >= 2 ? `×${f.combo}` : '');
-  content('hull', Array.from({ length: p.maxHull }, (_, i) => `<i class="segment ${i < p.hull ? 'full' : ''}" aria-hidden="true"></i>`).join(''), true);
-  $('hull').setAttribute('aria-valuemax', p.maxHull);
-  $('hull').setAttribute('aria-valuenow', p.hull);
+  const hullState = `${p.hull}/${p.maxHull}`;
+  if (lastHud.hullState !== hullState) {
+    lastHud.hullState = hullState;
+    content('hull', Array.from({ length: p.maxHull }, (_, i) => `<i class="segment ${i < p.hull ? 'full' : ''}" aria-hidden="true"></i>`).join(''), true);
+    $('hull').setAttribute('aria-valuemax', p.maxHull);
+    $('hull').setAttribute('aria-valuenow', p.hull);
+  }
   refreshGhost(f);
   $('boss-meter').hidden = !activeBoss;
   $('boss-name').hidden = true;
@@ -664,7 +679,7 @@ async function handle(command) {
   if (type === 'shop') { showHangar(value, state.pilot.ship, 'upgrades'); return; }
   if (type === 'unlocked') { showHangar('result', value); return; }
   if (type === 'help') { state.helpBack = value; show('help'); return; }
-  if (type === 'practice') { await start('1', 'practice'); return; }
+  if (type === 'practice') { await start('1', 'practice', value); return; }
   if (type === 'finish-practice') { await finishPractice(); return; }
   if (type === 'fly') {
     const firstStage = value === 'next' || value === '1';
@@ -689,7 +704,10 @@ async function handle(command) {
     show('upgrade');
     return;
   }
-  if (type === 'toggle' && Object.hasOwn(settings, value)) { await changeSetting(value, !state.pilot.settings[value]); return; }
+  if (type === 'toggle' && Object.hasOwn(settings, value)) {
+    await changeSetting(value, value === 'haptics' ? state.pilot.settings.haptics === false : !state.pilot.settings[value]);
+    return;
+  }
   if (type === 'pause') { pause(); return; }
   if (type === 'resume') { resume(); return; }
   if (type === 'leave') {
@@ -856,6 +874,20 @@ window.addEventListener('resize', () => {
   if (!field.hidden && state.flight) { renderer.resize(); renderer.draw(state.flight, appearance(state.flight.run.assistance)); }
 });
 
+const hapticPulse = { hurt:18, barrier:11, ghostStart:9, realmHop:9, ionBurst:12, bossDown:28, playerDown:25 };
+let lastHaptic = -Infinity;
+
+function pulseFeedback(events, timestamp) {
+  if (!hapticAvailable || state.input !== 'touch' || state.pilot.settings.haptics === false ||
+      document.hidden || timestamp - lastHaptic < 140) return;
+  let length = 0;
+  for (const { type } of events) length = Math.max(length, hapticPulse[type] ?? 0);
+  if (length) {
+    navigator.vibrate(length);
+    lastHaptic = timestamp;
+  }
+}
+
 function loop(timestamp) {
   const f = state.flight;
   if (state.mode === 'playing') {
@@ -872,6 +904,7 @@ function loop(timestamp) {
     }
     renderer.accept(events, prefs.reduced);
     audio.accept(events);
+    pulseFeedback(events, timestamp);
     if (tick.steps) refreshHud();
     renderer.draw(f, prefs);
     const end = f.terminal();

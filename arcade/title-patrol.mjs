@@ -21,21 +21,23 @@ function lamp(c, x, y, size, color) {
   c.fill();
 }
 
-function drawCraft(c, image, x, y, size, turn, luminosity, friendly = false, thrust = 1) {
+function drawCraft(c, image, x, y, size, turn, luminosity, ship = '', thrust = 1) {
   c.save();
   c.translate(x, y);
   c.rotate(turn);
   c.globalAlpha = luminosity;
+  const friendly = Boolean(ship);
   const sign = friendly ? -1 : 1;
-  const aft = -size * .24 * sign;
+  const aft = friendly ? size * .40 : -size * .24;
   const tail = aft - size * .67 * sign * thrust;
   const jet = c.createLinearGradient(0, aft, 0, tail);
   jet.addColorStop(0, friendly ? '#c4fffb' : '#fff3be');
   jet.addColorStop(.23, friendly ? '#61c9ff89' : '#ff7957a8');
   jet.addColorStop(1, friendly ? '#4e7af900' : '#ff875100');
   c.fillStyle = jet;
-  for (const edge of [-1, 1]) {
-    const engine = edge * size * .105;
+  const mounts = friendly ? ship === 'bastion' ? [-.27, 0, .27] : [0] : [-.105,.105];
+  for (const mount of mounts) {
+    const engine = mount * size;
     c.beginPath();
     const radius = size * (friendly ? .023 : .04);
     c.moveTo(engine - radius, aft);
@@ -111,11 +113,13 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
     }
     const launchProgress = launchPhase ** 1.7;
     const hover = reduce ? 0 : Math.sin(time * 1.3);
-    const heroY = height * (.44 - .69 * launchProgress) + hover * (1 - launchPhase) * 3.2;
-    const heroSize = width * (.60 - .34 * launchProgress);
+    const heroOrigin = width <= 239 ? .40 : .44;
+    const heroScale = width <= 239 ? .49 : .60;
+    const heroY = height * (heroOrigin - (heroOrigin + .25) * launchProgress) + hover * (1 - launchPhase) * 3.2;
+    const heroSize = width * (heroScale + (.26 - heroScale) * launchProgress);
     const bank = (.12 + hover * .027) * (1 - launchPhase);
     drawCraft(c, images.get(ship), width * .5, heroY, heroSize, bank,
-      images.has(ship) ? 1 : .28, true, .175 + launchPhase * .9);
+      images.has(ship) ? 1 : .28, ship, .13 + hover * .021 + launchPhase * .91);
   }
 
   function frame(timestamp) {

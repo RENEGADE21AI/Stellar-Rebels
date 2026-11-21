@@ -16,8 +16,11 @@ test('title keeps the call sign, fits its controls, and teaches either first Arc
         await play.waitFor();
         const arena = await page.locator('.frame').boundingBox();
         const action = await play.boundingBox();
+        const pilot = await page.locator('.title-pilot').boundingBox();
         const ratio = (action.y + action.height / 2 - arena.y) / arena.height;
-        assert.ok(ratio >= .67 && ratio <= .81, `Play center was at ${ratio}`);
+        const min = viewport.width > viewport.height ? .54 : .63;
+        assert.ok(ratio >= min && ratio <= .78, `Play center was at ${ratio}`);
+        assert.ok(action.y + action.height <= pilot.y, 'Play should be above the call sign');
         for (const item of await page.locator('.title-actions button').all()) {
           const bounds = await item.boundingBox();
           assert.ok(bounds.width >= 44 && bounds.height >= 44);
@@ -73,6 +76,32 @@ test('a returning playfield follows an operating system reduction preference', {
     await page.waitForFunction(() => document.querySelector('.frame').dataset.reducedMotion === 'false');
     assert.equal(await motion.getAttribute('aria-pressed'), 'false');
     assert.equal(await motion.isEnabled(), true);
+  } finally { await browser.close(); }
+});
+
+test('Arcade exposes a direct Special practice drill with stable flight meters', { skip: !origin, timeout:18000 }, async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport:{ width:320, height:568 }, isMobile:true, hasTouch:true, serviceWorkers:'block' });
+    const button = (name) => page.getByRole('button', { name, exact:true });
+    await page.goto(origin);
+    await button('Arcade').tap();
+    const practice = button('Practice');
+    const drillRect = await practice.boundingBox();
+    assert.ok(drillRect && drillRect.y < 210 && drillRect.height >= 44);
+    await practice.tap();
+    await button('Ghost Shift drill').tap();
+    await page.getByText('Stay in the shot’s path and wait for the cue.', { exact:true }).waitFor();
+    const hull = await page.getByRole('meter', { name:'Hull' }).boundingBox();
+    const energy = await page.getByRole('meter', { name:'Energy' }).boundingBox();
+    const score = await page.locator('#flight-score').boundingBox();
+    const pause = await button('Pause').boundingBox();
+    assert.ok(energy.y >= hull.y + hull.height && Math.abs(energy.x - hull.x) < 3);
+    assert.ok(score.x + score.width <= pause.x && pause.y <= score.y);
+    await button('End practice').tap();
+    await page.getByRole('heading', { name:'Practice', exact:true }).waitFor();
+    await button('Back').tap();
+    await page.getByRole('heading', { name:'Stage Select', exact:true }).waitFor();
   } finally { await browser.close(); }
 });
 
@@ -136,6 +165,15 @@ test('first Play teaches steering, targeting and Shift before starting a recorde
     await page.waitForFunction(() => window.trainingProbe.state.training.step === 'shift');
     await page.keyboard.press('Space');
     const launch = page.getByRole('button', { name:'Start arcade', exact:true });
+    await page.waitForFunction(() => window.trainingProbe.state.flight.player.ghostTime > 0);
+    assert.equal(await launch.count(), 0);
+    await page.getByText('Try again', { exact:true }).waitFor();
+    assert.ok(await page.evaluate(() => {
+      const { player } = window.trainingProbe.state.flight;
+      return player.hull === player.maxHull;
+    }));
+    await page.getByText('Shift now', { exact:true }).waitFor();
+    await page.keyboard.press('Space');
     await launch.waitFor();
     assert.equal(await page.evaluate(() => Object.keys(window.trainingProbe.state.pilot.active).length), 0);
     await launch.click();

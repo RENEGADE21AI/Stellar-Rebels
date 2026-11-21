@@ -1,7 +1,11 @@
+import { GHOST } from './catalog.mjs';
+
 const lessons = {
   steer: ['Steer your Fighter', 'Drag anywhere on the field or use the arrow keys.'],
   fire: ['Line up a shot', 'Move underneath the drone. Your guns fire automatically.'],
-  shift: ['Ghost Shift', 'Tap Shift or press Space to phase through the incoming fire.'],
+  shift: ['Ghost Shift', 'Stay in the shot’s path and wait for the cue.'],
+  cue: ['Shift now', 'Tap Shift or press Space to phase through the shot.'],
+  retry: ['Try again', 'Shift when the shot is close to your Fighter.'],
   complete: ['Ready to fly', 'Good hunting, pilot.']
 };
 
@@ -10,11 +14,12 @@ function prompt(flight, step) {
   flight.message(copy, Infinity, 'training', title);
 }
 
-export function startTraining(flight) {
+export function startTraining(flight, drill = 'basics') {
   flight.practice = true;
   flight.player.ghostEnergy = 0;
-  prompt(flight, 'steer');
-  return { step:'steer', x:flight.player.x, y:flight.player.y, nextThreat:0 };
+  const step = drill === 'shift' ? 'shift' : 'steer';
+  prompt(flight, step);
+  return { step, drill, x:flight.player.x, y:flight.player.y, nextThreat:0 };
 }
 
 export function advanceTraining(flight, training, events) {
@@ -27,8 +32,7 @@ export function advanceTraining(flight, training, events) {
   if (training.step === 'fire') {
     if (events.some((e) => e.type === 'enemyDown')) {
       training.step = 'shift';
-      p.ghostEnergy = 100;
-      prompt(flight, 'shift');
+      training.nextThreat = flight.elapsed;
     } else if (!flight.enemies.length && flight.elapsed >= training.nextThreat) {
       const x = p.x < 192 ? 260 : 110;
       flight.addEnemy({ kind:'scout', lane:x / 384, returns:false });
@@ -38,14 +42,27 @@ export function advanceTraining(flight, training, events) {
     }
   }
   if (training.step !== 'shift') return;
-  if (events.some((e) => e.type === 'ghostStart')) {
+  const shot = training.volley;
+  if (shot?.trainingContact === 'phased') {
     training.step = 'complete';
     prompt(flight, 'complete');
     return;
   }
-  if (flight.elapsed >= training.nextThreat || !training.volley) {
-    flight.fan(p.x, Math.max(70, p.y - 195), Math.PI / 2, 5, .14, 132, 'bolt');
-    training.volley = true;
-    training.nextThreat = flight.elapsed + 3;
+  if (shot) {
+    if (shot.trainingContact || shot.y > p.y + 22) {
+      training.volley = null;
+      training.nextThreat = flight.elapsed + .6;
+      prompt(flight, 'retry');
+    } else if (!training.cued && flight.shiftReady && p.y - shot.y <= shot.vy * GHOST.duration * .7) {
+      training.cued = true;
+      prompt(flight, 'cue');
+    }
+    return;
   }
+  if (flight.elapsed < training.nextThreat || p.ghostRecovery) return;
+  p.ghostEnergy = GHOST.capacity;
+  flight.projectile(p.x, p.y - 205, Math.PI / 2, 132, 'bolt', { trainingShot:true });
+  training.volley = flight.hostile.at(-1);
+  training.cued = false;
+  prompt(flight, 'shift');
 }

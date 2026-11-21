@@ -658,7 +658,11 @@ export class Flight {
       s.age += dt;
       s.x += s.vx * dt;
       s.y += s.vy * dt;
-      if (s.live && (s.realm ?? PHYSICAL) === this.player.realm && !this.player.guard && bodiesMeet(hostileBody(s), cockpit)) {
+      if (s.live && this.practice && s.trainingShot) {
+        if (!s.trainingContact && bodiesMeet(hostileBody(s), cockpit)) {
+          s.trainingContact = this.player.ghostTime > 0 ? 'phased' : 'missed';
+        }
+      } else if (s.live && (s.realm ?? PHYSICAL) === this.player.realm && !this.player.guard && bodiesMeet(hostileBody(s), cockpit)) {
         if (this.damage(s.x, s.y, s.realm)) s.live = false;
       }
     }

@@ -1,6 +1,6 @@
 const effects = {
   shot: [535, 282, .055, .023, 'triangle'],
-  hit: [490, 140, .07, .055, 'triangle'],
+  hit: [1640, 1370, .088, .075, 'triangle', .003],
   shieldHit: [1080, 450, .09, .047, 'triangle'],
   enemyDown: [150, 41, .24, .18, 'sawtooth'],
   moduleDown: [225, 34, .36, .23, 'triangle'],
@@ -110,14 +110,14 @@ export class FlightAudio {
     }
   }
 
-  tone([from, to, duration, volume, type], start, power = 1) {
+  tone([from, to, duration, volume, type, attack = .009], start, power = 1) {
     const oscill = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     oscill.type = type;
     oscill.frequency.setValueAtTime(from * power, start);
     oscill.frequency.exponentialRampToValueAtTime(to, start + duration * .78);
     gain.gain.setValueAtTime(.0001, start);
-    gain.gain.exponentialRampToValueAtTime(volume, start + .009);
+    gain.gain.exponentialRampToValueAtTime(volume, start + attack);
     gain.gain.exponentialRampToValueAtTime(.0001, start + duration);
     oscill.connect(gain);
     gain.connect(this.ctx.destination);

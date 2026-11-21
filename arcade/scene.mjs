@@ -76,6 +76,27 @@ function filled(c, x, y, radius, color) {
   c.fill();
 }
 
+const fighterExhaust = [[0, 22]];
+
+function exhaustTexture(core, flame) {
+  const texture = document.createElement('canvas');
+  texture.width = 20;
+  texture.height = 64;
+  const c = texture.getContext('2d');
+  const fill = c.createLinearGradient(0, 0, 0, 64);
+  fill.addColorStop(0, core);
+  fill.addColorStop(.22, flame);
+  fill.addColorStop(1, '#286cbc00');
+  c.fillStyle = fill;
+  c.beginPath();
+  c.moveTo(1, 0);
+  c.quadraticCurveTo(2, 36, 10, 64);
+  c.quadraticCurveTo(18, 36, 19, 0);
+  c.closePath();
+  c.fill();
+  return texture;
+}
+
 export class FlightScene {
   constructor(canvas) {
     this.canvas = canvas;
@@ -128,7 +149,7 @@ export class FlightScene {
 
   resize() {
     const { clientWidth, clientHeight } = this.canvas;
-    const dpr = globalThis.effectiveCanvasDpr(clientWidth, clientHeight, window.devicePixelRatio, 1.85, 1_300_000);
+    const dpr = globalThis.effectiveCanvasDpr(clientWidth, clientHeight, window.devicePixelRatio, 1.45, 1_000_000);
     this.canvas.width = Math.max(1, Math.floor(clientWidth * dpr));
     this.canvas.height = Math.max(1, Math.floor(clientHeight * dpr));
     this.unit = Math.min(clientWidth / WIDTH, clientHeight / HEIGHT) || 1;
@@ -138,7 +159,7 @@ export class FlightScene {
   accept(events, reduce) {
     for (const e of events) {
       switch (e.type) {
-        case 'hit': this.burst(e.x, e.y, '#91f9e6', 3, 55, .22); break;
+        case 'hit': this.burst(e.x, e.y, '#adfff1', reduce ? 2 : 5, 84, .18); break;
         case 'shieldHit': this.burst(e.x, e.y, '#a0bfff', 3, 52, .25); break;
         case 'enemyDown': this.explode(e.x, e.y, '#ff8a5c', 17, 13); break;
         case 'splitterSplit': this.burst(e.x, e.y, '#ffc88e', 14, 138, .42); break;
@@ -421,21 +442,22 @@ export class FlightScene {
     const c = this.ctx;
     const p = flight.player;
     const ghost = p.realm === SPECTRAL;
-    const plume = prefs.reduced ? 15 : 13 + (Math.sin(flight.elapsed * 75) + 1) * 2.6 + this.arrival * 48;
-    for (const [dx, dy] of flight.ship.engines) {
-      const { x, y } = hardpointAt(p, dx, dy, p.bank);
-      const color = ghost ? '#dccbff' : p.overdrive ? '#ffd478' : '#72ffe6';
-      const bloom = c.createLinearGradient(x, y, x, y + plume);
-      bloom.addColorStop(0, color);
-      bloom.addColorStop(.28, ghost ? '#afa0fdba' : p.overdrive ? '#f48950ae' : '#399addae');
-      bloom.addColorStop(1, '#286cbc00');
-      c.fillStyle = bloom;
-      c.beginPath();
-      c.moveTo(x - 3.6, y);
-      c.quadraticCurveTo(x - 4, y + 8, x, y + plume);
-      c.quadraticCurveTo(x + 4, y + 8, x + 3.6, y);
-      c.fill();
+    const fighter = flight.run.ship === 'kestrel';
+    this.exhaust ??= {
+      normal: exhaustTexture('#9ffdf1', '#3fade0a6'),
+      boost: exhaustTexture('#ffe1ac', '#f48950ae'),
+      ghost: exhaustTexture('#ebe0ff', '#afa0fdba')
+    };
+    const image = this.exhaust[ghost ? 'ghost' : p.overdrive ? 'boost' : 'normal'];
+    const plume = prefs.reduced ? 10 : 10 + (Math.sin(flight.elapsed * 22) + 1) * 2 + this.arrival * 38;
+    c.save();
+    c.translate(p.x, p.y);
+    c.rotate(p.bank);
+    for (const [dx, dy] of fighter ? fighterExhaust : flight.ship.engines) {
+      const width = fighter ? 6 : dx === 0 ? 9 : 6;
+      c.drawImage(image, dx - width / 2, dy, width, plume + (dx === 0 && !fighter ? 6 : 0));
     }
+    c.restore();
     this.sprite(flight.run.ship, p.x, p.y, flight.ship.size, p.bank,
       ghost ? .64 : p.guard && !prefs.reduced ? .74 + .25 * Math.abs(Math.sin(flight.elapsed * 24)) : 1, ghost ? '#beaeff' : '');
     if (ghost) {
@@ -448,10 +470,6 @@ export class FlightScene {
       c.strokeStyle = '#dbceff';
       c.lineWidth = 1.6;
       c.stroke();
-      for (const side of [-1, 1]) {
-        line(c, p.x + side * 12, p.y + 19, -side * 2, 13, '#8f7bd0b3', 1.9);
-        if (!prefs.reduced) line(c, p.x + side * 18, p.y + 14, -side * 4, 14, '#d8c6f177', 1.2);
-      }
     }
     if (p.barrier) {
       const charge = saturate(p.barrierTime / PICKUPS.barrier.duration);
@@ -472,18 +490,26 @@ export class FlightScene {
       this.sprite(e.kind, e.x, e.y, e.spec.size, e.turn, .62);
       return;
     }
-    if (e.kind === 'diver' && e.age > diveWarningAt && !e.retreat) {
-      if (e.dive) {
-        const v = e.vector;
-        line(c, e.x, e.y, -Math.cos(v) * 27, -Math.sin(v) * 27, '#ed875cb3', 2);
-      } else if (Number.isFinite(e.diveAim)) {
-        c.save();
-        c.translate(e.x, e.y);
-        c.rotate(e.diveAim - Math.PI / 2);
-        line(c, -7, 17, 7, 7, '#ffd49a', 2.2);
-        line(c, 0, 24, 7, -7, '#ffd49a', 2.2);
-        c.restore();
-      }
+    if (e.kind === 'diver' && Number.isFinite(e.diveAim) && !e.retreat) {
+      const charge = saturate((e.age - diveWarningAt) * 2.5);
+      const nozzle = hardpointAt(e, 0, -e.spec.size * .39, e.turn);
+      const length = e.dive ? 29 : 8 + 13 * charge;
+      const width = e.dive ? 5 : 3.1 + 1.5 * charge;
+      c.save();
+      c.translate(nozzle.x, nozzle.y);
+      c.rotate(e.dive ? e.vector - Math.PI / 2 : e.turn);
+      const flame = c.createLinearGradient(0, 1, 0, -length);
+      flame.addColorStop(0, '#fff4d1');
+      flame.addColorStop(.35, '#ffac58e6');
+      flame.addColorStop(1, '#ff693c00');
+      c.fillStyle = flame;
+      c.beginPath();
+      c.moveTo(-width, 1);
+      c.quadraticCurveTo(-width, -length * .57, 0, -length);
+      c.quadraticCurveTo(width, -length * .57, width, 1);
+      c.closePath();
+      c.fill();
+      c.restore();
     }
     this.sprite(e.kind, e.x, e.y, e.spec.size, e.turn, e.retreat ? .66 : 1);
     const arming = e.kind === 'shard' && e.age < shardArmTime;

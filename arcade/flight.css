@@ -131,37 +131,37 @@ button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(
 #sky:focus{outline:none}
 .screen h1:focus{outline:none}
 .flight-ui{position:absolute;inset:0;pointer-events:none}
-.flight-controls{position:absolute;top:max(8px,env(safe-area-inset-top));right:max(7px,env(safe-area-inset-right));display:flex;align-items:center;gap:4px}
+.flight-controls{position:absolute;top:max(8px,env(safe-area-inset-top));right:max(7px,env(safe-area-inset-right));display:grid;grid-template-columns:auto 44px;align-items:center;gap:6px}
 .flight[data-ending=defeat] .flight-ui{opacity:0;transition:opacity .45s;visibility:hidden;transition-property:opacity,visibility}
 .web-update{display:flex;justify-content:center;padding:10px 12px 0}
 .hull{position:absolute;top:max(14px,env(safe-area-inset-top));left:max(13px,env(safe-area-inset-left));display:grid;gap:7px;text-shadow:0 1px 3px #030811,0 0 5px #030811}
 #hull{display:flex;gap:3px}
 .segment{width:clamp(7px,2.35vw,11px);height:6px;background:#101b2c;border:1px solid #7990a6;transform:skewX(-9deg)}
 .segment.full{background:#8cf2dd;border-color:#c4fff1;box-shadow:0 0 4px #23bba177}
-.flight-points{display:flex;align-items:baseline;gap:8px}
-#flight-message{position:absolute;top:48%;right:max(10px,env(safe-area-inset-right));width:max-content;max-width:min(48%,189px);display:grid;gap:4px;padding:5px 8px 5px 12px;border-right:2px solid #a8cbe38c;background:linear-gradient(90deg,#07101b00,#07101be5 30%,#07101be5);color:#eef3f7;text-shadow:0 1px 4px #02060d;text-align:right;opacity:0;visibility:hidden;transform:translate(7px,-50%);transition:opacity .31s,transform .31s,visibility 0s .31s}
+.flight-points{grid-area:1/1;display:grid;justify-items:end;gap:4px;text-shadow:0 1px 3px #030811,0 0 5px #030811}
+#pause{grid-area:1/2}
+#flight-message{position:absolute;top:48%;right:max(7px,env(safe-area-inset-right));width:max-content;max-width:min(34%,142px);display:grid;gap:2px;padding:3px 5px 4px 7px;border-right:1px solid #a8cbe38c;background:#07101be8;color:#eef3f7;text-shadow:0 1px 3px #02060d;text-align:right;opacity:0;visibility:hidden;transform:translate(3px,-50%);transition:opacity .31s,transform .31s,visibility 0s .31s}
 #flight-message.shown{opacity:var(--notice-opacity,1);visibility:visible;transform:translate(0,-50%);transition:opacity .22s,transform .22s,visibility 0s}
+#flight-message[data-kind=warning],#flight-message[data-kind=training]{max-width:min(40%,153px)}
 #flight-message[data-kind=warning]{border-color:#ffc597}
-#flight-message[data-kind=pickup]{border-color:#91f5da}
-.flight-heading,.run-status{display:grid;gap:3px;min-width:0}
+#flight-message[data-kind=pickup]{border-color:#91f5da;color:#d6fff4}
+.flight-heading,.run-status{display:grid;gap:2px;min-width:0}
 .flight-heading:empty,.flight-heading:not(:has(> :not([hidden]))),.run-status:not(:has(> :not([hidden]))){display:none}
-#flight-name,#boss-name{font:700 clamp(17px,5.25vw,24px)/.98 var(--display);text-wrap:balance}
+#flight-name,#boss-name{font:700 clamp(14px,4cqw,18px)/1.05 var(--display);text-wrap:balance}
 #boss-name{color:#ffc6a2}
 #boss-realm{color:#ece0f7;font:650 .66rem/1.1 var(--sans)}
 #flight-tip,#flight-progress,#flight-help{font:600 .67rem/1.18 var(--sans);text-wrap:pretty;color:#d9e5ee}
-#flight-tip{color:#f2cfb5}
+#flight-message[data-kind=warning] #flight-tip{color:#ffe0bf}
 .icon-button{display:grid;place-items:center;width:44px;height:44px;background:#0913209e;color:#eef4f8;border:1px solid #7895ae65;pointer-events:auto;border-radius:7px}
 .icon-button:hover{background:#1a3247}
-.ghost-control{position:relative;--shift-cost:38%;--charge:#b7afd8;width:59px}
-#ghost-shift{display:grid;justify-items:center;align-content:center;gap:1px;width:100%;height:44px;padding:1px 2px 7px;color:#e8e3fb;background:#171624b5;border:1px solid #8a7da87c;pointer-events:auto;touch-action:manipulation;border-radius:7px}
+.ghost-control{grid-area:2/1/3/3;justify-self:end;width:59px}
+#ghost-shift{display:grid;justify-items:center;align-content:center;gap:1px;width:100%;height:44px;padding:2px;color:#e8e3fb;background:#171624b5;border:1px solid #8a7da87c;pointer-events:auto;touch-action:manipulation;border-radius:7px}
 #ghost-shift .caption{font-size:.51rem;line-height:1;letter-spacing:.06em;color:#e2dcf9}
 #ghost-action{font:700 17px/.91 var(--display)}
-#ghost-meter{position:absolute;inset:auto 7px 5px;height:3px;background:#09101c;outline:1px solid #a49bb269;pointer-events:none;border-radius:2px}
-#ghost-meter::after{content:'';position:absolute;inset:-1px auto -1px var(--shift-cost);width:1px;background:#eee6ff}
-#ghost-value{height:100%;background:var(--charge);transform-origin:left center;transform:scaleX(.26)}
-.ghost-control[data-mode=ready]{--charge:#b0fff1}
+#ghost-meter{position:relative;--shift-cost:38%;height:5px;margin-inline:0 2px;background:#332816;outline:1px solid #92753e;pointer-events:none;border-radius:1px}
+#ghost-meter::after{content:'';position:absolute;inset:-1px auto -1px var(--shift-cost);width:1px;background:#fff3c6}
+#ghost-value{height:100%;background:linear-gradient(90deg,#d89537,#ffe47e);transform-origin:left center;transform:scaleX(0)}
 .ghost-control[data-mode=ready] #ghost-shift{color:#e7fff8;background:#13312ed9;border-color:#7ce7d4ac}
-.ghost-control[data-mode=active]{--charge:#e0c3ff}
 .ghost-control[data-mode=active] #ghost-shift{color:#fff;background:#442969e5;border-color:#d2aefc}
 #flight-score{color:#f4f8ff;font:700 .91rem/1 var(--mono);font-variant-numeric:tabular-nums}
 #chain{color:#ffca89;font:700 .69rem/1 var(--mono);white-space:nowrap}
@@ -195,8 +195,9 @@ dialog::backdrop{background:#040911af}
 .unlock{background:#1f3a43eb;border:1px solid #527580;color:#c2fff0;padding:7px 9px;font-size:.82rem}
 @keyframes panel-in{from{opacity:0}to{opacity:1}}
 @container (max-width:239px){
-  .flight-controls{flex-direction:column-reverse;align-items:flex-end}
-  .flight-points{flex-wrap:wrap}
+  #hull{gap:2px}
+  .segment{width:8px}
+  #flight-score{font-size:.79rem}
   .title-screen{padding-inline:max(8px,env(safe-area-inset-left)) max(8px,env(safe-area-inset-right))}
   .title-actions{gap:7px}
   .title-actions .primary{min-height:48px;font-size:26px}

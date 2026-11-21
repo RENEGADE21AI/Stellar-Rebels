@@ -56,6 +56,7 @@ export function beginRun(pilot, id, mode, stage, now = Date.now(), seed = '') {
   }
   const assistance = { ...pilot.settings };
   delete assistance.trainingDone;
+  delete assistance.haptics;
   const run = {
     id, mode, stage: mode === 'arcade' ? stage : null, started: now, rules: RULES_VERSION, rewardVersion: REWARD_VERSION,
     ship: pilot.ship, equipment: [...pilot.equipment], assistance, seed: validFlightSeed(seed) ? seed : undefined

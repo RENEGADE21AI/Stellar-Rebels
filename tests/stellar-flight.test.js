@@ -331,6 +331,40 @@ test('interactive practice uses authored encounters without scheduling Arcade wa
   assert.equal(f.cruiser, null);
 });
 
+test('Ghost Shift practice requires phasing through the shot and safely repeats a miss', async () => {
+  const [{ Flight }, , { GHOST }] = await load;
+  const { advanceTraining, startTraining } = await import('../arcade/training.mjs');
+  const f = new Flight(context());
+  const training = startTraining(f);
+  f.player.x += 44;
+  f.reanchor();
+  advanceTraining(f, training, []);
+  advanceTraining(f, training, [{ type:'enemyDown' }]);
+  const tick = () => {
+    f.step(step);
+    advanceTraining(f, training, f.takeEvents());
+  };
+  const advanceUntil = (check) => {
+    for (let i = 0; i < 240 && !check(); i++) tick();
+    assert.ok(check(), 'expected a training milestone within four seconds');
+  };
+
+  assert.equal(f.activateGhost(), true);
+  tick();
+  assert.equal(training.step, 'shift', 'pressing Shift before the bolt reaches the cockpit cannot pass');
+  advanceUntil(() => f.notice.title === 'Try again');
+  assert.equal(f.player.hull, f.player.maxHull);
+
+  advanceUntil(() => f.notice.title === 'Shift now');
+  assert.ok(f.player.ghostEnergy >= GHOST.cost);
+  assert.equal(f.activateGhost(), true);
+  tick();
+  assert.equal(training.step, 'shift', 'even a successful activation must wait for the shot to cross');
+  advanceUntil(() => training.step === 'complete');
+  assert.equal(f.player.hull, f.player.maxHull);
+  assert.ok(f.player.ghostTime > 0);
+});
+
 test('Wraith realm hops alternate actual vulnerability and a charged volley keeps its telegraphed target', async () => {
   const [{ Flight }, , { GHOST }] = await load;
   const { launchBoss } = await import('../arcade/bosses.mjs');
