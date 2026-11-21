@@ -18,6 +18,8 @@ for (const file of version.files) {
   assert.deepEqual(Buffer.from(files[file]), fs.readFileSync(path.join(proof, file)), file);
 }
 assert.equal(version.dirty, false);
+assert.equal(version.googleSignIn, false);
+assert.equal(version.files.some((file) => /google-sign-in|google-auth-vendor/.test(file)), false);
 assert.ok(zip.length < 12 * 1024 * 1024);
 
 async function check(engine, viewport) {
@@ -44,7 +46,7 @@ async function check(engine, viewport) {
     const reply = { id: request.id, client: request.client, ok: true };
     if (request.op === 'load') reply.value = saved;
     else if (request.op === 'save') saved = structuredClone(request.data);
-    else if (request.op !== 'archive') throw Error(`Unexpected native request: ${request.op}`);
+    else throw Error(`Unexpected native request: ${request.op}`);
     return reply;
   });
   await page.addInitScript(() => {
@@ -63,6 +65,11 @@ async function check(engine, viewport) {
     const settings = page.getByRole('button', { name: 'Settings', exact: true });
     await settings.tap();
     await page.getByText('Bundled flight assets ready.').waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Account', exact: true }).count(), 0);
+    await page.getByRole('button', { name: 'Privacy policy', exact: true }).tap();
+    await page.getByRole('heading', { name: 'Privacy policy', exact: true }).waitFor();
+    await page.getByText('Replay sharing', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Back', exact: true }).tap();
     const contrast = page.getByRole('button', { name: 'High contrast hazards' });
     const desired = (await contrast.getAttribute('aria-pressed')) !== 'true';
     await contrast.tap();
@@ -74,7 +81,8 @@ async function check(engine, viewport) {
     assert.equal(clients.size, 2);
     await page.getByRole('button', { name: 'Back', exact: true }).tap();
     await page.getByRole('button', { name: 'Play', exact: true }).tap();
-    await page.getByRole('button', { name: /^01 Vesper Orbit/ }).tap();
+    await page.getByRole('button', { name: 'Skip training', exact: true }).tap();
+    await page.locator('#training-actions').waitFor({ state: 'hidden' });
     await page.locator('#sky').waitFor();
     await page.waitForFunction(() => document.querySelector('#clock').textContent === '00:02', null, { timeout: 9000 });
     await page.waitForFunction(() => window.lastStellarTrack?.src.endsWith('/audio/gravitys-edge.mp3'), null, { timeout: 9000 });
@@ -98,7 +106,7 @@ async function check(engine, viewport) {
     assert.deepEqual(diagnostics.scriptErrors, []);
     assert.deepEqual([...diagnostics.bridge].sort(), ['load', 'save']);
     await page.screenshot({ path: path.join(output, `${engine.name()}.png`) });
-    return { engine: engine.name(), viewport, audio: track, settingsPersisted: true, interruptionPaused: true, offlineRequests: 0 };
+    return { engine: engine.name(), viewport, audio: track, privacyPolicyOpens: true, settingsPersisted: true, interruptionPaused: true, offlineRequests: 0 };
   } finally {
     await browser.close();
   }

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AppState, Linking, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { AppState, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Asset } from 'expo-asset';
 import { Directory, File, Paths } from 'expo-file-system';
@@ -105,10 +105,6 @@ function Game() {
           reply(true);
           break;
         }
-        case 'archive':
-          await Linking.openURL('https://star-strike-rush.web.app/');
-          reply(true);
-          break;
         default: reply(false);
       }
     }).catch(() => reply(false));

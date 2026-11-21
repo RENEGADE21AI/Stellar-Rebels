@@ -15,6 +15,7 @@ const read = (file) => fs.readFileSync(file, 'utf8');
 const webVersion = JSON.parse(read(path.join(web, 'version.json')));
 if (webVersion.dirty || webVersion.hostingSite !== 'stellar-rebels' || !/^[a-f0-9]{40}$/.test(webVersion.commitSha) ||
     !/^[a-f0-9]{15}$/.test(webVersion.assetVersion)) throw Error('Use a clean tested Stellar Rebels web artifact');
+if (webVersion.googleSignIn !== false) throw Error('Build the offline source pack with Google sign-in disabled');
 const generation = `arcade/${webVersion.assetVersion}`;
 const source = path.join(web, generation);
 
@@ -40,23 +41,13 @@ const built = await build({
   plugins: [{ name: 'stellar-native-host', setup(api) {
     api.onLoad({ filter: /[/\\]app\.mjs$/ }, (args) => {
       let body = `import { NativePilotStore, nativeRequest } from ${JSON.stringify(bridgeModule)};\n` + read(args.path);
-      body = replaceRequired(body, 'new PilotStore(globalThis.indexedDB,', 'new NativePilotStore(');
-      body = replaceRequired(body, "if (navigator.serviceWorker && document.documentElement.dataset.pack === 'true')", 'if (false)');
-      body = replaceRequired(body, 'function packCopy() {', "function packCopy() {\n  return 'Bundled flight assets ready.';");
-      body = replaceRequired(body, 'function checkPack() {', 'function checkPack() {\n  return;');
-      body = replaceRequired(body, "state.installed = matchMedia('(display-mode: standalone)').matches;", 'state.installed = true;');
+      body = replaceRequired(body, 'new PilotStore(globalThis.indexedDB)', 'new NativePilotStore()');
       const start = body.indexOf("  if (type === 'save-replay') {");
       const end = body.indexOf("  if (type === 'update-web') {", start);
       if (start < 0 || end < 0) throw Error('Replay action was moved');
       body = body.slice(0, start) + "  if (type === 'save-replay') {\n    if (state.pending?.replay) await nativeRequest('share', state.pending.replay);\n    return;\n  }\n" + body.slice(end);
       body += `\nwindow.addEventListener('stellar-native-pause', () => { pause(true); audio.quiet(); });\n`;
       body += `window.addEventListener('stellar-native-foreground', () => { if (state.mode === 'menu') audio.play('hangar'); });\n`;
-      body += `document.addEventListener('click', (event) => {
-        if (event.target.closest?.('a[href="https://star-strike-rush.web.app/"]')) {
-          event.preventDefault();
-          nativeRequest('archive').catch(() => {});
-        }
-      });\n`;
       return { contents: body, loader: 'js', resolveDir: source };
     });
   } }]
@@ -64,6 +55,7 @@ const built = await build({
 pack[`${generation}/native-app.js`] = built.outputFiles[0].contents;
 
 let html = read(path.join(web, 'index.html'));
+html = replaceRequired(html, '<html lang="en" data-pack="true">', '<html lang="en" data-native-flight="true">');
 html = replaceRequired(html, `<base href="/${generation}/">`, `<base href="./${generation}/">`);
 html = replaceRequired(html, '<link rel="manifest" href="/site.webmanifest">',
   `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src file:; style-src file: 'unsafe-inline'; img-src file: data:; font-src file:; media-src file:; connect-src 'none'; form-action 'none'; frame-src 'none'; object-src 'none'">`);

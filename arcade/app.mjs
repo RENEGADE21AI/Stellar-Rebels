@@ -14,8 +14,9 @@ const menu = $('menu');
 const sky = $('sky');
 const field = $('flight');
 const modal = $('flight-modal');
+const nativeFlight = document.documentElement.dataset.nativeFlight === 'true';
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
-const hapticAvailable = typeof navigator.vibrate === 'function' && navigator.maxTouchPoints > 0;
+const hapticAvailable = !nativeFlight && typeof navigator.vibrate === 'function' && navigator.maxTouchPoints > 0;
 const store = new PilotStore(globalThis.indexedDB);
 const audio = new FlightAudio();
 const clock = globalThis.createFixedStepClock();
@@ -274,7 +275,16 @@ function settingsView() {
     <select class="toggle" id="sensitivity" aria-label="Drag sensitivity"><option value="gentle" ${prefs.sensitivity === 'gentle' ? 'selected' : ''}>Gentle</option><option value="standard" ${prefs.sensitivity === 'standard' ? 'selected' : ''}>Standard</option><option value="direct" ${prefs.sensitivity === 'direct' ? 'selected' : ''}>Direct</option></select></div>
     <div class="notice" id="pack-status" role="status">${packCopy()}</div>${state.installed ? '' : '<p class="subtle">Install from your browser menu or Add to Home Screen in Safari.</p>'}
     ${googleSignInAvailable ? action('Account', 'view:account') : ''}
+    ${nativeFlight ? action('Privacy policy', 'view:privacy', 'quiet') : ''}
     ${action('Practice', 'help:settings', 'quiet')}${state.support ? `<p class="notice">${state.support}</p>` : ''}`);
+}
+
+function privacyView() {
+  return screen('Privacy policy', 'settings', `<div class="info">
+    <strong>Device storage</strong><p class="subtle">Your call sign, scores, progress and settings are saved on this device. The app has no account, advertising or analytics. It does not send this information to us.</p>
+    <strong>Replay sharing</strong><p class="subtle">If you choose to share a replay, your device opens its share sheet. The replay contains flight inputs and results. You choose where to send it.</p>
+    <strong>Removal and backups</strong><p class="subtle">Remove the app and its data to delete the local save. Device backups or transfers can retain a copy according to your system settings. Manage those copies in your device backup settings.</p>
+  </div>`);
 }
 
 function accountView() {
@@ -424,7 +434,7 @@ function launchView() {
     <p class="notice" role="status">Loading flight assets…</p>${action('Cancel launch', 'cancel-flight', 'quiet', 'back')}</article>`;
 }
 
-const views = { home, callSign: callSignView, stages, hangar, upgrade: upgradeView, records, settings: settingsView, account: accountView, help: helpView, result: results, launch: launchView };
+const views = { home, callSign: callSignView, stages, hangar, upgrade: upgradeView, records, settings: settingsView, account: accountView, privacy: privacyView, help: helpView, result: results, launch: launchView };
 
 function announce(message) { $('announcer').textContent = message; }
 
@@ -440,6 +450,7 @@ function showBrowserUpdate() {
 
 function show(view, focus = true) {
   if (!views[view] || (view === 'account' && !googleSignInAvailable)) return;
+  if (view === 'privacy' && !nativeFlight) return;
   $('frame').dataset.reducedMotion = String(motionLimited());
   state.mode = 'menu';
   state.view = view;
@@ -1166,6 +1177,7 @@ function loop(timestamp) {
 }
 
 function packCopy() {
+  if (nativeFlight) return 'Bundled flight assets ready.';
   if (state.newPack) return 'A new browser build is ready.';
   if (state.pack === 'waiting') return 'Checking the offline flight pack…';
   if (state.pack === 'ready') return navigator.onLine ? 'Offline flight pack ready.' : 'Offline. Flight pack available.';
@@ -1224,7 +1236,7 @@ async function boot() {
     });
   }
   void loadSprite('kestrel');
-  if (navigator.serviceWorker && document.documentElement.dataset.pack === 'true' && !document.documentElement.dataset.localPreview) {
+  if (!nativeFlight && navigator.serviceWorker && document.documentElement.dataset.pack === 'true' && !document.documentElement.dataset.localPreview) {
     navigator.serviceWorker.addEventListener('controllerchange', checkPack);
     window.addEventListener('offline', checkPack);
     window.addEventListener('online', checkPack);
@@ -1235,7 +1247,7 @@ async function boot() {
     }).catch(() => {});
     checkPack();
   }
-  state.installed = matchMedia('(display-mode: standalone)').matches;
+  state.installed = nativeFlight || matchMedia('(display-mode: standalone)').matches;
   requestAnimationFrame(loop);
 }
 
