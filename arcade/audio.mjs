@@ -18,6 +18,7 @@ const effects = {
   wraithVolley: [195, 72, .22, .12, 'triangle'],
   bossFire: [119, 67, .28, .10, 'triangle'],
   charge: [187, 397, .31, .10, 'triangle'],
+  practiceCue: [960, 1380, .105, .10, 'sine'],
   hazard: [190, 83, .38, .16, 'sawtooth'],
   boss: [96, 104, .6, .13, 'triangle'],
   cruiserEnter: [86, 64, .48, .086, 'triangle'],
