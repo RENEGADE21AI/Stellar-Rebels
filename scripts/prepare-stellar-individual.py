@@ -25,6 +25,21 @@ def condition_art(source, key):
     return color
 
 
+def paint_inside_frame(base, source, key, opacity=255):
+    bounds = opaque_bounds(source)
+    if not bounds:
+        raise ValueError(f'{key} needs an alpha cutout')
+    left, top, right, bottom = opaque_bounds(base)
+    fitted = condition_art(source.crop(bounds), key).resize((right-left, bottom-top), Image.Resampling.LANCZOS)
+    detail = Image.new('RGBA', base.size)
+    detail.paste(fitted, (left, top))
+    alpha = base.getchannel('A')
+    coverage = ImageChops.multiply(detail.getchannel('A'), alpha).point(lambda a: a * opacity // 255)
+    recolored = Image.composite(detail.convert('RGB'), base.convert('RGB'), coverage)
+    recolored.putalpha(alpha)
+    return recolored
+
+
 def write_sprites():
     frames = json.loads((SOURCE / 'frames.json').read_text(encoding='utf-8'))
     for key, (size, left, top, right, bottom) in frames.items():
@@ -37,6 +52,10 @@ def write_sprites():
         source = source.resize((right-left, bottom-top), Image.Resampling.LANCZOS)
         frame = Image.new('RGBA', (size, size))
         frame.paste(source, (left, top))
+        repaint = SOURCE / 'repaints' / (key + '.webp')
+        if repaint.is_file():
+            with Image.open(repaint) as paint:
+                frame = paint_inside_frame(frame, paint.convert('RGBA'), key)
         frame.save(MEDIA / 'sprites' / (key + '.png'), optimize=True)
         if key == 'wraith':
             build_variant(frame, 'ghost').save(MEDIA / 'sprites' / 'wraith-ghost.png', optimize=True)
@@ -63,18 +82,8 @@ def write_variants():
         with Image.open(sprites / (key + '.png')) as base_file, Image.open(path) as source_file:
             base = base_file.convert('RGBA')
             source = source_file.convert('RGBA')
-        bounds = opaque_bounds(source)
-        if not bounds:
-            raise ValueError(f'{key} variant needs an alpha cutout')
-        left, top, right, bottom = opaque_bounds(base)
-        fitted = condition_art(source.crop(bounds), key).resize((right-left, bottom-top), Image.Resampling.LANCZOS)
-        detail = Image.new('RGBA', base.size)
-        detail.paste(fitted, (left, top))
         # Preserve each role's silhouette, collision mask, and existing transparent edge.
-        alpha = base.getchannel('A')
-        coverage = ImageChops.multiply(detail.getchannel('A'), alpha).point(lambda a: a * 4 // 5)
-        recolored = Image.composite(detail.convert('RGB'), base.convert('RGB'), coverage)
-        recolored.putalpha(alpha)
+        recolored = paint_inside_frame(base, source, key, opacity=204)
         recolored.save(sprites / (key + '-alt.webp'), quality=90, method=6)
 
 
