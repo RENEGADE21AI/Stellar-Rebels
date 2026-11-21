@@ -101,3 +101,60 @@ test('Endless compares time first and score at equal time without awarding Salva
   assert.equal(loadoutBest(saved, null).duration, 77);
   assert.equal(saved.salvage, 0);
 });
+
+test('new Outer Orbit highs preserve the original Gravity Platform score and its independent mastery', async () => {
+  const { beginRun, loadoutBest, newPilot, settleRun } = await pilot;
+  const { RULES_VERSION } = await import('../arcade/catalog.mjs');
+  const saved = newPilot();
+  saved.clears = { 1:1, 2:1, 3:1, 4:1, 5:1 };
+  saved.mastery[5] = true;
+  const original = { mode:'arcade', stage:5, ship:'kestrel', rules:'arcade-1', equipment:[],
+    status:'clear', score:12340, duration:218, kills:31, breaks:0 };
+  saved.records.arcade[5] = original;
+  beginRun(saved, 'earlier-flight', 'arcade', 5).rules = 'arcade-1';
+  beginRun(saved, 'wraith-clear', 'arcade', 5);
+  const first = settleRun(saved, 'wraith-clear', { ...clear, score:32664, duration:186, mastery:false });
+  assert.equal(first.masteryMet, false);
+  assert.equal(saved.records.arcade[5].score, 32664);
+  assert.deepEqual(saved.records.history['arcade-1/5'], original);
+  assert.equal(saved.mastery[5], true);
+  assert.equal(saved.mastery.wraith, undefined);
+
+  const earlier = settleRun(saved, 'earlier-flight', { ...clear, score:15300 });
+  assert.equal(earlier.best, false);
+  assert.equal(earlier.loadout, null);
+  assert.equal(earlier.mastery, false);
+  assert.equal(saved.records.history['arcade-1/5'].score, 15300);
+  const salvage = saved.salvage;
+  assert.deepEqual(settleRun(saved, 'earlier-flight', { ...clear, score:99999 }), earlier);
+  assert.equal(saved.salvage, salvage);
+  assert.equal(saved.records.history['arcade-1/5'].score, 15300);
+  assert.equal(loadoutBest(saved, 5).score, 32664);
+
+  beginRun(saved, 'earlier-high', 'arcade', 5).rules = 'arcade-1';
+  settleRun(saved, 'earlier-high', { ...clear, score:37000 });
+  assert.equal(saved.records.arcade[5].score, 37000);
+  assert.deepEqual(Object.keys(saved.records.history), [`${RULES_VERSION}/5`]);
+  assert.equal(saved.records.history[`${RULES_VERSION}/5`].score, 32664);
+  assert.equal(loadoutBest(saved, 5).score, 32664);
+});
+
+test('Endless keeps an earlier rules best by duration and fills the current loadout record', async () => {
+  const { beginRun, loadoutBest, newPilot, settleRun } = await pilot;
+  const saved = newPilot();
+  const original = { mode:'endless', stage:null, ship:'kestrel', rules:'arcade-8', equipment:[],
+    status:'defeat', score:9500, duration:150 };
+  saved.records.endless = original;
+  beginRun(saved, 'old-survival', 'endless', null).rules = 'arcade-8';
+  beginRun(saved, 'new-survival', 'endless', null);
+  const current = settleRun(saved, 'new-survival', { ...defeat, score:4300, duration:190 });
+  assert.equal(current.award, 0);
+  assert.deepEqual(saved.records.history['arcade-8/endless'], original);
+  const earlier = settleRun(saved, 'old-survival', { ...defeat, score:6400, duration:170 });
+  assert.equal(earlier.best, false);
+  assert.equal(saved.records.history['arcade-8/endless'].duration, 170);
+  assert.equal(saved.records.endless.duration, 190);
+  assert.equal(loadoutBest(saved, null).duration, 190);
+  assert.deepEqual(Object.keys(saved.records.history), ['arcade-8/endless']);
+  assert.equal(saved.salvage, 0);
+});

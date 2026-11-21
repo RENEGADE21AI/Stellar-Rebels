@@ -134,15 +134,19 @@ function stages() {
     const tag = available ? clear ? `${icon('check')} Replay` : 'Launch' : `${icon('lock')} Locked`;
     const record = available ? loadoutBest(pilot, s.id) : null;
     const mastered = Boolean(pilot.mastery?.[s.mastery?.key ?? s.id]);
+    const goal = s.mastery?.condition === 'parts' ? 'Disarm both turrets' : 'No hull loss at boss';
     let note = s.region;
+    let nextGoal = '';
     if (!available) note = `Clear ${stageById(s.id - 1)?.name ?? 'the previous stage'}`;
-    else if (record?.status === 'clear') note = `${num(record.score)} loadout best${mastered ? ' · Mastered' : ''}`;
+    else if (record?.status === 'clear') {
+      note = `${num(record.score)} loadout best${mastered ? ' · Mastered' : ''}`;
+      if (s.mastery && !mastered) nextGoal = `<span class="stage-mastery-goal">${goal}</span>`;
+    }
     else if (clear && s.mastery) {
-      note = mastered ? 'Set a loadout best'
-        : s.mastery.condition === 'parts' ? 'Disarm both turrets' : 'No hull loss at boss';
+      note = mastered ? 'Set a loadout best' : goal;
     } else if (record) note = `${num(record.score)} best attempt`;
     return `<li><button class="stage ${s.id === next?.id ? 'next' : ''}" style="--stage-color:${s.accent}" data-action="fly:${s.id}" ${available ? '' : 'disabled'}>
-      <span class="stage-num">${chapter(s.id)}</span><span><span class="stage-name">${s.name}</span><span class="stage-note">${note}</span></span>
+      <span class="stage-num">${chapter(s.id)}</span><span><span class="stage-name">${s.name}</span><span class="stage-note">${note}${nextGoal}</span></span>
       <span class="stage-tag">${tag}</span></button></li>`;
   }).join('');
   const survival = loadoutBest(pilot, null);
@@ -208,6 +212,10 @@ function recordLine(title, copy, value) {
   return `<div class="record"><div><strong>${title}</strong><small>${copy}</small></div><span>${value}</span></div>`;
 }
 
+function recordVersion(record) {
+  return Number(/^arcade-(\d+)$/.exec(record.rules)?.[1] ?? 0);
+}
+
 function recordContext(record) {
   const assistance = [];
   if (record.assistance?.reduced) assistance.push('Reduced motion');
@@ -215,34 +223,37 @@ function recordContext(record) {
   if (['gentle', 'direct'].includes(record.assistance?.sensitivity)) assistance.push(`${record.assistance.sensitivity} drag`);
   const mods = (record.equipment ?? []).flatMap((key) => Object.hasOwn(UPGRADES, key) ? [UPGRADES[key].name] : []).join(', ') || 'Stock';
   const notes = [SHIPS[record.ship]?.name ?? 'Fighter', SPECIALS[record.special]?.name ?? SPECIALS.ghost.name, mods, ...assistance];
-  if (record.rules !== RULES_VERSION) notes.push('Earlier rules');
+  if (record.stage === 5 && record.rules === 'arcade-1') notes.push('Original route · Gravity Platform');
+  const version = recordVersion(record);
+  notes.push(record.rules === RULES_VERSION ? 'Current rules' : version ? `Earlier rules ${version}` : 'Earlier rules');
   return notes.join(' · ');
 }
 
 function records() {
   const { pilot } = state;
-  const { arcade, endless } = pilot.records;
+  const { arcade, endless, history = {} } = pilot.records;
   const rows = STAGES.map((s) => {
     const best = loadoutBest(pilot, s.id);
     if (!best) return '';
-    const mastered = pilot.mastery?.[s.mastery?.key ?? s.id];
-    return recordLine(s.name, `${best.status === 'clear' ? 'Clear' : 'Best attempt'} · ${time(best.duration)}${mastered ? ' · Mastered' : ''}`, num(best.score));
+    return recordLine(s.name, `${best.status === 'clear' ? 'Clear' : 'Best attempt'} · ${time(best.duration)}`, num(best.score));
   }).join('');
   const bestSurvival = loadoutBest(pilot, null);
   const survival = bestSurvival ? recordLine('Endless survival', `${num(bestSurvival.score)} points`, time(bestSurvival.duration)) : '';
-  const careerRows = STAGES.filter((s) => arcade[s.id]).map((s) => {
-    const r = arcade[s.id];
-    const badges = [];
-    if (pilot.mastery?.[s.mastery?.key ?? s.id]) badges.push('Mastered');
-    if (s.id === 5 && pilot.mastery?.[5]) badges.push('Gravity Platform mastery');
-    if (s.id === 5 && r.rules === 'arcade-1') badges.push('Original route score');
-    return recordLine(s.name, `${r.status === 'clear' ? 'Cleared' : 'Best attempt'} · ${time(r.duration)} · ${recordContext(r)}${badges.length ? ' · ' + badges.join(' · ') : ''}`, num(r.score));
-  }).join('');
-  const careerSurvival = endless ? recordLine('Endless survival', `${num(endless.score)} score · ${recordContext(endless)}`, time(endless.duration)) : '';
+  const archived = Object.values(history);
+  const careerRows = STAGES.flatMap((s) => [arcade[s.id], ...archived.filter((r) => r.mode === 'arcade' && r.stage === s.id)]
+    .filter(Boolean).sort((a, b) => recordVersion(b) - recordVersion(a))
+    .map((r) => recordLine(s.name, `${r.status === 'clear' ? 'Cleared' : 'Best attempt'} · ${time(r.duration)} · ${recordContext(r)}`, num(r.score)))).join('');
+  const careerSurvival = [endless, ...archived.filter((r) => r.mode === 'endless')].filter(Boolean)
+    .sort((a, b) => recordVersion(b) - recordVersion(a))
+    .map((r) => recordLine('Endless survival', `${num(r.score)} points · ${recordContext(r)}`, time(r.duration))).join('');
   const career = careerRows || careerSurvival ? `<details class="career-records" ${rows || survival ? '' : 'open'}><summary>Career records</summary>
     <div class="career-list">${careerRows}${careerSurvival}</div></details>` : '';
+  const earned = STAGES.filter((s) => s.mastery && pilot.mastery?.[s.mastery.key ?? s.id]).map((s) => s.mastery.name);
+  if (pilot.mastery?.[5]) earned.push('Gravity Platform mastery · Original route');
+  const mastery = earned.length ? `<section class="record-heading" aria-labelledby="record-mastery">
+    <h2 id="record-mastery">Mastery</h2><ul class="mastery-list">${earned.map((name) => `<li>${name}</li>`).join('')}</ul></section>` : '';
   return screen('Records', 'home', `<div class="record-heading"><h2>Current loadout</h2><p class="subtle">${SHIPS[pilot.ship].name} · ${loadoutContext(pilot)}</p></div>
-    ${rows || survival ? rows + survival : '<p class="subtle">Fly with this loadout to set a record.</p>'}${career}`);
+    ${rows || survival ? rows + survival : '<p class="subtle">Fly with this loadout to set a record.</p>'}${mastery}${career}`);
 }
 
 const settings = {

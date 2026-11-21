@@ -91,6 +91,7 @@ button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(
 .stage:disabled .stage-num{color:#a9b7c6}
 .stage-name{display:block;font:700 clamp(21px,5.5vw,26px)/.99 var(--display)}
 .stage-note{display:block;margin-top:3px;color:#c4d0d9;font:.71rem/1.12 var(--sans)}
+.stage-mastery-goal{display:block;margin-top:2px;color:var(--signal)}
 .stage-tag{display:flex;align-items:center;gap:3px;font:650 .70rem var(--mono);letter-spacing:.02em;text-align:right}
 .stage-tag .icon{width:15px;height:15px}
 .support-actions{display:grid;grid-template-columns:1fr auto;align-items:start;gap:9px;margin-top:2px}
@@ -138,6 +139,8 @@ button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(
 .record small{display:block;color:var(--secondary);font-size:.73rem;margin-top:4px}
 .record-heading{display:grid;gap:3px}
 .record-heading h2{font:700 24px/1 var(--display)}
+.mastery-list{display:grid;gap:3px;margin:0;padding-left:1.05em;color:var(--secondary);font-size:.78rem}
+.mastery-list li::marker{color:var(--signal)}
 .career-records summary{cursor:pointer;min-height:44px;padding:9px 12px;border:1px solid #435569;background:#142331e8;color:var(--paper);font:700 20px/1.15 var(--display)}
 .career-list{display:grid;gap:6px;padding-top:6px}
 .setting{min-height:50px;display:grid;grid-template-columns:1fr auto;align-items:center;gap:9px;padding:7px 11px;background:#142331e8;border:1px solid #485b6c}

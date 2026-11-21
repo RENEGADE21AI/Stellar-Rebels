@@ -106,6 +106,35 @@ function improvesRecord(record, previous) {
   return record.status === previous.status ? record.score > previous.score : record.status === 'clear';
 }
 
+function careerRecordKey(record, route) {
+  const rules = typeof record.rules === 'string' && /^arcade-\d+$/.test(record.rules) ? record.rules : 'legacy';
+  return `${rules}/${route}`;
+}
+
+function archiveCareerRecord(records, key, record, mode, stage) {
+  const history = records.history ??= {};
+  const entry = { ...record, mode, stage };
+  if (improvesRecord(entry, history[key])) history[key] = entry;
+}
+
+function settleCareer(pilot, record, stage) {
+  const records = pilot.records;
+  const route = stage?.id ?? 'endless';
+  const previous = stage ? records.arcade[route] : records.endless;
+  const key = careerRecordKey(record, route);
+  const previousKey = previous && careerRecordKey(previous, route);
+  const best = improvesRecord(record, previous);
+  if (best) {
+    if (previous && previousKey !== key) archiveCareerRecord(records, previousKey, previous, record.mode, record.stage);
+    if (stage) records.arcade[route] = record;
+    else records.endless = record;
+    if (records.history) delete records.history[key];
+  } else if (previousKey !== key) {
+    archiveCareerRecord(records, key, record, record.mode, record.stage);
+  }
+  return best;
+}
+
 function settleLoadout(pilot, record) {
   if (record.rules !== RULES_VERSION) return null;
   if (record.status === 'defeat' && (record.mode === 'endless' ? record.duration === 0 : record.score === 0)) return null;
@@ -175,9 +204,7 @@ export function settleRun(pilot, id, terminal) {
     award = updatedRewards ? defeatAward(stage, record, movement, repeatAward) : previousDefeatAward(stage, record, movement);
   }
 
-  const best = improvesRecord(record, stage ? pilot.records.arcade[stage.id] : pilot.records.endless);
-  if (best && stage) pilot.records.arcade[stage.id] = record;
-  if (best && !stage) pilot.records.endless = record;
+  const best = settleCareer(pilot, record, stage);
   const loadout = settleLoadout(pilot, record);
   pilot.salvage += award;
   delete pilot.active[id];
