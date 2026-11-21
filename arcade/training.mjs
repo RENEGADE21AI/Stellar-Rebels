@@ -40,7 +40,7 @@ export function advanceTraining(flight, training, events) {
       const x = p.x < 192 ? 260 : 110;
       flight.addEnemy({ kind:'scout', lane:x / 384, returns:false });
       const drone = flight.enemies.at(-1);
-      Object.assign(drone, { y:Math.max(65, p.y - 220), fireTimer:30, hull:.7, pace:.48 });
+      Object.assign(drone, { y:Math.max(65, p.y - 220), fireTimer:Infinity, hull:.7, pace:0 });
       training.nextThreat = flight.elapsed + 3.6;
     }
   }

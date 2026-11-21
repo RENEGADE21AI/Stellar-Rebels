@@ -20,6 +20,10 @@ const snapshots = {
   'arcade-7': {
     commit: '5c358f0d3a57d6eda7c89337891120a6a2b6064c',
     modules: collisionModules
+  },
+  'arcade-8': {
+    commit: '2fc36c248ff136c26d37a30d7afe8d375dfc3856',
+    modules: collisionModules
   }
 };
 

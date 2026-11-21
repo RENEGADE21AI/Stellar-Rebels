@@ -4,6 +4,8 @@ import { validFlightSeed } from './seed.mjs';
 const WEEK = 7 * 24 * 3600 * 1000;
 const SCHEMA = 1;
 const REWARD_VERSION = 2;
+const upgrades = Object.keys(UPGRADES);
+const loadoutLimit = 2 * (STAGES.length + 1) * Object.keys(SHIPS).length * Object.keys(SPECIALS).length * 2 ** upgrades.length;
 export const DEFAULT_SETTINGS = { music: true, effects: true, reduced: false, contrast: false, sensitivity: 'standard', trainingDone: false };
 
 export function normalizeCallSign(value) {
@@ -82,6 +84,48 @@ export function abandonRun(pilot, id) {
   delete pilot.active[id];
 }
 
+function loadoutKey(stage, ship, special, equipment) {
+  if ((stage !== null && !stageById(stage)) || !Object.hasOwn(SHIPS, ship) || !Object.hasOwn(SPECIALS, special) || !Array.isArray(equipment)) return null;
+  const installed = new Set(equipment);
+  const valid = upgrades.filter((key) => installed.has(key));
+  if (installed.size !== valid.length || valid.some((key) => UPGRADES[key].needs && !installed.has(UPGRADES[key].needs))) return null;
+  return `${RULES_VERSION}/${stage ?? 'endless'}/${ship}/${special}/${valid.join(',') || 'stock'}`;
+}
+
+export function loadoutBest(pilot, stage) {
+  const special = hasSpecial(pilot, pilot.special) ? pilot.special : 'ghost';
+  const key = loadoutKey(stage, pilot.ship, special, pilot.equipment);
+  return key ? pilot.records.loadouts?.[key] ?? null : null;
+}
+
+function improvesRecord(record, previous) {
+  if (!previous) return true;
+  if (record.mode === 'endless') {
+    return record.duration > previous.duration || (record.duration === previous.duration && record.score > previous.score);
+  }
+  return record.status === previous.status ? record.score > previous.score : record.status === 'clear';
+}
+
+function settleLoadout(pilot, record) {
+  if (record.rules !== RULES_VERSION) return null;
+  if (record.status === 'defeat' && (record.mode === 'endless' ? record.duration === 0 : record.score === 0)) return null;
+  const key = loadoutKey(record.stage, record.ship, record.special, record.equipment);
+  if (!key) return null;
+  const records = pilot.records.loadouts ??= {};
+  const previous = records[key] ?? null;
+  const improved = improvesRecord(record, previous);
+  if (improved) {
+    const { score, duration, status } = record;
+    records[key] = { score, duration, status };
+    const keys = Object.keys(records);
+    if (keys.length > loadoutLimit) {
+      const older = keys.filter((id) => !id.startsWith(`${RULES_VERSION}/`));
+      for (const id of older.slice(0, keys.length - loadoutLimit)) delete records[id];
+    }
+  }
+  return { improved, previous };
+}
+
 function previousDefeatAward(stage, record, movement) {
   if (record.duration < 24 || record.kills < 5 || movement < 54) return 0;
   const progress = Math.min(1, (record.duration - 18) / (stage.bossAt - 18));
@@ -117,7 +161,6 @@ export function settleRun(pilot, id, terminal) {
   let newShip = null;
   let newSpecial = null;
   let newStage = null;
-  let best = false;
   if (stage && cleared) {
     first = !pilot.clears[stage.id];
     pilot.clears[stage.id] = number(pilot.clears[stage.id]) + 1;
@@ -132,22 +175,18 @@ export function settleRun(pilot, id, terminal) {
     award = updatedRewards ? defeatAward(stage, record, movement, repeatAward) : previousDefeatAward(stage, record, movement);
   }
 
-  if (stage) {
-    const old = pilot.records.arcade[stage.id];
-    best = !old || (cleared && old.status !== 'clear') || (old.status === record.status && record.score > old.score);
-    if (best) pilot.records.arcade[stage.id] = record;
-  } else {
-    const old = pilot.records.endless;
-    best = !old || record.duration > old.duration || (record.duration === old.duration && record.score > old.score);
-    if (best) pilot.records.endless = record;
-  }
+  const best = improvesRecord(record, stage ? pilot.records.arcade[stage.id] : pilot.records.endless);
+  if (best && stage) pilot.records.arcade[stage.id] = record;
+  if (best && !stage) pilot.records.endless = record;
+  const loadout = settleLoadout(pilot, record);
   pilot.salvage += award;
   delete pilot.active[id];
   pilot.mastery ??= {};
   const masteryKey = run.rules === 'arcade-1' ? stage?.id : stage?.mastery?.key ?? stage?.id;
-  const mastery = cleared && Boolean(stage?.mastery) && terminal.mastery === true && !pilot.mastery[masteryKey];
+  const masteryMet = cleared && Boolean(stage?.mastery) && terminal.mastery === true;
+  const mastery = masteryMet && !pilot.mastery[masteryKey];
   if (mastery) pilot.mastery[masteryKey] = true;
-  const receipt = { ...record, award, first, best, newStage, newShip, newSpecial, mastery };
+  const receipt = { ...record, award, first, best, newStage, newShip, newSpecial, mastery, masteryMet, loadout };
   pilot.receipts[id] = receipt;
   const recent = Object.keys(pilot.receipts);
   for (const old of recent.slice(0, -20)) delete pilot.receipts[old];

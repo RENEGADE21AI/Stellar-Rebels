@@ -79,7 +79,7 @@ export function operatorWarnings(flight, dt) {
       }
     }
     if (warning.kind === 'rail' && bodiesMeet(pilotBody(flight), railBody(warning))) {
-      flight.damage(warning.x, HEIGHT * .55);
+      flight.damage(warning.x, flight.player.y, undefined, 'rail');
     }
     if (warning.kind === 'pull' && flight.player.y >= warning.y) {
       const offset = warning.x - flight.player.x;

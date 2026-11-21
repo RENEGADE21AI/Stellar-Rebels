@@ -56,6 +56,52 @@ test('title keeps the call sign, fits its controls, and teaches either first Arc
   } finally { await browser.close(); }
 });
 
+test('a fast touch release preserves pending steering and a canceled touch stops it', { skip: !origin, timeout:25000 }, async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport:{ width:390, height:844 }, isMobile:true, hasTouch:true, serviceWorkers:'block' });
+    await page.route(/\/app\.mjs$/, async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({ response, body:`${await response.text()}\nwindow.sampleSteering = () => ({\n        tick:state.flight.ticks, x:state.flight.player.x, aim:state.flight.xIntent,\n        unit:renderer.unit, cap:state.flight.ship.speed * .19 });` });
+    });
+    await page.clock.install();
+    await page.goto(origin);
+    await page.getByRole('button', { name:'Play', exact:true }).tap();
+    await page.getByRole('button', { name:'Skip training', exact:true }).tap();
+    await page.locator('#training-actions').waitFor({ state:'hidden' });
+    await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now() + 60)));
+    const touch = await page.context().newCDPSession(page);
+    const dispatch = (type, x) => touch.send('Input.dispatchTouchEvent', {
+      type, touchPoints:x === undefined ? [] : [{ x, y:659, id:1 }]
+    });
+    const sample = () => page.evaluate(() => window.sampleSteering());
+    const before = await sample();
+    await dispatch('touchStart', 150);
+    await dispatch('touchMove', 182);
+    await dispatch('touchEnd');
+    const released = await sample();
+    assert.equal(released.tick, before.tick);
+    assert.ok(Math.abs(released.aim - before.aim - 32 * 1.12 / released.unit) < .2);
+    await page.clock.runFor(240);
+    const settled = await sample();
+    assert.ok(Math.abs(settled.x - released.aim) < .08);
+
+    await dispatch('touchStart', 150);
+    await dispatch('touchMove', 200);
+    await dispatch('touchCancel');
+    const canceled = await sample();
+    assert.equal(canceled.aim, canceled.x);
+    await page.clock.runFor(240);
+    assert.ok(Math.abs((await sample()).x - settled.x) < .08);
+
+    await dispatch('touchStart', 150);
+    await dispatch('touchMove', 350);
+    await dispatch('touchEnd');
+    const flick = await sample();
+    assert.ok(Math.abs(flick.aim - flick.x - flick.cap) < .08);
+  } finally { await browser.close(); }
+});
+
 test('a returning playfield follows an operating system reduction preference', { skip: !origin, timeout:15000 }, async () => {
   const browser = await chromium.launch();
   try {
@@ -441,7 +487,7 @@ test('Title Screen is reachable from a clear, a loss, and Endless results', { sk
     for (const [name, status, viewport] of [
       ['Stage clear', 'clear', { width:390, height:844 }],
       ['Flight lost', 'defeat', { width:320, height:568 }],
-      ['New survival best', 'defeat', { width:844, height:390 }]
+      ['Run complete', 'defeat', { width:844, height:390 }]
     ]) {
       const context = await browser.newContext({ viewport, isMobile:true, hasTouch:true, serviceWorkers:'block' });
       try {

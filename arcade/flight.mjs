@@ -16,6 +16,8 @@ const maxReturning = 3;
 const maxReturns = 2;
 const returnSpeed = 620;
 const returnLanes = [.18, .34, .50, .66, .82].map((lane) => lane * WIDTH);
+const routeStream = 0x9e3779b9;
+const endlessFlanks = new Set(['spear', 'anvil', 'hook', 'trap', 'surge', 'specters']);
 const projectileRadii = { bolt: 4, seed: 4.5, rock: 12, lance: 4.8, blade: 5, pulse: 4.7, orb: 5.1, specter: 5.4 };
 const duration = (value) => Math.max(0, value);
 
@@ -29,6 +31,7 @@ export class Flight {
   constructor(run, options = {}) {
     this.run = run;
     this.random = flightRandom(run.seed);
+    this.flankRandom = flightRandom(run.seed, routeStream);
     this.recordInput = options.recordInput;
     this.ticks = 0;
     this.inputFlags = 0;
@@ -160,14 +163,14 @@ export class Flight {
     p.ghostEnergy = Math.min(GHOST.capacity, p.ghostEnergy + amount);
   }
 
-  damage(x, y, realm = PHYSICAL) {
+  damage(x, y, realm = PHYSICAL, cause = 'collision') {
     const p = this.player;
     if (p.realm !== realm || p.guard || this.status !== 'active') return false;
     if (p.barrier) {
       p.barrier = 0;
       p.barrierTime = 0;
       p.guard = .58;
-      this.signal('barrier', p.x, p.y);
+      this.signal('barrier', p.x, p.y, { x, y, realm, cause });
       this.message('One hit blocked.', 1.6, 'pickup', 'Shield spent');
       return true;
     }
@@ -176,8 +179,9 @@ export class Flight {
     p.guard = 1.04;
     this.combo = 0;
     this.comboTime = 0;
-    this.signal('hurt', p.x, p.y, { x, y });
+    this.signal('hurt', p.x, p.y, { x, y, realm, cause });
     if (p.hull <= 0) {
+      this.damageCause = cause;
       this.signal('playerDown', p.x, p.y);
       this.status = 'defeat';
     }
@@ -292,7 +296,9 @@ export class Flight {
       if (!this.boss && this.elapsed >= this.endlessNext) {
         const loop = ['arrow','spear','cross','anvil','hook','splitWing','sweep','escort','break','trap','surge','specters'];
         const unlocked = Math.min(loop.length, 4 + Math.floor(this.elapsed / 23));
-        this.queue(loop[this.endlessWave % unlocked], this.endlessWave % 2 === 1);
+        const wing = loop[this.endlessWave % unlocked];
+        const flip = this.endlessWave >= 8 && endlessFlanks.has(wing) ? this.flankRandom() < .5 : this.endlessWave % 2 === 1;
+        this.queue(wing, flip);
         this.endlessWave++;
         this.endlessNext = this.elapsed + Math.max(3.25, 6.1 - this.elapsed / 95);
         if (this.endlessWave % 4 === 0) {
@@ -306,7 +312,8 @@ export class Flight {
       this.pressure = 1.08 + .035 * (this.stage.id - 1) + Math.min(.075, this.elapsed / 1400);
       const beat = this.stage.waves[this.waveIndex];
       if (beat && this.elapsed >= beat[0]) {
-        this.queue(beat[1], Boolean(beat[2]), beat[3]);
+        const [, wing, flank, reward] = beat;
+        this.queue(wing, flank === 'flank' ? this.flankRandom() < .5 : Boolean(flank), reward);
         this.waveIndex++;
       }
       const drop = this.stage.drops[this.dropIndex];
@@ -727,8 +734,12 @@ export class Flight {
         if (!s.trainingContact && bodiesMeet(hostileBody(s), cockpit)) {
           s.trainingContact = this.player.ghostTime > 0 ? 'phased' : 'missed';
         }
-      } else if (s.live && (s.realm ?? PHYSICAL) === this.player.realm && !this.player.guard && bodiesMeet(hostileBody(s), cockpit)) {
-        if (this.damage(s.x, s.y, s.realm)) s.live = false;
+      } else if (s.live && (s.realm ?? PHYSICAL) === this.player.realm && !this.player.guard) {
+        const contact = contactTime(hostileBody(s), cockpit);
+        if (contact === Infinity) continue;
+        const { x, y } = impactAt(s, contact);
+        const cause = s.kind === 'rock' ? 'debris' : s.realm === SPECTRAL ? 'spectral' : 'fire';
+        if (this.damage(x, y, s.realm, cause)) s.live = false;
       }
     }
     this.hostile = this.hostile.filter((s) => s.live && s.age < 8 && s.y < HEIGHT + 28 && s.y > -40 && s.x > -42 && s.x < WIDTH + 42);
@@ -786,6 +797,6 @@ export class Flight {
     const condition = this.stage.mastery?.condition;
     const met = condition === 'parts' ? this.boss?.parts.every((p) => p.hull <= 0) : condition === 'cleanBoss' && this.bossDamage === 0;
     return { status: this.status, score: this.score, duration: this.elapsed, kills: this.kills, breaks: this.breaks, movement: this.movement,
-      mastery: Boolean(!this.endless && this.status === 'clear' && met) };
+      mastery: Boolean(!this.endless && this.status === 'clear' && met), damageCause: this.damageCause };
   }
 }

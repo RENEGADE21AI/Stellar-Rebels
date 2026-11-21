@@ -224,14 +224,14 @@ export class FlightScene {
           this.burst(e.x, e.y, '#c6fff0', reduce ? 4 : 15, 136, .29);
           break;
         case 'pickup': this.explode(e.x, e.y, PICKUPS[e.detail].color, 16, 19); break;
-        case 'barrier': this.explode(e.x, e.y, '#7ad5ff', 15, 26); break;
+        case 'barrier': this.hullImpact(e, reduce, true); break;
         case 'ghostStart': this.phaseFlash(e.x, e.y, '#bbceff'); break;
         case 'ghostEnd': this.burst(e.x, e.y, '#e4c3ff', 12, 91, .43); break;
         case 'realmHop': case 'wraithShift': this.phaseFlash(e.x, e.y, realmTint(e.detail)); break;
         case 'veilHit': this.burst(e.x, e.y, '#b6a0db', 2, 37, .28); break;
         case 'hurt':
-          this.hurtPulse = reduce ? .13 : .47;
-          this.explode(e.x, e.y, '#ff705d', 17, 15);
+          this.hurtPulse = reduce ? .13 : .36;
+          this.hullImpact(e, reduce, false);
           break;
         case 'playerDown':
           this.death = { x:e.x, y:e.y, reduced:reduce, age:0, burst:false, final:false };
@@ -241,6 +241,18 @@ export class FlightScene {
       }
       if (reduce) this.cameraPulse = 0;
     }
+  }
+
+  hullImpact(event, reduced, blocked) {
+    const { x, y, detail } = event;
+    const dx = (detail?.x ?? x) - x;
+    const dy = (detail?.y ?? y) - y;
+    const edge = Math.min(1, 13 / Math.max(1, Math.hypot(dx, dy)));
+    const contactX = x + dx * edge;
+    const contactY = y + dy * edge;
+    const color = blocked ? '#85dbff' : detail?.realm === SPECTRAL ? '#e2c5ff' : '#ffad83';
+    this.burst(contactX, contactY, color, reduced ? 3 : 9, 122, .24);
+    this.shocks.push({ x:contactX, y:contactY, color, life:0, total:.24, radius:blocked ? 16 : 11, hollow:true });
   }
 
   explode(x, y, color, count, radius) {

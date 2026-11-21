@@ -1,8 +1,8 @@
-import { BOSSES, FIXED_TICK, HEIGHT, PICKUPS, SHIPS, SPECIALS, STAGES, UPGRADES, WIDTH, stageById } from './catalog.mjs';
+import { BOSSES, FIXED_TICK, HEIGHT, PICKUPS, RULES_VERSION, SHIPS, SPECIALS, STAGES, UPGRADES, WIDTH, stageById } from './catalog.mjs';
 import { Flight } from './flight.mjs';
 import { FlightScene, loadSprite, spriteUrl } from './scene.mjs';
 import { FlightAudio } from './audio.mjs';
-import { PilotStore, abandonRun, beginRun, equip, equipSpecial, hasShip, hasSpecial, hasStage, install, normalizeCallSign, settleRun } from './pilot.mjs';
+import { PilotStore, abandonRun, beginRun, equip, equipSpecial, hasShip, hasSpecial, hasStage, install, loadoutBest, normalizeCallSign, settleRun } from './pilot.mjs';
 import { captureReplay } from './replay.mjs';
 import { otherRealm, realmLabel } from './wraith.mjs';
 import { mountTitlePatrol } from './title-patrol.mjs';
@@ -119,6 +119,12 @@ function nextStage(pilot) {
   return STAGES.find((stage) => !pilot.clears[stage.id] && hasStage(pilot, stage.id));
 }
 
+function loadoutContext(pilot) {
+  const special = SPECIALS[pilot.special]?.name ?? SPECIALS.ghost.name;
+  const mods = pilot.equipment.length;
+  return `${special} · ${mods ? `${mods} upgrade${mods === 1 ? '' : 's'}` : 'Stock'}`;
+}
+
 function stages() {
   const { pilot } = state;
   const next = nextStage(pilot);
@@ -126,22 +132,26 @@ function stages() {
     const available = hasStage(pilot, s.id);
     const clear = Boolean(pilot.clears[s.id]);
     const tag = available ? clear ? `${icon('check')} Replay` : 'Launch' : `${icon('lock')} Locked`;
+    const record = available ? loadoutBest(pilot, s.id) : null;
+    const mastered = Boolean(pilot.mastery?.[s.mastery?.key ?? s.id]);
     let note = s.region;
     if (!available) note = `Clear ${stageById(s.id - 1)?.name ?? 'the previous stage'}`;
+    else if (record?.status === 'clear') note = `${num(record.score)} loadout best${mastered ? ' · Mastered' : ''}`;
     else if (clear && s.mastery) {
-      note = pilot.mastery?.[s.mastery.key ?? s.id] ? 'Mastered'
-        : s.mastery.condition === 'parts' ? 'Destroy both turrets first' : 'Keep hull intact in the boss fight';
-    }
+      note = mastered ? 'Set a loadout best'
+        : s.mastery.condition === 'parts' ? 'Disarm both turrets' : 'Clean boss fight';
+    } else if (record) note = `${num(record.score)} best attempt`;
     return `<li><button class="stage ${s.id === next?.id ? 'next' : ''}" style="--stage-color:${s.accent}" data-action="fly:${s.id}" ${available ? '' : 'disabled'}>
       <span class="stage-num">${chapter(s.id)}</span><span><span class="stage-name">${s.name}</span><span class="stage-note">${note}</span></span>
       <span class="stage-tag">${tag}</span></button></li>`;
   }).join('');
+  const survival = loadoutBest(pilot, null);
   return screen('Stage Select', 'home', `
-    <div class="cardline"><strong>${SHIPS[pilot.ship].name} equipped</strong><button data-action="hangar:stages">Change ship ${icon('next')}</button></div>
+    <div class="cardline"><div class="stage-loadout"><strong>${SHIPS[pilot.ship].name}</strong><small>${loadoutContext(pilot)}</small></div><button data-action="hangar:stages">Change ship ${icon('next')}</button></div>
     ${action('Practice', 'help:stages', 'quiet', 'play')}
     <ol class="stage-list" aria-label="Arcade stages">${rows}</ol>
     <div class="support-actions"><div class="endless-entry">${action('Endless', 'fly:endless', 'quiet', 'endless', 'aria-describedby="endless-note"')}
-    <small id="endless-note">Survival record · 0 Salvage</small></div></div>`, wallet());
+    <small id="endless-note">${survival ? `${time(survival.duration)} loadout best` : 'Survival record'} · 0 Salvage</small></div></div>`, wallet());
 }
 
 function hangar() {
@@ -200,26 +210,39 @@ function recordLine(title, copy, value) {
 
 function recordContext(record) {
   const assistance = [];
-  if (record.assistance.reduced) assistance.push('Reduced motion');
-  if (record.assistance.contrast) assistance.push('High contrast');
-  if (['gentle', 'direct'].includes(record.assistance.sensitivity)) assistance.push(`${record.assistance.sensitivity} drag`);
-  const mods = record.equipment.flatMap((key) => Object.hasOwn(UPGRADES, key) ? [UPGRADES[key].name] : []).join(', ') || 'Stock';
-  return `${SHIPS[record.ship]?.name ?? 'Fighter'} · ${mods}${assistance.length ? ` · ${assistance.join(', ')}` : ''}`;
+  if (record.assistance?.reduced) assistance.push('Reduced motion');
+  if (record.assistance?.contrast) assistance.push('High contrast');
+  if (['gentle', 'direct'].includes(record.assistance?.sensitivity)) assistance.push(`${record.assistance.sensitivity} drag`);
+  const mods = (record.equipment ?? []).flatMap((key) => Object.hasOwn(UPGRADES, key) ? [UPGRADES[key].name] : []).join(', ') || 'Stock';
+  const notes = [SHIPS[record.ship]?.name ?? 'Fighter', SPECIALS[record.special]?.name ?? SPECIALS.ghost.name, mods, ...assistance];
+  if (record.rules !== RULES_VERSION) notes.push('Earlier rules');
+  return notes.join(' · ');
 }
 
 function records() {
-  const { arcade, endless } = state.pilot.records;
-  const rows = STAGES.filter((s) => arcade[s.id]).map((s) => {
+  const { pilot } = state;
+  const { arcade, endless } = pilot.records;
+  const rows = STAGES.map((s) => {
+    const best = loadoutBest(pilot, s.id);
+    if (!best) return '';
+    const mastered = pilot.mastery?.[s.mastery?.key ?? s.id];
+    return recordLine(s.name, `${best.status === 'clear' ? 'Clear' : 'Best attempt'} · ${time(best.duration)}${mastered ? ' · Mastered' : ''}`, num(best.score));
+  }).join('');
+  const bestSurvival = loadoutBest(pilot, null);
+  const survival = bestSurvival ? recordLine('Endless survival', `${num(bestSurvival.score)} points`, time(bestSurvival.duration)) : '';
+  const careerRows = STAGES.filter((s) => arcade[s.id]).map((s) => {
     const r = arcade[s.id];
     const badges = [];
-    if (state.pilot.mastery?.[s.mastery?.key ?? s.id]) badges.push('Mastered');
-    if (s.id === 5 && state.pilot.mastery?.[5]) badges.push('Gravity Platform mastery');
+    if (pilot.mastery?.[s.mastery?.key ?? s.id]) badges.push('Mastered');
+    if (s.id === 5 && pilot.mastery?.[5]) badges.push('Gravity Platform mastery');
     if (s.id === 5 && r.rules === 'arcade-1') badges.push('Original route score');
     return recordLine(s.name, `${r.status === 'clear' ? 'Cleared' : 'Best attempt'} · ${time(r.duration)} · ${recordContext(r)}${badges.length ? ' · ' + badges.join(' · ') : ''}`, num(r.score));
   }).join('');
-  const survival = endless ? recordLine('Endless survival', `${num(endless.score)} score · ${recordContext(endless)}`, time(endless.duration))
-    : recordLine('Endless survival', 'Fly a survival run to set a record.', '—');
-  return screen('Records', 'home', `<p class="subtle">Personal bests saved on this device.</p>${rows || '<p class="subtle">Finish a stage to start your record.</p>'}${survival}`);
+  const careerSurvival = endless ? recordLine('Endless survival', `${num(endless.score)} score · ${recordContext(endless)}`, time(endless.duration)) : '';
+  const career = careerRows || careerSurvival ? `<details class="career-records" ${rows || survival ? '' : 'open'}><summary>Career records</summary>
+    <div class="career-list">${careerRows}${careerSurvival}</div></details>` : '';
+  return screen('Records', 'home', `<div class="record-heading"><h2>Current loadout</h2><p class="subtle">${SHIPS[pilot.ship].name} · ${loadoutContext(pilot)}</p></div>
+    ${rows || survival ? rows + survival : '<p class="subtle">Fly with this loadout to set a record.</p>'}${career}`);
 }
 
 const settings = {
@@ -276,7 +299,7 @@ function helpView() {
     ['Energy', 'Start each flight with full energy. It recharges over time when you aren’t phasing. Hits and kills charge it faster.'],
     ['Specials', 'Equip a Special in the Hangar. Tap its button or press Space to use it. Ghost Shift phases through physical fire for one second. Ion Burst clears nearby physical shots.'],
     ['Wraith realms', 'Tap Hop or press Space to change realms. Match the Wraith’s realm and shoot its marked core. Solid rounds hit physical ships. Hollow diamonds hit ghost ships.'],
-    ['Read the warning', 'Leave striped beam lanes. Fly through the marked open seam in a debris wall.'],
+    ['Read the warning', 'Leave striped beam lanes. Fly through the opening between the rocks.'],
     ['Watch the edges', 'Some surviving fighters circle up the side and return in a different lane. They keep any damage you dealt.'],
     ['Break the modules', 'Shoot hardpoints framed by corner brackets. A crossed-out module is offline.'],
     ['Break a formation', 'Target the bracketed command relay. Stop its volley and hit the exposed wing before it recovers.'],
@@ -289,6 +312,39 @@ function helpView() {
     rows.map(([title, text]) => `<div class="info"><strong>${title}</strong><p class="subtle">${text}</p></div>`).join(''));
 }
 
+function resultComparison(receipt) {
+  if (!receipt?.loadout) return '';
+  const { previous, improved } = receipt.loadout;
+  const endless = receipt.mode === 'endless';
+  if (!previous) return endless ? 'Survival record set' : receipt.status === 'clear' ? 'First clear with this loadout' : '';
+
+  if (endless && receipt.duration !== previous.duration) {
+    const difference = Math.abs(receipt.duration - previous.duration);
+    const span = `${num(difference)} second${difference === 1 ? '' : 's'}`;
+    return improved ? `New survival best · ${span} longer` : `${span} short of your survival best`;
+  }
+  if (receipt.status !== previous.status) {
+    return receipt.status === 'clear' ? 'First clear with this loadout' : `Loadout best on a clear · ${num(previous.score)} points`;
+  }
+  const difference = receipt.score - previous.score;
+  const points = `${num(Math.abs(difference))} point${Math.abs(difference) === 1 ? '' : 's'}`;
+  if (endless) {
+    if (!difference) return 'Matched your survival best';
+    return improved ? `Same survival time · +${points}` : `Same survival time · ${points} short`;
+  }
+  const best = receipt.status === 'clear' ? 'loadout best' : 'best attempt';
+  if (!difference) return `Matched your ${best}`;
+  return improved ? `New ${best} · +${points}` : `${points} short of your ${best}`;
+}
+
+const retryAdvice = {
+  debris: 'Fly through the opening between the rocks.',
+  rail: 'Leave the striped lane before the rail fires.',
+  spectral: 'Dodge hollow rounds while you are in the ghost realm.',
+  collision: 'Keep your cockpit clear of enemy hulls.',
+  fire: 'Move across incoming fire and save your Special for tight spots.'
+};
+
 function results() {
   const p = state.pending;
   const report = p.receipt ?? p.terminal;
@@ -298,10 +354,10 @@ function results() {
   const finale = clear && stage?.id === 6;
   const relayCleared = clear && stage?.id === 3;
   const next = p.receipt && clear && stageById(stage.id + 1);
-  const title = finale ? 'Fleet defeated' : relayCleared ? 'Relay offline' : clear ? 'Stage clear' : isEndless ? p.receipt?.best ? 'New survival best' : 'Run complete' : 'Flight lost';
+  const title = finale ? 'Fleet defeated' : relayCleared ? 'Relay offline' : clear ? 'Stage clear' : isEndless ? 'Run complete' : 'Flight lost';
   const repeat = isEndless ? 'Fly again' : clear ? 'Replay stage' : 'Retry stage';
   const retry = `fly:${isEndless ? 'endless' : stage.id}`;
-  const progression = !isEndless && p.receipt ? `<p class="result-reward">${icon('salvage')} <span>${p.receipt.award ? `+${num(p.receipt.award)} Salvage ${store.temporary ? 'this session' : 'banked'}` : '0 Salvage earned'}</span>${p.receipt.first ? '<small>First clear</small>' : ''}</p>` : '';
+  const progression = p.receipt?.award ? `<p class="result-reward">${icon('salvage')} <span>+${num(p.receipt.award)} Salvage ${store.temporary ? 'this session' : 'banked'}</span>${p.receipt.first ? '<small>First clear</small>' : ''}</p>` : '';
   const unlocked = [
     p.receipt?.newStage ? `${stageById(p.receipt.newStage).name} unlocked` : null,
     p.receipt?.newSpecial === 'ion' ? 'Ion Burst unlocked' : null
@@ -315,7 +371,11 @@ function results() {
     : !p.receipt ? (p.error ? action('Retry saving', 'settle', 'primary', 'check') : '')
     : next ? action('Next Flight', `fly:${next.id}`, 'primary', 'next', `aria-label="Next Flight · ${next.name}"`)
       : finale ? action('Return to stages', 'view:stages', 'primary') : action(repeat, retry, 'primary');
-  const mastery = p.receipt && clear && stage?.mastery ? `<p class="subtle">${state.pilot.mastery?.[stage.mastery.key ?? stage.id] ? 'Mastered · ' + stage.mastery.name : stage.mastery.detail}</p>` : '';
+  const mastery = p.receipt && clear && stage?.mastery ? `<p class="subtle">${p.receipt.mastery ? `Mastery earned · ${stage.mastery.name}`
+    : p.receipt.masteryMet ? `Mastery repeated · ${stage.mastery.name}` : stage.mastery.detail}</p>` : '';
+  const comparison = resultComparison(p.receipt);
+  const cause = p.terminal.damageCause;
+  const advice = !clear && Object.hasOwn(retryAdvice, cause) ? retryAdvice[cause] : '';
   const secondary = [
     p.receipt && !finale ? action('Arcade', 'view:stages', 'quiet', '') : '',
     p.receipt || p.discarded ? action('Title Screen', 'view:home', 'quiet', '') : '',
@@ -331,13 +391,14 @@ function results() {
         <h1 tabindex="-1">${title}</h1>
       </header>
       <section class="result-facts" aria-label="Flight stats">
-        <div class="result-score"><span class="caption">${!isEndless && p.receipt?.best && report.score > 0 ? 'Personal best' : 'Score'}</span><strong>${num(report.score)}</strong></div>
+        <div class="result-score"><span class="caption">Score</span><strong>${num(report.score)}</strong></div>
         <div><span class="caption">Flight time</span><strong>${time(report.duration)}</strong></div>
         <div><span class="caption">Targets</span><strong>${num(report.kills)}</strong></div>
       </section>
-      ${progression || mastery || unlocked.length ? `<div class="result-earned">${progression}
+      ${progression || mastery || comparison || advice || unlocked.length ? `<div class="result-earned">
+        ${comparison ? `<p class="result-comparison">${comparison}</p>` : ''}
+        ${mastery}${advice ? `<p class="subtle">${advice}</p>` : ''}${progression}
         ${unlocked.length ? `<ul class="result-unlocks">${unlocked.map((label) => `<li>${icon('check')}${label}</li>`).join('')}</ul>` : ''}
-        ${mastery}
       </div>` : ''}
       ${pendingCopy}${primary}
       ${secondary.length ? `<nav class="result-secondary" aria-label="After the flight">${secondary.join('')}</nav>` : ''}
@@ -523,10 +584,14 @@ function restoreLaunch(launch, warning = '') {
   } else announce('Launch canceled.');
 }
 
-function clearInput() {
+function releasePointer() {
   const active = state.pointer;
   state.pointer = null;
   if (active && sky.hasPointerCapture(active.id)) sky.releasePointerCapture(active.id);
+}
+
+function clearInput() {
+  releasePointer();
   state.keys.clear();
   state.flight?.reanchor();
 }
@@ -659,24 +724,50 @@ function refreshHud(restart = false) {
   const activeBoss = Boolean(f.boss && f.boss.hull > 0);
   const showRealm = activeBoss && f.realmHop;
   const message = f.notice?.time > 0 ? f.notice : null;
-  const bossCue = showRealm && f.boss.shifting;
-  const pickup = message?.kind === 'pickup';
-  const title = message?.title || (pickup ? message.copy : bossCue ? 'Wraith' : f.stage.name);
-  const tip = pickup ? message.title && message.brief !== message.title ? message.brief : '' : message?.copy;
+  const bossCue = Boolean(showRealm && f.boss.shifting);
   const flash = $('flight-message');
   const visible = Boolean(message || bossCue);
-  flash.classList.toggle('shown', visible);
-  flash.dataset.kind = message?.kind ?? (bossCue ? 'warning' : '');
-  flash.style.setProperty('--notice-opacity', motionLimited(f.run.assistance) || bossCue || !message ? '1' : String(Math.min(1, message.time / .45)));
-  content('flight-name', visible ? title : '');
-  $('flight-name').hidden = !visible;
-  $('flight-tip').hidden = !tip;
-  content('flight-tip', tip ?? '');
-  content('clock', time(f.elapsed));
-  content('flight-score', num(f.score));
+  const messageChanged = lastHud.message !== message;
+  if (restart || messageChanged || lastHud.bossCue !== bossCue) {
+    const pickup = message?.kind === 'pickup';
+    const title = message?.title || (pickup ? message.copy : bossCue ? 'Wraith' : f.stage.name);
+    const tip = pickup ? message.title && message.brief !== message.title ? message.brief : '' : message?.copy;
+    flash.classList.toggle('shown', visible);
+    flash.dataset.kind = message?.kind ?? (bossCue ? 'warning' : '');
+    content('flight-name', visible ? title : '');
+    $('flight-name').hidden = !visible;
+    $('flight-tip').hidden = !tip;
+    content('flight-tip', tip ?? '');
+    $('flight-progress').hidden = !bossCue;
+    $('boss-realm').hidden = !bossCue;
+    lastHud.bossCue = bossCue;
+    if (message && (restart || messageChanged) && ['warning', 'pickup', 'tactic', 'training'].includes(message.kind)) {
+      announce([message.title, message.copy].filter(Boolean).join('. '));
+    }
+    lastHud.message = message;
+  }
+  if (visible) {
+    const opacity = !message || bossCue || message.time >= .45 || motionLimited(f.run.assistance) ? 1 : message.time / .45;
+    if (lastHud.opacity !== opacity) {
+      flash.style.setProperty('--notice-opacity', opacity);
+      lastHud.opacity = opacity;
+    }
+  }
+  const seconds = Math.floor(f.elapsed);
+  if (lastHud.seconds !== seconds) {
+    lastHud.seconds = seconds;
+    content('clock', time(seconds));
+  }
+  if (lastHud.score !== f.score) {
+    lastHud.score = f.score;
+    content('flight-score', num(f.score));
+  }
   content('flight-progress', showRealm ? `You · ${realmLabel(p.realm)}` : '');
-  $('flight-progress').hidden = !bossCue;
-  content('chain', f.combo >= 2 ? `×${f.combo}` : '');
+  if (lastHud.combo !== f.combo) {
+    lastHud.combo = f.combo;
+    content('chain', f.combo >= 2 ? `×${f.combo}` : '');
+    $('chain').hidden = f.combo < 2;
+  }
   const hullState = `${p.hull}/${p.maxHull}`;
   if (lastHud.hullState !== hullState) {
     lastHud.hullState = hullState;
@@ -685,24 +776,27 @@ function refreshHud(restart = false) {
     $('hull').setAttribute('aria-valuenow', p.hull);
   }
   refreshGhost(f);
-  $('boss-meter').hidden = !activeBoss;
-  $('boss-name').hidden = true;
-  $('boss-realm').hidden = !bossCue;
+  if (lastHud.activeBoss !== activeBoss) {
+    lastHud.activeBoss = activeBoss;
+    $('boss-meter').hidden = !activeBoss;
+  }
   if (activeBoss) {
     const boss = f.boss;
     const realm = boss.realm === 'ghost' ? 'Ghost' : 'Physical';
     const transition = boss.shifting ? `${realm} → ${boss.realm === 'ghost' ? 'Physical' : 'Ghost'}` : realm;
     content('boss-name', boss.spec.name);
     if (showRealm) content('boss-realm', transition);
-    $('boss-meter').dataset.realm = f.realmHop ? boss.realm : '';
+    const bossRealm = showRealm ? boss.realm : '';
+    if (lastHud.bossRealm !== bossRealm) {
+      lastHud.bossRealm = bossRealm;
+      $('boss-meter').dataset.realm = bossRealm;
+    }
     const hp = Math.max(0, f.boss.hull / f.boss.spec.hull);
-    $('boss-value').style.transform = `scaleX(${hp.toFixed(3)})`;
-    $('boss-track').setAttribute('aria-valuenow', Math.ceil(hp * 100));
-  }
-  $('chain').hidden = f.combo < 2;
-  if (message && (lastHud.message !== message || restart)) {
-    lastHud.message = message;
-    if (['warning', 'pickup', 'tactic', 'training'].includes(message.kind)) announce([message.title,message.copy].filter(Boolean).join('. '));
+    if (lastHud.bossHp !== hp) {
+      lastHud.bossHp = hp;
+      $('boss-value').style.transform = `scaleX(${hp.toFixed(3)})`;
+      $('boss-track').setAttribute('aria-valuenow', Math.ceil(hp * 100));
+    }
   }
 }
 
@@ -921,19 +1015,38 @@ sky.addEventListener('pointerdown', (event) => {
   event.preventDefault();
   audio.unlock();
   state.input = event.pointerType === 'mouse' ? 'pointer' : 'touch';
-  clearInput();
+  if (state.keys.size) clearInput();
   state.pointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
   sky.setPointerCapture(event.pointerId);
 });
-sky.addEventListener('pointermove', (event) => {
+
+function movePointer(event) {
   const pointer = state.pointer;
-  if (!pointer || pointer.id !== event.pointerId || state.mode !== 'playing') return;
+  if (!pointer || pointer.id !== event.pointerId || state.mode !== 'playing') return false;
   const sensitivity = { gentle: .78, standard: 1.12, direct: 1.37 }[state.flight.run.assistance.sensitivity] ?? 1.12;
   state.flight.drag((event.clientX - pointer.x) / renderer.unit * sensitivity, (event.clientY - pointer.y) / renderer.unit * sensitivity);
   pointer.x = event.clientX;
   pointer.y = event.clientY;
+  return true;
+}
+
+sky.addEventListener('pointermove', movePointer);
+sky.addEventListener('pointerup', (event) => {
+  if (!movePointer(event)) return;
+  // Keep a short swipe that finished between simulation ticks. Limit long flicks
+  // so the ship never keeps travelling across the arena after the pilot lifts.
+  const flight = state.flight;
+  const dx = flight.xIntent - flight.player.x;
+  const dy = flight.yIntent - flight.player.y;
+  const distance = Math.hypot(dx, dy);
+  const releaseTravel = flight.ship.speed * .19;
+  if (distance > releaseTravel) {
+    const trim = releaseTravel / distance - 1;
+    flight.drag(dx * trim, dy * trim);
+  }
+  releasePointer();
 });
-for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+for (const type of ['pointercancel', 'lostpointercapture']) {
   sky.addEventListener(type, (event) => { if (state.pointer?.id === event.pointerId) clearInput(); });
 }
 
@@ -954,7 +1067,7 @@ window.addEventListener('keydown', (event) => {
   } else if (action?.startsWith('move_') && state.mode === 'playing') {
     event.preventDefault();
     state.input = 'keyboard';
-    if (state.pointer) clearInput();
+    if (state.pointer || !state.keys.size) clearInput();
     state.keys.add(action);
     updateKeys();
   }
