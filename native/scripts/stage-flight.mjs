@@ -55,7 +55,7 @@ const built = await build({
 pack[`${generation}/native-app.js`] = built.outputFiles[0].contents;
 
 let html = read(path.join(web, 'index.html'));
-html = replaceRequired(html, '<html lang="en" data-pack="true">', '<html lang="en" data-native-flight="true">');
+html = replaceRequired(html, '<html lang="en" data-pack="true">', '<html lang="en" data-pack="true" data-native-flight="true">');
 html = replaceRequired(html, `<base href="/${generation}/">`, `<base href="./${generation}/">`);
 html = replaceRequired(html, '<link rel="manifest" href="/site.webmanifest">',
   `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src file:; style-src file: 'unsafe-inline'; img-src file: data:; font-src file:; media-src file:; connect-src 'none'; form-action 'none'; frame-src 'none'; object-src 'none'">`);

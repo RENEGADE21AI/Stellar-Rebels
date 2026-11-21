@@ -8,8 +8,10 @@
     "icon": "./generated/icon.png",
     "ios": {
       "bundleIdentifier": "com.renegade21ai.stellarrebels",
+      "buildNumber": "1",
       "supportsTablet": true,
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": { "NSAllowsArbitraryLoads": false },
         "UISupportedInterfaceOrientations~ipad": [
           "UIInterfaceOrientationPortrait", "UIInterfaceOrientationPortraitUpsideDown",
@@ -29,6 +31,7 @@
     },
     "android": {
       "package": "com.renegade21ai.stellarrebels",
+      "versionCode": 1,
       "adaptiveIcon": { "foregroundImage": "./generated/adaptive.png", "backgroundColor": "#080f19" },
       "blockedPermissions": [
         "android.permission.CAMERA", "android.permission.RECORD_AUDIO", "android.permission.ACCESS_COARSE_LOCATION",
