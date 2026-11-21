@@ -3,6 +3,10 @@ import { newPilot, PilotStore } from '../../arcade/pilot.mjs';
 let sequence = 0;
 const pending = new Map();
 const client = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
+let activate;
+const hostReady = new Promise((resolve) => { activate = resolve; });
+globalThis.stellarNativeReady = () => activate();
+if (globalThis.stellarNativeSession) activate();
 
 globalThis.stellarNativeReply = ({ id, client: recipient, ok, value }) => {
   if (recipient !== client) return;
@@ -22,11 +26,24 @@ export function nativeRequest(op, data) {
     const timer = setTimeout(() => {
       pending.delete(id);
       reject(Error('The native host did not respond'));
-    }, op === 'share' ? 120_000 : 4000);
+    }, op === 'commerce-purchase' || op === 'commerce-restore' ? 300_000 : op === 'share' ? 120_000 : 4000);
     pending.set(id, { resolve, reject, timer });
-    native.postMessage(JSON.stringify({ id, client, documentUrl: location.href, op, data }));
+    void hostReady.then(() => {
+      if (!pending.has(id)) return;
+      try {
+        native.postMessage(JSON.stringify({
+          id, client, documentUrl: location.href, session: globalThis.stellarNativeSession, op, data
+        }));
+      } catch (error) {
+        pending.delete(id);
+        clearTimeout(timer);
+        reject(error);
+      }
+    });
   });
 }
+
+globalThis.stellarCommerce = (op, data) => nativeRequest(op, data);
 
 export class NativePilotStore extends PilotStore {
   constructor(preferences) {

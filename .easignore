@@ -2,6 +2,8 @@
 !/native
 /native/*
 !/native/app.json
+!/native/app.config.js
+!/native/with-android-commerce.js
 !/native/eas.json
 !/native/index.js
 !/native/metro.config.js
@@ -10,6 +12,9 @@
 !/native/src
 /native/src/*
 !/native/src/App.js
+!/native/src/bridge.mjs
+!/native/src/commerce.mjs
+!/native/src/pilot-store.mjs
 !/native/generated
 /native/generated/*
 !/native/generated/flight.zip

@@ -1,11 +1,24 @@
 {
   "cli": { "appVersionSource": "local" },
   "build": {
-    "base": { "node": "22.23.5", "env": { "EAS_UPDATE_UPLOAD_EMBEDDED_BUNDLE": "0" } },
+    "base": {
+      "node": "22.23.5",
+      "env": { "EAS_UPDATE_UPLOAD_EMBEDDED_BUNDLE": "0", "STELLAR_COMMERCE_VARIANT": "platform" }
+    },
     "validation": {
       "extends": "base",
       "distribution": "internal",
       "android": { "buildType": "apk" }
+    },
+    "internal-test-store": {
+      "extends": "base",
+      "distribution": "internal",
+      "environment": "preview",
+      "android": {
+        "gradleCommand": ":app:assembleDebug",
+        "withoutCredentials": true,
+        "env": { "STELLAR_COMMERCE_VARIANT": "internal-test-store" }
+      }
     },
     "production": {
       "extends": "base",

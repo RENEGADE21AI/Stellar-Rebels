@@ -36,6 +36,7 @@ const rockLooks = ['rock', 'rock-alt', 'rock-alt-2'];
 const variantKeys = [...Object.keys(ENEMIES).map((key) => `${key}-alt`), ...rockLooks.slice(1)];
 const playfields = { breach:'vesper', belt:'belt', relay:'relay', sun:'sun', outer:'outer', flagship:'fleet' };
 const fallbackEnvironments = new Set(['breach','belt','relay']);
+const backdropDrift = .045;
 const lerp = (a, b, t) => a + (b - a) * t;
 const saturate = (value) => Math.max(0, Math.min(1, value));
 const arrivalDuration = .57;
@@ -59,9 +60,11 @@ const starDepths = [
 let starIndex = 0;
 const stars = starDepths.flatMap((depth) => Array.from({ length:depth.count }, () => {
   const i = ++starIndex;
+  const tint = i % 5 === 0 ? '172,217,255' : '211,219,234';
+  const alpha = depth.alpha + seededNoise(i + 430) * .19;
   return { x:seededNoise(i) * WIDTH, y:seededNoise(i + 205) * HEIGHT,
     size:depth.size, length:depth.length, speed:depth.speed + seededNoise(i + 311) * depth.range,
-    alpha:depth.alpha + seededNoise(i + 430) * .19, color:i % 5 === 0 ? '#acd9ff' : '#d3dbea' };
+    color:`rgba(${tint},${alpha})` };
 }));
 
 function line(c, x, y, dx, dy, color, width) {
@@ -435,34 +438,37 @@ export class FlightScene {
 
   background(flight, reduce) {
     const c = this.ctx;
-    if (!this.backdropReady || this.backdropFull !== this.fullStrengthBackground) this.paintBackdrop(flight);
+    if (!this.backdropReady || this.backdropFull !== this.fullStrengthBackground || this.backdropReduced !== reduce) {
+      this.paintBackdrop(flight, reduce);
+    }
     c.setTransform(1, 0, 0, 1, 0, 0);
-    const drift = reduce ? 0 : .045;
     const { width, height } = this.canvas;
-    const distance = height * drift;
-    c.drawImage(this.backdrop, -width * drift / 2, -distance + (1 - Math.exp(-flight.elapsed / 112)) * distance,
-      width * (1 + drift), height + distance);
-    c.setTransform(this.canvas.width / WIDTH, 0, 0, this.canvas.height / HEIGHT, 0, 0);
+    const left = Math.round((width - this.backdrop.width) / 2);
+    const top = reduce ? 0 : Math.round((height - this.backdrop.height) * Math.exp(-flight.elapsed / 112));
+    c.drawImage(this.backdrop, left, top);
+    c.setTransform(width / WIDTH, 0, 0, height / HEIGHT, 0, 0);
     const t = reduce ? 0 : flight.elapsed;
     for (const star of stars) {
       const y = (star.y + t * star.speed) % (HEIGHT + 12) - 6;
-      c.globalAlpha = star.alpha;
       c.fillStyle = star.color;
       c.fillRect(star.x, y, star.size, reduce ? 1.2 : star.length);
     }
     c.globalAlpha = 1;
   }
 
-  paintBackdrop(flight) {
-    this.backdrop.width = this.canvas.width;
-    this.backdrop.height = this.canvas.height;
+  paintBackdrop(flight, reduce) {
+    const { width: canvasWidth, height: canvasHeight } = this.canvas;
+    const overscan = reduce ? 1 : 1 + backdropDrift;
+    // Cache the overscan so each frame can copy the art at its backing-pixel size.
+    this.backdrop.width = Math.round(canvasWidth * overscan);
+    this.backdrop.height = Math.round(canvasHeight * overscan);
     const c = this.backdropContext;
     const env = this.sprites.get(this.illustration) || this.sprites.get(`env-${flight.stage.environment}`);
-    c.setTransform(this.canvas.width / WIDTH, 0, 0, this.canvas.height / HEIGHT, 0, 0);
+    c.setTransform(this.backdrop.width / WIDTH, 0, 0, this.backdrop.height / HEIGHT, 0, 0);
     c.fillStyle = '#040811';
     c.fillRect(0, 0, WIDTH, HEIGHT);
     if (env) {
-      const ratio = this.canvas.width / this.canvas.height;
+      const ratio = canvasWidth / canvasHeight;
       const width = Math.min(env.width, env.height * ratio);
       const height = Math.min(env.height, env.width / ratio);
       c.drawImage(env, (env.width - width) * .5, (env.height - height) * .24, width, height, 0, 0, WIDTH, HEIGHT);
@@ -483,6 +489,7 @@ export class FlightScene {
     }
     this.backdropReady = true;
     this.backdropFull = this.fullStrengthBackground;
+    this.backdropReduced = reduce;
   }
 
   sprite(key, x, y, size, turn = 0, alpha = 1, glow = '') {

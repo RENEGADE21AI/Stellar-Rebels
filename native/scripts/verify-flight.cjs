@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { createHash } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { unzipSync } = require('fflate');
 const { chromium, webkit } = require('playwright');
@@ -13,6 +14,7 @@ const entry = pathToFileURL(path.join(proof, 'index.html')).href;
 const zip = fs.readFileSync(path.join(generated, 'flight.zip'));
 const files = unzipSync(zip);
 
+assert.equal(createHash('sha256').update(zip).digest('hex'), version.flightDigest);
 assert.deepEqual(Object.keys(files).sort(), version.files);
 for (const file of version.files) {
   assert.deepEqual(Buffer.from(files[file]), fs.readFileSync(path.join(proof, file)), file);
@@ -42,16 +44,23 @@ async function check(engine, viewport) {
   await page.exposeBinding('pilotHost', (_source, request) => {
     assert.equal(request.documentUrl, entry);
     assert.match(request.client, /^[a-f0-9]{32}$/);
+    assert.equal(request.session, '6023022a-dc97-4359-817a-707926d7c001');
     clients.add(request.client);
     diagnostics.bridge.add(request.op);
     const reply = { id: request.id, client: request.client, ok: true };
     if (request.op === 'load') reply.value = saved;
     else if (request.op === 'save') saved = structuredClone(request.data);
     else if (request.op === 'haptic') haptics.push(request.data);
+    else if (request.op === 'commerce-status') reply.value = { owned: false, price: null, available: false };
+    else if (request.op === 'authorize-stage') reply.value = { allowed: request.data <= 3 };
     else throw Error(`Unexpected native request: ${request.op}`);
     return reply;
   });
   await page.addInitScript(() => {
+    document.addEventListener('DOMContentLoaded', () => {
+      window.stellarNativeSession = '6023022a-dc97-4359-817a-707926d7c001';
+      window.stellarNativeReady?.();
+    }, { once: true });
     window.ReactNativeWebView = {
       postMessage: (text) => {
         const request = JSON.parse(text);

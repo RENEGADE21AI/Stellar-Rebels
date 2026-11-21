@@ -1,36 +1,39 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AppState, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { AppState, NativeModules, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Asset } from 'expo-asset';
+import Constants from 'expo-constants';
+import { randomUUID } from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
 import { AndroidHaptics, ImpactFeedbackStyle, impactAsync, performAndroidHapticsAsync } from 'expo-haptics';
 import { shareAsync } from 'expo-sharing';
 import { unzipSync } from 'fflate';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import Purchases from 'react-native-purchases';
 import { WebView } from 'react-native-webview';
+import { readBridgeRequest, sameFlightDocument } from './bridge.mjs';
+import { createCommerce } from './commerce.mjs';
 
 const pack = require('../generated/flight.zip');
 const version = require('../generated/version.json');
 const profileKey = 'stellar-rebels.profile.v1';
-const maxProfileBytes = 512 * 1024;
-const maxReplayBytes = 4_000_000;
+const commerce = createCommerce(Purchases, {
+  platform: Platform.OS,
+  nativeAvailable: Boolean(NativeModules.RNPurchases),
+  config: Constants.expoConfig?.extra?.revenueCat
+});
 const impacts = {
   light: { ios: ImpactFeedbackStyle.Light, android: AndroidHaptics.Keyboard_Tap },
   medium: { ios: ImpactFeedbackStyle.Medium, android: AndroidHaptics.Context_Click },
   heavy: { ios: ImpactFeedbackStyle.Heavy, android: AndroidHaptics.Long_Press }
 };
 
-function sameFlightDocument(url, expected) {
-  if (typeof url !== 'string' || !url.startsWith('file:///') || !expected) return false;
-  const sandboxPath = (uri) => uri.replace(/^file:\/\/\/private\/var\//, 'file:///var/');
-  return sandboxPath(url) === sandboxPath(expected);
-}
-
 async function installFlight() {
-  const directory = new Directory(Paths.cache, 'stellar-rebels', version.assetVersion);
+  const flightIdentity = version.flightDigest ?? version.assetVersion;
+  const directory = new Directory(Paths.cache, 'stellar-rebels', flightIdentity);
   const home = new File(directory, 'index.html');
   const stamp = new File(directory, 'installed');
-  if (stamp.exists && await stamp.text() === version.assetVersion &&
+  if (stamp.exists && await stamp.text() === flightIdentity &&
       version.files.every((name) => new File(directory, ...name.split('/')).exists)) return { home, directory };
 
   const asset = Asset.fromModule(pack);
@@ -46,7 +49,7 @@ async function installFlight() {
     file.write(bytes);
   }
   stamp.create({ overwrite: true });
-  stamp.write(version.assetVersion);
+  stamp.write(flightIdentity);
   return { home, directory };
 }
 
@@ -56,6 +59,7 @@ function Game() {
   const [attempt, setAttempt] = useState(0);
   const [reload, setReload] = useState(0);
   const browser = useRef(null);
+  const session = useRef(null);
   const transactions = useRef(Promise.resolve());
   const lastFeedback = useRef(0);
 
@@ -70,29 +74,68 @@ function Game() {
   }, [attempt]);
 
   useEffect(() => {
+    const unsubscribe = commerce.subscribe((status) => {
+      sendToFlight(`window.dispatchEvent(new CustomEvent('stellar-commerce-change', { detail: ${JSON.stringify(status)} }));`);
+    });
+    void commerce.refresh();
     const subscription = AppState.addEventListener('change', (next) => {
       const event = next === 'active' ? 'stellar-native-foreground' : 'stellar-native-pause';
-      browser.current?.injectJavaScript(`window.dispatchEvent(new Event('${event}')); true;`);
+      sendToFlight(`window.dispatchEvent(new Event('${event}'));`);
+      if (next === 'active') void commerce.refresh();
     });
-    return () => subscription.remove();
-  }, []);
+    const shade = Platform.OS === 'android' && AppState.addEventListener('blur', () => {
+      sendToFlight("window.dispatchEvent(new Event('stellar-native-pause'));");
+    });
+    return () => { unsubscribe(); subscription.remove(); if (shade) shade.remove(); };
+  }, [flight]);
+
+  function sendToFlight(script, token = session.current) {
+    if (!flight || !token || token !== session.current) return;
+    browser.current?.injectJavaScript(
+      `if (window.top === window && window.stellarNativeSession === ${JSON.stringify(token)}) { ${script} } true;`);
+  }
+
+  function activateFlight({ nativeEvent }) {
+    if (!sameFlightDocument(nativeEvent.url, flight.home.uri)) return;
+    const token = randomUUID();
+    session.current = token;
+    browser.current?.injectJavaScript(`(() => {
+      const flightUrl = location.href.replace(/^file:\\/\\/\\/private\\/var\\//, 'file:///var/');
+      if (window.top === window && flightUrl === ${JSON.stringify(flight.home.uri.replace('file:///private/var/', 'file:///var/'))}) {
+        Object.defineProperty(window, 'stellarNativeSession', { value: ${JSON.stringify(token)}, configurable: true });
+        window.stellarNativeReady?.(window.stellarNativeSession);
+        window.dispatchEvent(new CustomEvent('stellar-commerce-change', { detail: ${JSON.stringify(commerce.status())} }));
+      }
+    })();
+      true;
+    `);
+  }
 
   function receive({ nativeEvent }) {
-    if (!flight || typeof nativeEvent.data !== 'string' || nativeEvent.data.length > maxReplayBytes) return;
-    // Android's WebMessageListener reports an opaque origin for packaged file pages.
-    const localOrigin = sameFlightDocument(nativeEvent.url, flight.home.uri) ||
-      (Platform.OS === 'android' && nativeEvent.url === 'null');
-    if (!localOrigin) return;
-    let request;
-    try { request = JSON.parse(nativeEvent.data); } catch { return; }
-    if (!Number.isSafeInteger(request?.id) || request.id < 1 || !/^[a-f0-9]{32}$/.test(request.client) ||
-        !sameFlightDocument(request.documentUrl, flight.home.uri)) return;
+    const token = session.current;
+    const request = readBridgeRequest(nativeEvent, flight?.home.uri, token, Platform.OS);
+    if (!request) return;
 
-    const reply = (ok, value) => browser.current?.injectJavaScript(
-      `window.stellarNativeReply?.(${JSON.stringify({ id: request.id, client: request.client, ok, value })}); true;`);
+    const reply = (ok, value) => sendToFlight(
+      `window.stellarNativeReply?.(${JSON.stringify({ id: request.id, client: request.client, ok, value })});`, token);
+    if (request.op === 'commerce-status') {
+      reply(true, commerce.status());
+      void commerce.refresh();
+      return;
+    }
+    if (request.op === 'authorize-stage') {
+      void commerce.authorize(request.data).then((value) => reply(true, value), () => reply(false));
+      return;
+    }
+    if (request.op === 'commerce-purchase' || request.op === 'commerce-restore') {
+      if (AppState.currentState !== 'active') { reply(true, commerce.unavailable()); return; }
+      const order = request.op === 'commerce-purchase' ? commerce.purchase() : commerce.restore();
+      void order.then((value) => reply(true, value), () => reply(false));
+      return;
+    }
     if (request.op === 'haptic') {
       const strength = request.data;
-      if (typeof strength !== 'string' || !Object.hasOwn(impacts, strength)) { reply(false); return; }
+      if (!Object.hasOwn(impacts, strength)) { reply(false); return; }
       const now = Date.now();
       if (AppState.currentState === 'active' && now - lastFeedback.current >= 125) {
         lastFeedback.current = now;
@@ -111,13 +154,11 @@ function Game() {
           break;
         }
         case 'save': {
-          if (!request.data || !Number.isSafeInteger(request.data.schema) || nativeEvent.data.length > maxProfileBytes) throw Error('Invalid profile');
           await AsyncStorage.setItem(profileKey, JSON.stringify(request.data));
           reply(true);
           break;
         }
         case 'share': {
-          if (!request.data || request.data.schema !== 1) throw Error('Invalid flight replay');
           const file = new File(Paths.cache, 'stellar-rebels-replay.json');
           file.create({ overwrite: true });
           file.write(JSON.stringify(request.data));
@@ -153,9 +194,12 @@ function Game() {
     mediaPlaybackRequiresUserAction={false}
     contentInsetAdjustmentBehavior="never"
     setSupportMultipleWindows={false}
+    webviewDebuggingEnabled={false}
+    onLoadStart={() => { session.current = null; }}
+    onLoad={activateFlight}
     onMessage={receive}
-    onContentProcessDidTerminate={() => setReload((n) => n + 1)}
-    onRenderProcessGone={() => setReload((n) => n + 1)}
+    onContentProcessDidTerminate={() => { session.current = null; setReload((n) => n + 1); }}
+    onRenderProcessGone={() => { session.current = null; setReload((n) => n + 1); }}
     onShouldStartLoadWithRequest={(request) => sameFlightDocument(request.url, flight.home.uri)}
   />;
 }

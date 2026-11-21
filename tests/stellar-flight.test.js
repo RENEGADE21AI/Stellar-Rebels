@@ -109,6 +109,32 @@ test('Ion Burst unlocks at Stage 2 and freezes in each attempt and result', asyn
   assert.equal(pilot.beginRun(p, 'saved', 'endless').special, 'ghost');
 });
 
+test('free clear progression earns both ships and keeps a previously earned Gunship', async () => {
+  const [, pilot] = await load;
+  const progress = pilot.newPilot();
+  const terminal = { status:'clear', score:2500, duration:170, kills:28 };
+  const clear = (stage, id = String(stage)) => {
+    assert.ok(pilot.beginRun(progress, id, 'arcade', stage));
+    return pilot.settleRun(progress, id, terminal);
+  };
+  assert.equal(pilot.hasShip(progress, 'kestrel'), true);
+  assert.equal(pilot.hasShip(progress, 'bastion'), false);
+  assert.equal(clear(1).newShip, null);
+  const stageTwo = clear(2);
+  assert.equal(stageTwo.newShip, 'needle');
+  assert.equal(stageTwo.newSpecial, 'ion');
+  assert.equal(pilot.hasShip(progress, 'bastion'), false);
+  assert.equal(clear(3).newShip, 'bastion');
+  assert.equal(clear(3, 'repeat').newShip, null);
+  assert.ok(pilot.equip(progress, 'bastion'));
+  assert.equal(pilot.beginRun(progress, 'survival', 'endless').ship, 'bastion');
+  assert.equal(clear(4).newShip, null);
+
+  const existing = pilot.newPilot();
+  existing.clears[4] = 1;
+  assert.ok(pilot.equip(existing, 'bastion'));
+});
+
 test('an active attempt from the previous release retains its payout rules', async () => {
   const [, pilot, { STAGES }] = await load;
   const p = pilot.newPilot();

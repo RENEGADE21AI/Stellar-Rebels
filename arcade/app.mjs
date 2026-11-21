@@ -16,6 +16,8 @@ const field = $('flight');
 const stick = $('flight-stick');
 const modal = $('flight-modal');
 const nativeFlight = document.documentElement.dataset.nativeFlight === 'true';
+const firstPaidStage = 4;
+const nativeCommerce = nativeFlight ? window.stellarCommerce : null;
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
 const coarseTouch = matchMedia('(hover: none) and (pointer: coarse)');
 const placeTouchControls = () => field.toggleAttribute('data-touch-controls', nativeFlight || coarseTouch.matches);
@@ -29,6 +31,7 @@ const renderer = new FlightScene(sky);
 const state = {
   pilot: null, view: 'home', mode: 'menu', hangarTab: 'ships', inspected: 'kestrel', hangarBack: 'home',
   helpBack: 'home', upgrade: null, flight: null, pending: null, last: null, busy: null, launch: null,
+  commerce: { owned:false, price:'', ready:false }, commerceWork: null, commerceScreen: null,
   pointer: null, keys: new Set(), input: 'touch', support: '', pack: 'waiting', packCheck: 0, installed: false, resumeAt: 0, finishAt: 0
 };
 const motionLimited = (preferences = state.pilot.settings) => reduced.matches || preferences.reduced;
@@ -127,6 +130,10 @@ function nextStage(pilot) {
   return STAGES.find((stage) => !pilot.clears[stage.id] && hasStage(pilot, stage.id));
 }
 
+function requiresPurchase(id) {
+  return nativeFlight && id >= firstPaidStage && !state.commerce.owned;
+}
+
 function loadoutContext(pilot) {
   const special = SPECIALS[pilot.special]?.name ?? SPECIALS.ghost.name;
   const mods = pilot.equipment.length;
@@ -137,15 +144,16 @@ function stages() {
   const { pilot } = state;
   const next = nextStage(pilot);
   const rows = STAGES.map((s) => {
-    const available = hasStage(pilot, s.id);
+    const paywalled = requiresPurchase(s.id);
+    const available = hasStage(pilot, s.id) && !paywalled;
     const clear = Boolean(pilot.clears[s.id]);
-    const tag = available ? clear ? `${icon('check')} Replay` : 'Launch' : `${icon('lock')} Locked`;
+    const tag = paywalled ? `${icon('lock')} Full Game` : available ? clear ? `${icon('check')} Replay` : 'Launch' : `${icon('lock')} Locked`;
     const record = available ? loadoutBest(pilot, s.id) : null;
     const mastered = Boolean(pilot.mastery?.[s.mastery?.key ?? s.id]);
     const goal = s.mastery?.condition === 'parts' ? 'Disarm both turrets' : 'No hull loss at boss';
     let note = s.region;
     let nextGoal = '';
-    if (!available) note = `Clear ${stageById(s.id - 1)?.name ?? 'the previous stage'}`;
+    if (!available && !paywalled) note = `Clear ${stageById(s.id - 1)?.name ?? 'the previous stage'}`;
     else if (record?.status === 'clear') {
       note = `${num(record.score)} loadout best${mastered ? ' · Mastered' : ''}`;
       if (s.mastery && !mastered) nextGoal = `<span class="stage-mastery-goal">${goal}</span>`;
@@ -153,7 +161,7 @@ function stages() {
     else if (clear && s.mastery) {
       note = mastered ? 'Set a loadout best' : goal;
     } else if (record) note = `${num(record.score)} best attempt`;
-    return `<li><button class="stage ${s.id === next?.id ? 'next' : ''}" style="--stage-color:${s.accent}" data-action="fly:${s.id}" ${available ? '' : 'disabled'}>
+    return `<li><button class="stage ${paywalled ? 'stage-purchase' : s.id === next?.id ? 'next' : ''}" style="--stage-color:${s.accent}" data-action="fly:${s.id}" ${available || paywalled ? '' : 'disabled'}>
       <span class="stage-num">${chapter(s.id)}</span><span><span class="stage-name">${s.name}</span><span class="stage-note">${note}${nextGoal}</span></span>
       <span class="stage-tag">${tag}</span></button></li>`;
   }).join('');
@@ -284,13 +292,15 @@ function settingsView() {
     <select class="toggle" id="sensitivity" aria-label="Drag sensitivity"><option value="gentle" ${prefs.sensitivity === 'gentle' ? 'selected' : ''}>Gentle</option><option value="standard" ${prefs.sensitivity === 'standard' ? 'selected' : ''}>Standard</option><option value="direct" ${prefs.sensitivity === 'direct' ? 'selected' : ''}>Direct</option></select></div>
     <div class="notice" id="pack-status" role="status">${packCopy()}</div>${state.installed ? '' : '<p class="subtle">Install from your browser menu or Add to Home Screen in Safari.</p>'}
     ${googleSignInAvailable ? action('Account', 'view:account') : ''}
+    ${nativeFlight ? action('Full Game Unlock', 'commerce:show', 'quiet') : ''}
     ${nativeFlight ? action('Privacy policy', 'view:privacy', 'quiet') : ''}
     ${action('Practice', 'help:settings', 'quiet')}${state.support ? `<p class="notice">${state.support}</p>` : ''}`);
 }
 
 function privacyView() {
   return screen('Privacy policy', 'settings', `<div class="info">
-    <strong>Device storage</strong><p class="subtle">Your call sign, scores, progress and settings are saved on this device. The app has no account, advertising or analytics. It does not send this information to us.</p>
+    <strong>Device storage</strong><p class="subtle">Your call sign, scores, progress and settings are saved on this device.</p>
+    <strong>Purchases</strong><p class="subtle">Apple or Google handles payment. RevenueCat receives purchase information and a randomly assigned app user ID to verify and restore the Full Game Unlock.</p>
     <strong>Replay sharing</strong><p class="subtle">If you choose to share a replay, your device opens its share sheet. The replay contains flight inputs and results. You choose where to send it.</p>
     <strong>Removal and backups</strong><p class="subtle">Remove the app and its data to delete the local save. Device backups or transfers can retain a copy according to your system settings. Manage those copies in your device backup settings.</p>
   </div>`);
@@ -386,12 +396,13 @@ function results() {
   const finale = clear && stage?.id === 6;
   const relayCleared = clear && stage?.id === 3;
   const next = p.receipt && clear && stageById(stage.id + 1);
+  const preview = next && requiresPurchase(next.id);
   const title = finale ? 'Fleet defeated' : relayCleared ? 'Relay offline' : clear ? 'Stage clear' : isEndless ? 'Run complete' : 'Flight lost';
   const repeat = isEndless ? 'Fly again' : clear ? 'Replay stage' : 'Retry stage';
   const retry = `fly:${isEndless ? 'endless' : stage.id}`;
   const progression = p.receipt?.award ? `<p class="result-reward">${icon('salvage')} <span>+${num(p.receipt.award)} Salvage ${store.temporary ? 'this session' : 'banked'}</span>${p.receipt.first ? '<small>First clear</small>' : ''}</p>` : '';
   const unlocked = [
-    p.receipt?.newStage ? `${stageById(p.receipt.newStage).name} unlocked` : null,
+    p.receipt?.newStage && !requiresPurchase(p.receipt.newStage) ? `${stageById(p.receipt.newStage).name} unlocked` : null,
     p.receipt?.newSpecial === 'ion' ? 'Ion Burst unlocked' : null
   ].filter(Boolean);
   const ship = p.receipt?.newShip ? action(`${SHIPS[p.receipt.newShip].name} unlocked`, `unlocked:${p.receipt.newShip}`, 'quiet', 'ship') : '';
@@ -401,6 +412,7 @@ function results() {
     !state.pilot.equipment.includes(key) && (!item.needs || state.pilot.equipment.includes(item.needs)) && state.pilot.salvage >= item.cost);
   const primary = p.discarded ? action('Return to stages', 'view:stages', 'primary')
     : !p.receipt ? (p.error ? action('Retry saving', 'settle', 'primary', 'check') : '')
+    : preview ? action(`Preview ${next.name}`, `fly:${next.id}`, 'primary', 'lock')
     : next ? action('Next Flight', `fly:${next.id}`, 'primary', 'next', `aria-label="Next Flight · ${next.name}"`)
       : finale ? action('Return to stages', 'view:stages', 'primary') : action(repeat, retry, 'primary');
   const mastery = p.receipt && clear && stage?.mastery ? `<p class="subtle">${p.receipt.mastery ? `Mastery earned · ${stage.mastery.name}`
@@ -413,8 +425,7 @@ function results() {
     p.receipt || p.discarded ? action('Title Screen', 'view:home', 'quiet', '') : '',
     p.receipt && (next || finale) ? action(repeat, retry, 'quiet', '') : '',
     p.receipt ? action(buyable ? 'Upgrades' : 'Hangar', buyable ? 'shop:result' : 'hangar:result', 'quiet', '') : '',
-    !p.receipt && p.error ? action('Leave unsaved', 'discard', 'quiet', '') : '',
-    ship
+    !p.receipt && p.error ? action('Leave unsaved', 'discard', 'quiet', '') : ''
   ].filter(Boolean);
   return `<article class="screen result-screen" data-outcome="${clear ? 'clear' : 'finished'}">
     <div class="result-card">
@@ -427,10 +438,11 @@ function results() {
         <div><span class="caption">Flight time</span><strong>${time(report.duration)}</strong></div>
         <div><span class="caption">Targets</span><strong>${num(report.kills)}</strong></div>
       </section>
-      ${progression || mastery || comparison || advice || unlocked.length ? `<div class="result-earned">
+      ${progression || mastery || comparison || advice || unlocked.length || ship ? `<div class="result-earned">
         ${comparison ? `<p class="result-comparison"><small class="subtle">This loadout · Current rules</small>${comparison}</p>` : ''}
         ${mastery}${advice ? `<p class="subtle">${advice}</p>` : ''}${progression}
         ${unlocked.length ? `<ul class="result-unlocks">${unlocked.map((label) => `<li>${icon('check')}${label}</li>`).join('')}</ul>` : ''}
+        ${ship}
       </div>` : ''}
       ${pendingCopy}${primary}
       ${secondary.length ? `<nav class="result-secondary" aria-label="After the flight">${secondary.join('')}</nav>` : ''}
@@ -439,13 +451,160 @@ function results() {
   </article>`;
 }
 
+const purchaseMessages = {
+  purchased: 'Full Game Unlock confirmed.',
+  restored: 'Full Game Unlock restored.',
+  cancelled: 'Purchase cancelled.',
+  pending: 'Payment is pending. Access unlocks once the store confirms it.',
+  nothing: 'No eligible purchase was found for this store account.',
+  unavailable: 'The store is unavailable right now. Try again in a moment.',
+  failed: 'The store could not complete the request. Try again in a moment.'
+};
+
+function commerceView() {
+  const { stage } = state.commerceScreen;
+  const missions = STAGES.slice(firstPaidStage - 1).map((entry) => `<li class="commerce-mission${entry.id === stage ? ' commerce-destination' : ''}" data-environment="${entry.environment}">
+    <span class="commerce-thumbnail" aria-hidden="true"></span>
+    <span><small>Stage ${entry.id}</small><strong>${entry.name}</strong></span>
+  </li>`).join('');
+  return `<article class="screen commerce-screen">
+    <div class="commerce-hero" aria-hidden="true"></div>
+    <div class="commerce-card">
+      <header class="commerce-heading">
+        <h1 tabindex="-1" id="commerce-heading">${state.commerce.owned ? 'Full Game Unlocked' : 'Unlock the Full Game'}</h1>
+        <p>Fly the final three stages, take on the bosses, and complete Stellar Rebels.</p>
+      </header>
+      <ol class="commerce-missions" aria-label="Full game stages" start="${firstPaidStage}">${missions}</ol>
+      <div class="commerce-checkout">
+        <p class="commerce-payment" id="commerce-payment">One-time purchase</p>
+        <p class="commerce-status" id="commerce-status" role="status"></p>
+        <button type="button" class="primary" id="commerce-primary" data-action="commerce:purchase" aria-describedby="commerce-price commerce-payment">
+          <span>Unlock Full Game</span><strong id="commerce-price" hidden></strong>
+        </button>
+        <div class="commerce-secondary">
+          ${action('Not Now', 'commerce:back', 'quiet', '', 'id="commerce-back"')}
+          ${action('Restore Purchases', 'commerce:restore', 'quiet', '', 'id="commerce-restore"')}
+        </div>
+      </div>
+    </div>
+  </article>`;
+}
+
+function paintCommerce() {
+  const { commerce, commerceWork, commerceScreen } = state;
+  const busy = Boolean(commerceWork || commerce.busy);
+  const { owned, pending } = commerce;
+  const stage = stageById(commerceScreen.stage);
+  const launchable = stage && hasStage(state.pilot, stage.id);
+  const price = $('commerce-price');
+  const primary = $('commerce-primary');
+  const back = $('commerce-back');
+  const restore = $('commerce-restore');
+  $('commerce-heading').textContent = owned ? 'Full Game Unlocked' : 'Unlock the Full Game';
+  price.textContent = commerce.price;
+  price.hidden = owned || !commerce.price;
+  $('commerce-payment').hidden = owned;
+  primary.dataset.action = owned ? launchable ? `fly:${stage.id}` : 'view:stages' : 'commerce:purchase';
+  primary.firstElementChild.textContent = owned ? launchable ? `Launch ${stage.name}` : 'Stage Select' : 'Unlock Full Game';
+  if (owned) {
+    primary.removeAttribute('aria-label');
+    primary.removeAttribute('aria-describedby');
+  } else {
+    primary.setAttribute('aria-label', 'Unlock Full Game');
+    primary.setAttribute('aria-describedby', commerce.price ? 'commerce-price commerce-payment' : 'commerce-payment');
+  }
+  primary.disabled = busy || (!owned && (!commerce.available || pending));
+  restore.hidden = owned;
+  restore.disabled = busy || !commerce.restoreAvailable;
+  back.firstElementChild.textContent = owned ? 'Back' : 'Not Now';
+
+  const message = commerceWork === 'purchase' ? 'Opening the store…' : commerceWork === 'restore' ? 'Checking for a previous purchase…'
+    : busy ? 'Waiting for the store…' : commerceScreen.message || (owned ? '' : pending ? purchaseMessages.pending
+      : !commerce.ready ? 'Checking the store…' : commerce.available ? '' : 'The purchase price is unavailable right now.');
+  $('commerce-status').textContent = message;
+}
+
+let commerceRevision = 0;
+let latestCommerceRevision = -1;
+function updateCommerce(snapshot) {
+  if (typeof snapshot?.owned !== 'boolean') return;
+  if (Number.isInteger(snapshot.revision)) {
+    if (snapshot.revision < latestCommerceRevision) return;
+    latestCommerceRevision = snapshot.revision;
+  }
+  const previous = state.commerce;
+  const price = snapshot.available === true && typeof snapshot.price === 'string' ? snapshot.price.trim() : '';
+  state.commerce = {
+    owned:snapshot.owned, price, ready:true, pending:snapshot.pending === true, busy:snapshot.busy === true,
+    available:Boolean(price), restoreAvailable:snapshot.restoreAvailable !== false && Boolean(nativeCommerce)
+  };
+  commerceRevision += 1;
+  if (state.mode !== 'menu' || !state.pilot) return;
+  if (state.view === 'commerce') {
+    if (state.commerce.owned && previous.pending) state.commerceScreen.message = purchaseMessages.purchased;
+    if (!state.commerce.owned && previous.owned) state.commerceScreen.message = '';
+    paintCommerce();
+  } else if (state.commerce.owned !== previous.owned && (state.view === 'stages' || state.view === 'result')) {
+    const focus = document.activeElement?.dataset.action;
+    const scroll = menu.scrollTop;
+    show(state.view, false);
+    menu.scrollTop = scroll;
+    if (focus) menu.querySelector(`[data-action="${focus}"]`)?.focus({ preventScroll:true });
+  }
+}
+
+async function refreshCommerce() {
+  const revision = commerceRevision;
+  const snapshot = await nativeCommerce?.('commerce-status').catch(() => null);
+  if (Number.isInteger(snapshot?.revision) || revision === commerceRevision) {
+    updateCommerce(snapshot ?? { owned:state.commerce.owned, pending:state.commerce.pending });
+  }
+}
+
+function openCommerce(stage, control) {
+  if (!nativeFlight) return;
+  state.commerceScreen = { stage, from:state.view, scroll:menu.scrollTop, control, message:'' };
+  show('commerce');
+  void refreshCommerce();
+}
+
+function closeCommerce() {
+  const { from, scroll, control } = state.commerceScreen;
+  state.commerceScreen = null;
+  show(from, false);
+  menu.scrollTop = scroll;
+  (menu.querySelector(`[data-action="${control}"]`) ?? menu.querySelector('h1'))?.focus({ preventScroll:true });
+}
+
+async function runCommerce(command) {
+  if (!nativeCommerce || state.commerceWork || state.commerce.busy ||
+      (command === 'purchase' ? state.commerce.owned || !state.commerce.available || state.commerce.pending : !state.commerce.restoreAvailable)) return;
+  const screen = state.commerceScreen;
+  state.commerceWork = command;
+  screen.message = '';
+  paintCommerce();
+  try {
+    const response = await nativeCommerce(`commerce-${command}`);
+    updateCommerce(response);
+    const result = response?.result;
+    const confirmed = !['purchased', 'restored'].includes(result) || state.commerce.owned;
+    screen.message = confirmed && Object.hasOwn(purchaseMessages, result) ? purchaseMessages[result] : purchaseMessages.failed;
+    if (result === 'pending' && state.commerce.owned) screen.message = purchaseMessages.purchased;
+  } catch {
+    screen.message = purchaseMessages.unavailable;
+  } finally {
+    state.commerceWork = null;
+    if (state.view === 'commerce') paintCommerce();
+  }
+}
+
 function launchView() {
   return `<article class="screen launch-screen"><header class="screen-header"><p class="caption">${state.launch.name}</p>
     <h1 tabindex="-1">Preparing flight</h1></header>
     <p class="notice" role="status">Loading flight assets…</p>${action('Cancel launch', 'cancel-flight', 'quiet', 'back')}</article>`;
 }
 
-const views = { home, callSign: callSignView, stages, hangar, upgrade: upgradeView, records, settings: settingsView, account: accountView, privacy: privacyView, help: helpView, result: results, launch: launchView };
+const views = { home, callSign: callSignView, stages, hangar, upgrade: upgradeView, records, settings: settingsView, account: accountView, privacy: privacyView, help: helpView, result: results, launch: launchView, commerce: commerceView };
 
 function announce(message) { $('announcer').textContent = message; }
 
@@ -462,12 +621,14 @@ function showBrowserUpdate() {
 function show(view, focus = true) {
   if (!views[view] || (view === 'account' && !googleSignInAvailable)) return;
   if (view === 'privacy' && !nativeFlight) return;
+  if (view === 'commerce' && (!nativeFlight || !state.commerceScreen)) return;
   $('frame').dataset.reducedMotion = String(motionLimited());
   state.mode = 'menu';
   state.view = view;
   field.hidden = true;
   menu.hidden = false;
   menu.innerHTML = views[view]();
+  if (view === 'commerce') paintCommerce();
   refreshPatrol();
   showBrowserUpdate();
   menu.scrollTop = 0;
@@ -520,9 +681,20 @@ function needsTraining() {
 
 async function start(which, trainingMode = null, drill = 'basics') {
   const endless = which === 'endless';
-  const chooseStage = (pilot) => endless ? null : which === 'next'
-    ? (nextStage(pilot) ?? STAGES.at(-1)).id : Number(which);
-  const stage = chooseStage(state.pilot);
+  const stage = endless ? null : which === 'next' ? (nextStage(state.pilot) ?? STAGES.at(-1)).id : Number(which);
+  if (!trainingMode && nativeFlight && stageById(stage) && stage >= firstPaidStage) {
+    const decision = await nativeCommerce?.('authorize-stage', stage).catch(() => null);
+    if (decision?.allowed !== true) {
+      if (state.commerce.owned) updateCommerce({ ...state.commerce, owned:false });
+      if (which === 'next') show('stages');
+      else if (state.view !== 'commerce') openCommerce(stage, `fly:${which}`);
+      else {
+        state.commerceScreen.message = 'Access could not be confirmed. Check with the store and try again.';
+        paintCommerce();
+      }
+      return;
+    }
+  }
   const launch = { controller: new AbortController(), from: state.training?.from ?? state.view, which,
     control: trainingMode === 'practice' ? `practice:${drill}` : `fly:${which}`,
     name: trainingMode ? 'Practice' : endless ? 'Endless' : stageById(stage)?.name };
@@ -554,7 +726,7 @@ async function start(which, trainingMode = null, drill = 'basics') {
       const special = trainingMode === 'practice' && drill === 'special' ? state.pilot.special : 'ghost';
       run = { id:readId(), mode:'arcade', stage:1, ship:'kestrel', equipment:[], special, assistance:{ ...state.pilot.settings }, seed };
     } else {
-      const saved = await store.change((pilot) => beginRun(pilot, readId(), endless ? 'endless' : 'arcade', chooseStage(pilot), Date.now(), seed));
+      const saved = await store.change((pilot) => beginRun(pilot, readId(), endless ? 'endless' : 'arcade', stage, Date.now(), seed));
       state.pilot = saved.pilot;
       run = saved.result;
     }
@@ -903,6 +1075,12 @@ async function handle(command) {
     if (value === 'retry') void googleAccount.open();
     return;
   }
+  if (type === 'commerce' && nativeFlight) {
+    if (value === 'show' && state.view === 'settings') openCommerce(null, command);
+    else if (state.view === 'commerce' && value === 'back') closeCommerce();
+    else if (state.view === 'commerce' && (value === 'purchase' || value === 'restore')) void runCommerce(value);
+    return;
+  }
   if (type === 'hangar') { showHangar(value); return; }
   if (type === 'shop') { showHangar(value, state.pilot.ship, 'upgrades'); return; }
   if (type === 'unlocked') { showHangar('result', value); return; }
@@ -1021,7 +1199,9 @@ document.addEventListener('click', async (event) => {
   state.busy = command;
   try { await handle(target.dataset.action); }
   catch {
-    const warning = 'Device storage is unavailable. Try again in a moment.';
+    const warning = target.dataset.action === 'save-replay'
+      ? 'Flight replay could not be shared. Try again.'
+      : 'Device storage is unavailable. Try again in a moment.';
     announce(warning);
     if (target.isConnected && !field.contains(target)) {
       const status = document.createElement('p');
@@ -1142,6 +1322,9 @@ window.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && state.launch) {
     event.preventDefault();
     if (!event.repeat) restoreLaunch(state.launch);
+  } else if (event.key === 'Escape' && state.mode === 'menu' && state.view === 'commerce') {
+    event.preventDefault();
+    if (!event.repeat) closeCommerce();
   } else if (event.key === 'Escape' && state.mode !== 'menu' && state.mode !== 'finishing') {
     event.preventDefault();
     if (event.repeat) return;
@@ -1303,6 +1486,11 @@ async function boot() {
   audio.reflect(state.pilot.settings);
   const returning = googleSignInAvailable && pendingGoogleReturn();
   show(returning ? 'account' : 'home', returning);
+  if (nativeFlight) {
+    window.addEventListener('stellar-commerce-change', (event) => updateCommerce(event.detail));
+    window.addEventListener('stellar-native-foreground', refreshCommerce);
+    void refreshCommerce();
+  }
   if (googleSignInAvailable) {
     window.addEventListener('pageshow', (event) => {
       if (event.persisted && state.view === 'account' && pendingGoogleReturn()) void googleAccount.open(true);

@@ -4,6 +4,146 @@ const { chromium, webkit } = require('playwright');
 
 const origin = process.env.STELLAR_WEB_URL;
 
+test('native Arcade banking, preview and launch use the host entitlement while browser Arcade remains free', { skip: !origin, timeout:40000 }, async () => {
+  const browser = await chromium.launch();
+  try {
+    for (const native of [true, false]) {
+      const context = await browser.newContext({
+        viewport:{ width:320, height:568 }, isMobile:true, hasTouch:true, reducedMotion:'reduce', serviceWorkers:'block'
+      });
+      try {
+        const page = await context.newPage();
+        await page.route(/\/app\.mjs$/, async (route) => {
+          const response = await route.fetch();
+          await route.fulfill({ response, body:`${await response.text()}\nwindow.commerceFixture = {
+            pilot: () => store.load(),
+            seed: async () => {
+              await store.change((pilot) => { pilot.clears[1] = 1; pilot.clears[2] = 1; pilot.full_arcade = true; });
+            },
+            stage: () => state.mode === 'playing' ? state.flight.run.stage : undefined,
+            clear: () => { state.flight.score = 7490; state.flight.status = 'clear'; }
+          };` });
+        });
+        if (native) {
+          const entry = new URL(origin);
+          await page.route((url) => url.origin === entry.origin && url.pathname === entry.pathname, async (route) => {
+            const response = await route.fetch();
+            await route.fulfill({ response, body:(await response.text()).replace('<html ', '<html data-native-flight="true" ') });
+          });
+        }
+        await page.addInitScript(() => {
+          const calls = [];
+          const store = {
+            owned:sessionStorage.getItem('fixture-owned') === 'yes', available:true, pending:false, purchase:'cancelled',
+            status() { return { owned:this.owned, price:this.available ? '2,99 €' : '', available:this.available, pending:this.pending }; },
+            notify() { window.dispatchEvent(new CustomEvent('stellar-commerce-change', { detail:this.status() })); }
+          };
+          window.testCommerce = { store, calls };
+          window.stellarCommerce = async (op, data) => {
+            calls.push([op, data]);
+            if (op === 'authorize-stage') return { allowed:store.owned };
+            if (op === 'commerce-purchase') {
+              if (store.purchase === 'pending') store.pending = true;
+              return { ...store.status(), result:store.purchase };
+            }
+            if (op === 'commerce-restore') {
+              store.owned = true;
+              store.pending = false;
+              sessionStorage.setItem('fixture-owned', 'yes');
+              return { ...store.status(), result:'restored' };
+            }
+            return store.status();
+          };
+        });
+        const button = (name) => page.getByRole('button', { name, exact:typeof name === 'string' });
+        const heading = (name) => page.getByRole('heading', { name, exact:true });
+        const launch = async (control, stage) => {
+          await control.tap();
+          await page.waitForFunction((id) => window.commerceFixture.stage() === id, stage);
+        };
+        const leave = async () => {
+          await button('Pause').tap();
+          await button('Leave flight').tap();
+          await button('Leave flight').tap();
+        };
+        const show = new URL(origin);
+        show.searchParams.set('full_arcade', 'true');
+        await page.goto(show.href);
+        await button('Play').waitFor();
+        await page.evaluate(() => window.commerceFixture.seed());
+        await page.reload();
+        await launch(button('Play'), 3);
+        await page.evaluate(() => window.commerceFixture.clear());
+        await heading('Relay offline').waitFor();
+        await page.getByText(/112 Salvage banked/).waitFor();
+        await button('Gunship unlocked').waitFor();
+        if (!native) {
+          await launch(button(/Next Flight/), 4);
+          assert.deepEqual(await page.evaluate(() => window.testCommerce.calls), []);
+          continue;
+        }
+
+        const open = async () => {
+          await button(/Red Sun/).tap();
+          await heading('Unlock the Full Game').waitFor();
+        };
+        assert.equal(await heading('Unlock the Full Game').count(), 0);
+        await open();
+        await page.getByText('2,99 €', { exact:true }).waitFor();
+        const viewport = await page.locator('#menu').boundingBox();
+        for (const label of ['Unlock Full Game', 'Not Now', 'Restore Purchases']) {
+          const bounds = await button(label).boundingBox();
+          assert.ok(bounds.width >= 44 && bounds.height >= 44 && bounds.y + bounds.height <= viewport.y + viewport.height);
+        }
+        await button('Unlock Full Game').tap();
+        await page.getByRole('status').filter({ hasText:/cancelled/i }).waitFor();
+        await button('Not Now').tap();
+        await heading('Relay offline').waitFor();
+        assert.equal((await page.evaluate(() => window.commerceFixture.pilot())).clears[3], 1);
+        await button('Arcade').tap();
+        await launch(button('Endless'), null);
+        await leave();
+        await heading('Stage Select').waitFor();
+        await open();
+        await page.evaluate(() => { window.testCommerce.store.purchase = 'pending'; });
+        await button('Unlock Full Game').tap();
+        await page.getByRole('status').filter({ hasText:/pending/i }).waitFor();
+        assert.equal(await button('Unlock Full Game').isDisabled(), true);
+        await button('Restore Purchases').tap();
+        await page.getByRole('status').filter({ hasText:/restored/i }).waitFor();
+        await launch(button(/Launch Red Sun/), 4);
+        await leave();
+        assert.equal(await button(/^05 Outer Orbit/).isDisabled(), true);
+        const flagship = button(/^06 The Flagship/);
+        await flagship.evaluate((control) => { control.disabled = false; });
+        await flagship.tap();
+        await page.getByText('This stage is locked.', { exact:true }).waitFor();
+        await page.reload();
+        await launch(button('Play'), 4);
+        await page.evaluate(() => window.commerceFixture.clear());
+        await launch(button(/Next Flight.*Outer Orbit/), 5);
+        await page.evaluate(() => window.commerceFixture.clear());
+        await launch(button(/Next Flight.*The Flagship/), 6);
+        await leave();
+        await button('Back').tap();
+        await page.evaluate(() => {
+          // A stale UI status still advertises ownership when the host has revoked it.
+          window.testCommerce.store.owned = false;
+        });
+        await button('Play').tap();
+        await heading('Stage Select').waitFor();
+        await page.evaluate(() => {
+          window.testCommerce.store.available = false;
+          window.testCommerce.store.notify();
+        });
+        await open();
+        assert.equal(await button('Unlock Full Game').isDisabled(), true);
+        assert.equal(await page.getByText('2,99 €', { exact:true }).count(), 0);
+      } finally { await context.close(); }
+    }
+  } finally { await browser.close(); }
+});
+
 test('title keeps the call sign, fits its controls, and teaches either first Arcade entry', { skip: !origin, timeout:45000 }, async () => {
   const browser = await chromium.launch();
   try {

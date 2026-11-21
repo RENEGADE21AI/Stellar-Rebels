@@ -31,7 +31,10 @@ export function hasStage(pilot, id) {
 }
 
 export function hasShip(pilot, key) {
-  return Object.hasOwn(SHIPS, key) && (SHIPS[key].clearance === 0 || Boolean(pilot.clears[SHIPS[key].clearance]));
+  if (!Object.hasOwn(SHIPS, key)) return false;
+  const { clearance } = SHIPS[key];
+  // Stage 4 clears also count for Gunships earned on previous versions.
+  return clearance === 0 || Boolean(pilot.clears[clearance] || (key === 'bastion' && pilot.clears[4]));
 }
 
 export function equip(pilot, key) {
@@ -192,10 +195,10 @@ export function settleRun(pilot, id, terminal) {
   let newStage = null;
   if (stage && cleared) {
     first = !pilot.clears[stage.id];
+    if (first) newShip = Object.keys(SHIPS).find((key) => SHIPS[key].clearance === stage.id && !hasShip(pilot, key)) ?? null;
     pilot.clears[stage.id] = number(pilot.clears[stage.id]) + 1;
     award = first ? stage.first : repeatAward;
     if (first) {
-      newShip = Object.keys(SHIPS).find((key) => SHIPS[key].clearance === stage.id) ?? null;
       newSpecial = Object.keys(SPECIALS).find((key) => SPECIALS[key].clearance === stage.id) ?? null;
       newStage = stage.id < STAGES.length ? stage.id + 1 : null;
     }

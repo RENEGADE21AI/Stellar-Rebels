@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { zipSync } from 'fflate';
@@ -63,7 +64,10 @@ html = replaceRequired(html, '<link rel="manifest" href="/site.webmanifest">',
 html = html.replaceAll(`src="/${generation}/shared/`, 'src="shared/');
 html = replaceRequired(html, '<script type="module" src="app.mjs"></script>', '<script defer src="native-app.js"></script>');
 pack['index.html'] = utf8(html);
-const version = { ...webVersion, files: Object.keys(pack).sort() };
+const archive = zipSync(pack, { level: 6, mtime: new Date(2000, 0, 1) });
+if (archive.length > 12 * 1024 * 1024) throw Error('Bundled flight assets exceed the 12 MiB ceiling');
+const flightDigest = createHash('sha256').update(archive).digest('hex');
+const version = { ...webVersion, flightDigest, files: Object.keys(pack).sort() };
 
 fs.mkdirSync(generated, { recursive: true });
 for (const [file, content] of Object.entries(pack)) {
@@ -79,7 +83,5 @@ PNG.bitblt(emblem, adaptive, 0, 0, emblem.width, emblem.height,
   Math.floor((adaptive.width - emblem.width) / 2), Math.floor((adaptive.height - emblem.height) / 2));
 fs.writeFileSync(path.join(generated, 'adaptive.png'), PNG.sync.write(adaptive));
 fs.writeFileSync(path.join(generated, 'version.json'), JSON.stringify(version, null, 2) + '\n');
-const archive = zipSync(pack, { level: 6, mtime: new Date(2000, 0, 1) });
-if (archive.length > 12 * 1024 * 1024) throw Error('Bundled flight assets exceed the 12 MiB ceiling');
 fs.writeFileSync(path.join(generated, 'flight.zip'), archive);
 console.log(`${webVersion.commitSha} / ${webVersion.assetVersion}: ${version.files.length} files, ${archive.length} bytes, app source staged.`);
