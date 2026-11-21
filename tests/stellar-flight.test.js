@@ -86,6 +86,29 @@ test('Arcade progression settles one receipt atomically and Endless pays no Salv
   assert.equal(p.salvage, 70);
 });
 
+test('Ion Burst unlocks at Stage 2 and freezes in each attempt and result', async () => {
+  const [, pilot] = await load;
+  const p = pilot.newPilot();
+  delete p.special;
+  assert.equal(pilot.beginRun(p, 'legacy', 'arcade', 1).special, 'ghost');
+  assert.equal(pilot.equipSpecial(p, 'ion'), false);
+  assert.equal(pilot.equipSpecial(p, 'constructor'), false);
+  const terminal = { status:'clear', score:2500, duration:160, kills:28 };
+  assert.equal(pilot.settleRun(p, 'legacy', terminal).newSpecial, null);
+  pilot.beginRun(p, 'second', 'arcade', 2);
+  assert.equal(pilot.settleRun(p, 'second', terminal).newSpecial, 'ion');
+  assert.equal(pilot.equipSpecial(p, 'ion'), true);
+  assert.equal(pilot.beginRun(p, 'repeat', 'arcade', 1).special, 'ion');
+  assert.equal(pilot.equipSpecial(p, 'ghost'), true);
+  const receipt = pilot.settleRun(p, 'repeat', { ...terminal, score:3500 });
+  assert.equal(receipt.special, 'ion');
+  assert.equal(p.records.arcade[1].special, 'ion');
+  assert.equal(receipt.newSpecial, null);
+  delete p.special;
+  assert.equal(pilot.hasSpecial(p, 'ion'), true, 'earlier Stage 2 clears still unlock Ion Burst');
+  assert.equal(pilot.beginRun(p, 'saved', 'endless').special, 'ghost');
+});
+
 test('an active attempt from the previous release retains its payout rules', async () => {
   const [, pilot, { STAGES }] = await load;
   const p = pilot.newPilot();
@@ -255,6 +278,33 @@ test('linked Gunners launch from both rotated hardware mounts', async () => {
   assert.deepEqual(f.hostile.map(({ x,y }) => ({ x,y })), GUNNER_MUZZLES.map(([dx,dy]) => hardpointAt(wing,dx,dy,wing.turn)));
 });
 
+test('a linked volley locks adjacent lanes and interrupting the Command Ship jams its wings', async () => {
+  const [{ Flight }] = await load;
+  const f = new Flight(context());
+  const command = f.addEnemy({ kind:'relay', lane:.5, group:1 });
+  const wings = [.25,.75].map((lane) => f.addEnemy({ kind:'scout', lane, group:1 }));
+  for (const enemy of [command, ...wings]) Object.assign(enemy, { y:180, fireTimer:4 });
+  f.player.x = 165;
+  f.player.y = 590;
+  command.fireTimer = .81;
+  f.moveEnemies(step);
+  assert.deepEqual(command.volleyTarget, { x:165, y:590 });
+  f.player.x = 340;
+  command.fireTimer = 0;
+  f.moveEnemies(step);
+  assert.equal(command.volleyTarget, null);
+  const landing = f.hostile.map((s) => Math.round(s.x + s.vx * (590 - s.y) / s.vy)).sort((a,b) => a - b);
+  assert.deepEqual(landing, [139,165,191]);
+  assert.ok(landing.every((lane) => Math.abs(lane - f.player.x) > 100), 'moving off the locked lanes avoids the volley');
+  f.hostile.length = 0;
+  command.fireTimer = .3;
+  f.hitEnemy(command, { strength:100, x:command.x, y:command.y });
+  assert.equal(f.breaks, 1);
+  assert.ok(wings.every((wing) => wing.jam > 3));
+  f.moveEnemies(step);
+  assert.equal(f.hostile.length, 0);
+});
+
 test('fatal rail damage ends the run before a simultaneous repair', async () => {
   const [{ Flight }] = await load;
   const f = new Flight(context(6));
@@ -275,6 +325,7 @@ test('Ghost Shift spends earned charge and phases through physical danger withou
   const [{ Flight }, , { GHOST }] = await load;
   const f = new Flight(context());
   const p = f.player;
+  p.ghostEnergy = GHOST.cost - 12;
   assert.equal(f.activateGhost(), false);
   p.guard = 0;
   f.collect({ kind:'barrier' });
@@ -297,6 +348,65 @@ test('Ghost Shift spends earned charge and phases through physical danger withou
   while (p.ghostRecovery) f.movePilot(step);
   assert.equal(f.activateGhost(), true);
   assert.equal(new Flight(context()).player.ghostEnergy, GHOST.start);
+});
+
+test('ordinary charge starts full and recharges at three per second while practice controls its charge', async () => {
+  const [{ Flight }, , { GHOST }] = await load;
+  const f = new Flight(context());
+  const p = f.player;
+  assert.equal(p.ghostEnergy, GHOST.capacity);
+  assert.equal(f.activateGhost(), true);
+  const afterShift = p.ghostEnergy;
+  f.movePilot(GHOST.duration);
+  assert.equal(p.ghostEnergy, afterShift);
+  f.movePilot(2);
+  assert.equal(p.ghostEnergy, afterShift + 6);
+  for (let i = 0; i < 60; i++) f.movePilot(step);
+  assert.ok(Math.abs(p.ghostEnergy - afterShift - 9) < 1e-8);
+  f.movePilot(50);
+  assert.equal(p.ghostEnergy, GHOST.capacity);
+  f.practice = true;
+  p.ghostEnergy = 0;
+  f.movePilot(2);
+  assert.equal(p.ghostEnergy, 0);
+});
+
+test('Ion Burst clears local physical shots and leaves other threats and rewards intact', async () => {
+  const [{ Flight }, , { GHOST, SPECIALS }] = await load;
+  const { launchBoss } = await import('../arcade/bosses.mjs');
+  const f = new Flight({ ...context(2), special:'ion' });
+  const p = f.player;
+  const { radius, cost, recovery } = SPECIALS.ion;
+  f.projectile(p.x + radius, p.y, 0, 0);
+  f.projectile(p.x, p.y - 24, 0, 0, 'lance');
+  f.projectile(p.x + radius + 1, p.y, 0, 0);
+  f.projectile(p.x, p.y, 0, 0, 'rock');
+  f.projectile(p.x, p.y, 0, 0, 'specter', { realm:'ghost' });
+  const preserved = f.hostile.slice(-3);
+  const hazard = { type:'rail' };
+  f.hazards.push(hazard);
+  p.guard = 0;
+  assert.equal(f.ghostCost, cost);
+  assert.equal(f.activateGhost(), true);
+  assert.deepEqual(f.hostile, preserved);
+  assert.deepEqual(f.hazards, [hazard]);
+  assert.equal(p.ghostEnergy, GHOST.start - cost);
+  assert.equal(p.ghostRecovery, recovery);
+  assert.equal(p.ghostTime, 0);
+  assert.equal(p.realm, 'physical');
+  assert.equal(p.guard, 0);
+  assert.equal(f.score, 0);
+  assert.equal(f.kills, 0);
+  assert.deepEqual(f.takeEvents(), [{ type:'ionBurst', x:p.x, y:p.y, detail:{ radius, cleared:2 } }]);
+  assert.equal(f.activateGhost(), false);
+  f.movePilot(recovery);
+  assert.equal(f.shiftReady, true);
+  launchBoss(f, 'wraith');
+  assert.equal(f.ghostCost, GHOST.hop);
+  assert.equal(f.activateGhost(), true);
+  assert.equal(p.realm, 'ghost');
+  assert.equal(f.takeEvents().filter((event) => event.type === 'ionBurst').length, 0);
+  assert.equal(f.special, 'ion');
 });
 
 test('Shield refreshes one hit and expires when active flight time runs out', async () => {
@@ -464,29 +574,104 @@ test('ordinary flight, the crossing cruiser and bosses share the same arena boun
   assert.deepEqual(f.movementBounds, bounds);
 });
 
-test('a surviving fighter loops up the edge once with its existing hull and no duplicate reward', async () => {
+test('Vesper stages two separated cruiser crossings with opposing paths and lighter patrol guns', async () => {
+  const [{ Flight, bounds }, , { WIDTH }] = await load;
+  const f = new Flight({ ...context(), seed:'4288578730338ed3aecc03a02e15645c' });
+  f.player.guard = Infinity;
+  f.fireTimer = Infinity;
+  const visits = [];
+  let seen = null;
+  while (!f.boss && f.elapsed < f.stage.bossAt + 1) {
+    f.step(step);
+    const craft = f.cruiser;
+    if (craft && craft !== seen) {
+      visits.push({ variant:craft.variant, entry:f.elapsed, x:craft.x, y:craft.y, speed:craft.speed,
+        turretHull:craft.parts[0].hull, mountCount:craft.parts.length, min:craft.x, max:craft.x });
+    }
+    if (craft) {
+      const visit = visits.at(-1);
+      visit.min = Math.min(visit.min, craft.x);
+      visit.max = Math.max(visit.max, craft.x);
+      if (seen === craft) assert.ok((craft.x - craft.px) * craft.speed > 0);
+    } else if (seen) visits.at(-1).exit = f.elapsed;
+    seen = craft;
+    f.takeEvents();
+  }
+  assert.deepEqual(visits.map((visit) => visit.variant), ['patrol','heavy']);
+  const [patrol, heavy] = visits;
+  assert.ok(Math.abs(patrol.entry - 46) <= step && Math.abs(heavy.entry - 82) <= step);
+  assert.ok(patrol.x > WIDTH && patrol.speed < 0);
+  assert.ok(heavy.x < 0 && heavy.speed > 0);
+  assert.ok(patrol.y + 24 < heavy.y && patrol.turretHull < heavy.turretHull);
+  assert.ok(patrol.exit < heavy.entry - 20 && heavy.exit < f.stage.bossAt - 29);
+  for (const visit of visits) {
+    assert.ok(visit.min < 0 && visit.max > WIDTH);
+    assert.equal(visit.mountCount, 2);
+  }
+  assert.equal(f.boss.kind, 'gatekeeper');
+  assert.equal(f.cruiser, null);
+  assert.deepEqual(f.movementBounds, bounds);
+});
+
+test('fighter return paths stay clear for either scheduled Cruiser crossing', async () => {
   const [{ Flight }, , { HEIGHT }] = await load;
   const f = new Flight(context());
-  f.addEnemy({ kind:'scout', lane:.2 });
-  const enemy = f.enemies[0];
-  const originalLane = enemy.home;
-  Object.assign(enemy, { y:HEIGHT + 24, age:9, hull:1.25 });
-  f.moveEnemies(step);
-  assert.ok(enemy.loop);
-  assert.equal(enemy.loop.edge, 15);
-  for (let i = 0; i < 75; i++) f.moveEnemies(step);
-  assert.ok(enemy.y > 0 && enemy.y < HEIGHT && enemy.turn > 3);
-  assert.equal(f.kills, 0);
-  assert.equal(f.hostile.length, 0);
-  for (let i = 0; i < 60; i++) f.moveEnemies(step);
-  assert.equal(enemy.returned, true);
-  assert.equal(enemy.loop, null);
-  assert.equal(enemy.hull, 1.25);
-  assert.ok(Math.abs(enemy.home - originalLane) >= 96);
+  const diver = f.addEnemy({ kind:'diver', lane:.31 });
+  for (const [index, crossing] of f.stage.cruisers.entries()) {
+    f.cruiserIndex = index;
+    f.elapsed = crossing.at - 2.95;
+    diver.y = HEIGHT - 13;
+    f.moveEnemies(step);
+    assert.equal(diver.loop, null);
+  }
+});
+
+test('a surviving fighter visibly banks, climbs fast, and returns at most twice with its hull intact', async () => {
+  const [{ Flight }, , { HEIGHT, WIDTH }] = await load;
+  const f = new Flight(context());
+  const enemy = f.addEnemy({ kind:'scout', lane:.2 });
+  for (let count = 1; count <= 2; count++) {
+    const previousLane = enemy.home;
+    Object.assign(enemy, { y:HEIGHT - enemy.spec.size * .5, age:9, hull:1.25 });
+    f.moveEnemies(step);
+    assert.equal(enemy.returnCount, count);
+    assert.ok(enemy.loop?.fromY < HEIGHT, 'bank starts where the ship is still visible');
+    for (let i = 0; i < 40; i++) f.moveEnemies(step);
+    assert.ok(enemy.y > 0 && enemy.y < HEIGHT && Math.abs(enemy.turn) > 3);
+    const before = enemy.y;
+    f.moveEnemies(step);
+    assert.ok(Math.abs((before - enemy.y) / step - 620) < .01);
+    assert.equal(f.kills, 0);
+    assert.equal(f.hostile.length, 0);
+    for (let i = 0; i < 80 && enemy.loop; i++) f.moveEnemies(step);
+    assert.equal(enemy.returned, true);
+    assert.equal(enemy.loop, null);
+    assert.equal(enemy.hull, 1.25);
+    assert.ok(Math.abs(enemy.home - previousLane) >= WIDTH / 4);
+  }
   Object.assign(enemy, { y:HEIGHT + 42, age:9 });
   f.step(step);
   assert.equal(f.enemies.includes(enemy), false);
   assert.equal(f.kills, 0);
+  assert.equal(f.score, 0);
+});
+
+test('only three eligible fighters can return at once and a set piece clears the returning lane', async () => {
+  const [{ Flight }, , { HEIGHT }] = await load;
+  const f = new Flight(context());
+  for (const [index, kind] of ['scout','diver','scout','diver','scout','lancer'].entries()) {
+    const e = f.addEnemy({ kind, lane:.13 + index * .14 });
+    e.y = HEIGHT - 10;
+  }
+  f.moveEnemies(step);
+  assert.equal(f.enemies.filter((e) => e.loop).length, 3);
+  assert.ok(f.enemies.some((e) => e.kind === 'diver' && e.loop));
+  assert.equal(f.enemies.find((e) => e.kind === 'lancer').loop, null);
+  const { launchCruiser } = await import('../arcade/cruiser.mjs');
+  launchCruiser(f);
+  assert.ok(f.enemies.filter((e) => e.loop).every((e) => e.retreat));
+  f.moveEnemies(step);
+  assert.equal(f.enemies.filter((e) => e.loop && !e.retreat).length, 0);
 });
 
 test('Scouts close space quickly while a Diver can be baited during its warning', async () => {
@@ -564,20 +749,75 @@ test('a Splitter releases one pair of telegraphed Shards with one volley each', 
   assert.equal(f.kills, 2);
 });
 
-test('the opening wing can earn the Power drop early, with a single timed fallback', async () => {
+test('the opening Multi-Shot comes from a destroyed wing or one later marked carrier', async () => {
   const [{ Flight }] = await load;
-  for (const clearWing of [true, false]) {
+  for (const clearWing of ['early','marked','late-wing']) {
     const f = new Flight(context());
     f.queue('arrow', false, 'opening');
     f.elapsed = 2;
     f.moveEnemies(step);
-    assert.equal(f.enemies.filter((enemy) => enemy.returns).length, 1);
-    if (clearWing) for (const enemy of f.enemies) f.hitEnemy(enemy, { strength: 100, x: enemy.x, y: enemy.y });
-    assert.equal(f.pickups.length, Number(clearWing));
+    const opening = [...f.enemies];
+    assert.ok(opening.every((enemy) => enemy.returns));
+    const destroy = (e) => f.hitEnemy(e, { strength:100, x:e.x, y:e.y });
+    opening.forEach((e) => { e.y = 105; });
+    if (clearWing === 'early') opening.forEach(destroy);
+    assert.equal(f.pickups.length, Number(clearWing === 'early'));
     f.elapsed = 14.01;
     f.updateSchedule();
+    const carrier = f.addEnemy({ kind:'diver', lane:.68 });
+    carrier.y = 151;
+    f.assignSupplies();
+    assert.equal(f.pickups.length, Number(clearWing === 'early'), 'schedule must not drop supply in midair');
+    assert.equal(carrier.carrying, clearWing === 'early' ? undefined : 'power');
+    if (clearWing === 'late-wing') {
+      opening.forEach(destroy);
+      assert.equal(carrier.carrying, null);
+    }
+    destroy(carrier);
     assert.deepEqual(f.pickups.map((drop) => drop.kind), ['power']);
+    const source = clearWing === 'marked' ? carrier : opening.at(-1);
+    assert.deepEqual({ x:f.pickups[0].x, y:f.pickups[0].y }, { x:source.x, y:source.y });
   }
+});
+
+test('Arcade and Endless supplies transfer from missed carriers and drop at a real defeat', async () => {
+  const [{ Flight }, , { HEIGHT }] = await load;
+  for (const mode of ['arcade','endless']) {
+    const f = new Flight({ ...context(2), mode, stage:mode === 'endless' ? null : 2 });
+    if (mode === 'arcade') f.elapsed = 16.1;
+    else { f.elapsed = 21; f.endlessWave = 3; }
+    f.updateSchedule();
+    const first = f.addEnemy({ kind:'lancer', lane:.38 });
+    first.y = 230;
+    f.assignSupplies();
+    assert.equal(first.carrying, 'power');
+    assert.equal(f.pickups.length, 0);
+    first.y = HEIGHT + 35;
+    const second = f.addEnemy({ kind:'scout', lane:.49 });
+    second.y = 211;
+    f.assignSupplies();
+    assert.equal(first.carrying, null);
+    assert.equal(second.carrying, 'power');
+    const shot = { strength:100, x:second.x, y:second.y };
+    f.hitEnemy(second, shot);
+    f.hitEnemy(second, shot);
+    assert.deepEqual(f.pickups.map(({kind,x,y}) => ({kind,x,y})), [{ kind:'power', x:second.x, y:second.y }]);
+    assert.equal(f.supplies.length, 0);
+  }
+});
+
+test('long Endless attempts keep one unclaimed supply per kind', async () => {
+  const [{ Flight }] = await load;
+  const f = new Flight({ ...context(), mode:'endless', stage:null });
+  f.nextEndlessBoss = Infinity;
+  for (let i = 0; i < 48; i++) {
+    f.elapsed = f.endlessNext;
+    f.updateSchedule();
+    f.spawns.length = 0;
+  }
+  assert.equal(f.supplies.length, 4);
+  assert.deepEqual(f.supplies.map((supply) => supply.kind), ['power','barrier','repair','overdrive']);
+  assert.deepEqual(f.pickups, []);
 });
 
 test('fast beams hit rotated bodies, clear empty margins, and ignore an aircraft on its return path', async () => {
@@ -636,7 +876,7 @@ test('the seed controls return lanes and the replay verifier rebuilds the score 
   assert.deepEqual(lanes(seed), lanes(seed));
   assert.notDeepEqual(lanes(seed), lanes('264d04d251dd434a82254d6a3f5409eb'));
 
-  const run = { ...context(), seed, rules:RULES_VERSION };
+  const run = { ...context(), seed, rules:RULES_VERSION, special:'ion' };
   const capture = captureReplay(run);
   const f = new Flight(run, { recordInput:capture.recordInput });
   while (f.status === 'active' && f.elapsed < 250) {
@@ -658,10 +898,15 @@ test('the seed controls return lanes and the replay verifier rebuilds the score 
   console.log(`Replay ${JSON.stringify(replay).length} bytes verified in ${Math.round(performance.now() - start)} ms`);
   assert.equal(checked.valid, true, JSON.stringify(checked));
   assert.equal(checked.result.score, f.score);
-  assert.equal(checked.board, `${RULES_VERSION}/arcade/1/kestrel/stock`);
+  assert.equal(checked.board, `${RULES_VERSION}/arcade/1/kestrel/stock/ion`);
+  assert.equal(verifyReplay({ ...replay, run:{ ...replay.run, special:'unknown' } }).valid, false);
+  assert.equal(verifyReplay({ ...replay, run:{ ...replay.run, special:['ion'] } }).valid, false);
   assert.equal(verifyReplay({ ...replay, result:{ ...replay.result, score:f.score + 1 } }).valid, false);
+  const [, x, y] = replay.commands[0];
   replay.commands[0][3] = 1;
-  assert.match(verifyReplay(replay).reason, /Ghost Shift/);
+  const replace = replay.commands[1]?.[0] === 1 ? 1 : 0;
+  replay.commands.splice(1, replace, [1, x, y, 1]);
+  assert.match(verifyReplay(replay).reason, /Special was unavailable/);
 });
 
 test('reduced effects preserve shot origins and combat outcomes', async () => {

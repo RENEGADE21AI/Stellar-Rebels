@@ -1,28 +1,35 @@
-import { GUNNER_MUZZLES, enemyMuzzle, hardpointAt } from './catalog.mjs';
+import { GUNNER_MUZZLES, WIDTH, enemyMuzzle, hardpointAt } from './catalog.mjs';
 
 export const VANE_HULL = 4.1;
+const chargeLead = 1.15;
 
 export function vanePosition(command) {
   return { x: command.x + command.side * 30, y: command.y + 3, radius: 10.5 };
 }
 
 export function commandCharge(command) {
-  return command.vane > 0 && command.fireTimer < 1.15;
+  return command.vane > 0 && command.fireTimer < chargeLead;
 }
 
 export function linkedVolley(flight, command) {
   const line = flight.enemies.filter((e) => e.group === command.group && e.hull > 0 && e.y > 37 && !e.dive &&
-    e.y < flight.player.y - 84);
-  for (const wing of line) {
-    const off = Math.sign(wing.x - command.x) * .11;
-    const direction = Math.PI / 2 + off;
+    !e.retreat && !e.loop && e.y < flight.player.y - 84).sort((a, b) => a.x - b.x);
+  const aim = command.volleyTarget ?? flight.player;
+  const half = (line.length - 1) / 2;
+  const span = Math.max(0, half * 26);
+  const center = Math.max(17 + span, Math.min(WIDTH - 17 - span, aim.x));
+  for (let index = 0; index < line.length; index++) {
+    const wing = line[index];
+    const lane = center + (index - half) * 26;
     if (wing.kind === 'lancer') {
       for (const [dx, dy] of GUNNER_MUZZLES) {
         const { x, y } = hardpointAt(wing, dx, dy, wing.turn);
-        flight.enemyProjectile(wing, x, y, direction + Math.sign(dx) * .13, 195, 'pulse');
+        const direction = Math.atan2(Math.max(70, aim.y - y), lane + Math.sign(dx) * 13 - x);
+        flight.enemyProjectile(wing, x, y, direction, 195, 'pulse');
       }
     } else {
       const { x, y } = enemyMuzzle(wing);
+      const direction = Math.atan2(Math.max(70, aim.y - y), lane - x);
       flight.enemyProjectile(wing, x, y, direction, 195, 'pulse');
     }
   }
@@ -30,7 +37,7 @@ export function linkedVolley(flight, command) {
 }
 
 export function breakFormation(flight, command) {
-  const duringCharge = commandCharge(command) || command.fireTimer < 1.15;
+  const duringCharge = command.fireTimer < chargeLead;
   const vane = vanePosition(command);
   const wing = flight.enemies.filter((e) => e !== command && e.group === command.group && e.hull > 0);
   if (!wing.length) return;

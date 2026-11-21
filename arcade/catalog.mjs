@@ -2,13 +2,20 @@ import { innerRoute, outerRoute } from './routes.mjs';
 
 export const WIDTH = 384;
 export const HEIGHT = 768;
-export const RULES_VERSION = 'arcade-7';
+export const RULES_VERSION = 'arcade-8';
 export const FIXED_TICK = 1 / 60;
 export const AIM_PRECISION = 16;
 export const INPUT_SHIFT = 1;
 export const INPUT_RESUME = 2;
 export const GUNNER_MUZZLES = [[-21,22],[21,22]];
-export const GHOST = { capacity: 100, start: 26, cost: 38, duration: 1.05, recovery: 1.15, hop: 18, hopRecovery: .42 };
+export const GHOST = { capacity: 100, start: 100, recharge: 3, cost: 38, duration: 1.05, recovery: 1.15, hop: 18, hopRecovery: .42 };
+
+export const SPECIALS = {
+  ghost: { name: 'Ghost Shift', label: 'Shift', clearance: 0, cost: GHOST.cost,
+    description: 'Briefly phase through physical fire.' },
+  ion: { name: 'Ion Burst', label: 'Burst', clearance: 2, cost: 50, radius: 96, recovery: 1.65,
+    description: 'Clear nearby physical shots. Beams and debris keep moving.' }
+};
 
 export const SHIPS = {
   kestrel: {
@@ -39,10 +46,10 @@ export const UPGRADES = {
 };
 
 export const PICKUPS = {
-  power: { name: 'Weapon Power', hint: 'Adds two flank shots for 12 seconds.', color: '#c8a0ff', duration: 12 },
+  power: { name: 'Multi-Shot', hint: 'Adds two flank shots for 12 seconds.', color: '#c8a0ff', duration: 12 },
   barrier: { name: 'Shield', hint: 'Blocks one hit for up to 12 seconds.', color: '#77c7ff', duration: 12 },
   repair: { name: 'Repair', hint: 'Restores up to two hull segments.', color: '#8bffd0', hull: 2 },
-  overdrive: { name: 'Overdrive', hint: 'Faster, harder shots for seven seconds.', color: '#ffd478', duration: 7 }
+  overdrive: { name: 'Rapid Fire', hint: 'Faster, harder shots for seven seconds.', color: '#ffd478', duration: 7 }
 };
 
 export const ENEMIES = {
@@ -86,10 +93,11 @@ export function formation(name, flipped = false) {
 export const STAGES = [
   {
     id: 1, name: 'Vesper Orbit', region: 'Blockade', brief: 'Fight through the blockade.', accent: '#ff8752',
-    environment: 'breach', boss: 'gatekeeper', bossAt: 126, cruiserAt: 82, first: 78, repeat: 16, defeatCap: 20,
-    chapters: [[0,'Approach'],[16,'Blockade screen'],[42,'Fighter wings'],[82,'Cruiser crossing'],[103,'Final approach']],
+    environment: 'breach', boss: 'gatekeeper', bossAt: 126, first: 78, repeat: 16, defeatCap: 20,
+    cruisers: [{ at:46, variant:'patrol' }, { at:82, variant:'heavy' }],
+    chapters: [[0,'Approach'],[16,'Blockade screen'],[46,'Cruiser patrol'],[82,'Cruiser crossing'],[103,'Final approach']],
     waves: [[.6,'arrow',0,'opening'],[6.4,'column',1],[15,'spear'],[19.5,'hook'],[30,'linked'],[38,'rake'],[43,'anvil'],
-      [47.4,'cross'],[58,'linked',1],[63,'sweep'],[73,'break'],[77,'column',1],[89,'screen'],[98,'anvil',1],
+      [47.4,'screen',1],[58,'linked',1],[63,'sweep'],[73,'break'],[77,'column',1],[89,'screen'],[98,'anvil',1],
       [103,'linked'],[112,'hook',1],[118,'cross']],
     drops: [[14,'power',.50,'opening'],[39,'barrier',.65],[72,'repair',.37],[99,'power',.57],[116,'overdrive',.50]],
     mastery: { name: 'Disarm the Warden', detail: 'Destroy both turrets before the main hull.', condition: 'parts' }

@@ -1,4 +1,4 @@
-import { RULES_VERSION, SHIPS, STAGES, UPGRADES, stageById } from './catalog.mjs';
+import { RULES_VERSION, SHIPS, SPECIALS, STAGES, UPGRADES, stageById } from './catalog.mjs';
 import { validFlightSeed } from './seed.mjs';
 
 const WEEK = 7 * 24 * 3600 * 1000;
@@ -18,7 +18,7 @@ function number(value) {
 
 export function newPilot(preferences) {
   return {
-    schema: SCHEMA, callSign: '', salvage: 0, clears: {}, mastery: {}, equipment: [], ship: 'kestrel',
+    schema: SCHEMA, callSign: '', salvage: 0, clears: {}, mastery: {}, equipment: [], ship: 'kestrel', special: 'ghost',
     records: { arcade: {}, endless: null }, active: {}, receipts: {},
     settings: { ...DEFAULT_SETTINGS, ...preferences }
   };
@@ -35,6 +35,18 @@ export function hasShip(pilot, key) {
 export function equip(pilot, key) {
   if (!hasShip(pilot, key)) return false;
   pilot.ship = key;
+  return true;
+}
+
+export function hasSpecial(pilot, key) {
+  if (typeof key !== 'string' || !Object.hasOwn(SPECIALS, key)) return false;
+  const { clearance } = SPECIALS[key];
+  return clearance === 0 || Boolean(pilot.clears[clearance]);
+}
+
+export function equipSpecial(pilot, key) {
+  if (!hasSpecial(pilot, key)) return false;
+  pilot.special = key;
   return true;
 }
 
@@ -59,7 +71,8 @@ export function beginRun(pilot, id, mode, stage, now = Date.now(), seed = '') {
   delete assistance.haptics;
   const run = {
     id, mode, stage: mode === 'arcade' ? stage : null, started: now, rules: RULES_VERSION, rewardVersion: REWARD_VERSION,
-    ship: pilot.ship, equipment: [...pilot.equipment], assistance, seed: validFlightSeed(seed) ? seed : undefined
+    ship: pilot.ship, equipment: [...pilot.equipment], special: hasSpecial(pilot, pilot.special) ? pilot.special : 'ghost',
+    assistance, seed: validFlightSeed(seed) ? seed : undefined
   };
   pilot.active[id] = run;
   return run;
@@ -92,7 +105,7 @@ export function settleRun(pilot, id, terminal) {
   if (run.mode === 'arcade' && !stage) return null;
 
   const record = {
-    mode: run.mode, stage: run.stage, ship: run.ship, rules: run.rules, equipment: run.equipment,
+    mode: run.mode, stage: run.stage, ship: run.ship, rules: run.rules, equipment: run.equipment, special: run.special ?? 'ghost',
     assistance: run.assistance, score: number(terminal.score), duration: number(terminal.duration),
     kills: number(terminal.kills), breaks: number(terminal.breaks), status: terminal.status
   };
@@ -102,6 +115,7 @@ export function settleRun(pilot, id, terminal) {
   let award = 0;
   let first = false;
   let newShip = null;
+  let newSpecial = null;
   let newStage = null;
   let best = false;
   if (stage && cleared) {
@@ -110,6 +124,7 @@ export function settleRun(pilot, id, terminal) {
     award = first ? stage.first : repeatAward;
     if (first) {
       newShip = Object.keys(SHIPS).find((key) => SHIPS[key].clearance === stage.id) ?? null;
+      newSpecial = Object.keys(SPECIALS).find((key) => SPECIALS[key].clearance === stage.id) ?? null;
       newStage = stage.id < STAGES.length ? stage.id + 1 : null;
     }
   } else if (stage) {
@@ -132,7 +147,7 @@ export function settleRun(pilot, id, terminal) {
   const masteryKey = run.rules === 'arcade-1' ? stage?.id : stage?.mastery?.key ?? stage?.id;
   const mastery = cleared && Boolean(stage?.mastery) && terminal.mastery === true && !pilot.mastery[masteryKey];
   if (mastery) pilot.mastery[masteryKey] = true;
-  const receipt = { ...record, award, first, best, newStage, newShip, mastery };
+  const receipt = { ...record, award, first, best, newStage, newShip, newSpecial, mastery };
   pilot.receipts[id] = receipt;
   const recent = Object.keys(pilot.receipts);
   for (const old of recent.slice(0, -20)) delete pilot.receipts[old];
@@ -215,6 +230,7 @@ export class PilotStore {
           const pilot = read.result ?? newSave ?? newPilot(this.preferences);
           if (pilot.schema !== SCHEMA) throw Error('This device save requires a different game version');
           if (!Object.hasOwn(pilot.settings ?? {}, 'trainingDone')) pilot.settings = { ...DEFAULT_SETTINGS, ...pilot.settings };
+          if (!hasSpecial(pilot, pilot.special)) pilot.special = 'ghost';
           const result = operation?.(pilot);
           if (operation) store.put(pilot, 'profile');
           reply = { pilot, result };

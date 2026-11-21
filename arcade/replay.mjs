@@ -1,4 +1,4 @@
-import { AIM_PRECISION, FIXED_TICK, HEIGHT, INPUT_RESUME, INPUT_SHIFT, RULES_VERSION, SHIPS, UPGRADES, WIDTH, stageById } from './catalog.mjs';
+import { AIM_PRECISION, FIXED_TICK, HEIGHT, INPUT_RESUME, INPUT_SHIFT, RULES_VERSION, SHIPS, SPECIALS, UPGRADES, WIDTH, stageById } from './catalog.mjs';
 import { Flight } from './flight.mjs';
 import { validFlightSeed } from './seed.mjs';
 
@@ -15,7 +15,8 @@ function outcome(terminal) {
 export function captureReplay(run) {
   const commands = [];
   let x, y;
-  const context = { seed: run.seed, rules: run.rules, mode: run.mode, stage: run.stage, ship: run.ship, equipment: [...run.equipment] };
+  const context = { seed: run.seed, rules: run.rules, mode: run.mode, stage: run.stage, ship: run.ship,
+    equipment: [...run.equipment], special: run.special ?? 'ghost' };
   const limit = tickLimit(run.mode);
   return {
     recordInput(tick, nextX, nextY, actions) {
@@ -33,6 +34,7 @@ export function captureReplay(run) {
 
 function validContext(run) {
   if (!run || !validFlightSeed(run.seed) || run.rules !== RULES_VERSION || !Object.hasOwn(SHIPS, run.ship)) return false;
+  if (typeof run.special !== 'string' || !Object.hasOwn(SPECIALS, run.special)) return false;
   if (!(run.mode === 'arcade' && Number.isInteger(run.stage) && stageById(run.stage) || run.mode === 'endless' && run.stage === null)) return false;
   if (!Array.isArray(run.equipment) || run.equipment.length > Object.keys(UPGRADES).length || new Set(run.equipment).size !== run.equipment.length) return false;
   return run.equipment.every((key) => typeof key === 'string' && Object.hasOwn(UPGRADES, key) &&
@@ -64,7 +66,7 @@ export function verifyReplay(replay) {
       const [, x, y, action] = commands[index++];
       aim = [x, y];
       if ((action & INPUT_RESUME) && !flight.resumeProtection()) return fail('Resume protection is still recovering');
-      if ((action & INPUT_SHIFT) && !flight.activateGhost()) return fail('Ghost Shift was unavailable');
+      if ((action & INPUT_SHIFT) && !flight.activateGhost()) return fail('The selected Special was unavailable');
     }
     flight.step(FIXED_TICK, aim);
     flight.takeEvents();
@@ -73,6 +75,6 @@ export function verifyReplay(replay) {
   const terminal = flight.terminal();
   if (!terminal || !Object.entries(outcome(terminal)).every(([key, value]) => result[key] === value)) return fail('Claimed result differs from the replay');
   const loadout = run.equipment.slice().sort().join(',') || 'stock';
-  return { valid: true, board: `${run.rules}/${run.mode}/${run.stage ?? 'survival'}/${run.ship}/${loadout}`, seed: run.seed, ticks,
+  return { valid: true, board: `${run.rules}/${run.mode}/${run.stage ?? 'survival'}/${run.ship}/${loadout}/${run.special}`, seed: run.seed, ticks,
     duration: ticks * FIXED_TICK, result: outcome(terminal) };
 }
