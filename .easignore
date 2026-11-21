@@ -1,5 +1,5 @@
 /*
-!/native/
+!/native
 /native/*
 !/native/app.json
 !/native/eas.json
@@ -7,10 +7,10 @@
 !/native/metro.config.js
 !/native/package.json
 !/native/package-lock.json
-!/native/src/
+!/native/src
 /native/src/*
 !/native/src/App.js
-!/native/generated/
+!/native/generated
 /native/generated/*
 !/native/generated/flight.zip
 !/native/generated/version.json
