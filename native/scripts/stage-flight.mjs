@@ -43,10 +43,7 @@ const built = await build({
     api.onLoad({ filter: /[/\\]app\.mjs$/ }, (args) => {
       let body = `import { NativePilotStore, nativeRequest } from ${JSON.stringify(bridgeModule)};\n` + read(args.path);
       body = replaceRequired(body, 'new PilotStore(globalThis.indexedDB)', 'new NativePilotStore()');
-      const start = body.indexOf("  if (type === 'save-replay') {");
-      const end = body.indexOf("  if (type === 'update-web') {", start);
-      if (start < 0 || end < 0) throw Error('Replay action was moved');
-      body = body.slice(0, start) + "  if (type === 'save-replay') {\n    if (state.pending?.replay) await nativeRequest('share', state.pending.replay);\n    return;\n  }\n" + body.slice(end);
+      body += `\nfor (const type of ['contextmenu', 'selectstart']) {\n  document.addEventListener(type, (event) => {\n    if (event.target instanceof Element && !event.target.closest('input:not([type=range]), textarea, .policy-section')) event.preventDefault();\n  });\n}\n`;
       body += `\nwindow.addEventListener('stellar-native-pause', () => { pause(true); audio.quiet(); });\n`;
       body += `window.addEventListener('stellar-native-foreground', () => { if (state.mode === 'menu') audio.play('hangar'); });\n`;
       body += `window.addEventListener('stellar-native-haptic', (event) => { void nativeRequest('haptic', event.detail).catch(() => {}); });\n`;

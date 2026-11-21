@@ -5,16 +5,14 @@ import { VANE_HULL, breakFormation, commandCharge, linkedVolley, vanePosition } 
 import { PHYSICAL, SPECTRAL, otherRealm, realmLabel } from './wraith.mjs';
 import { flightRandom } from './seed.mjs';
 import { advanceCruiser, launchCruiser } from './cruiser.mjs';
-import { fliesBack, flyEnemy, inFiringRange, separateWing, shardArmTime } from './enemy-course.mjs';
+import { edgeReturnCourse, fliesBack, flyEnemy, flyReturning, inFiringRange, separateWing, shardArmTime } from './enemy-course.mjs';
 import { bodiesMeet, bossBody, contactTime, coreBody, enemyBody, friendlyBody, hostileBody, moduleBody,
   pickupBody, pilotBody, pilotReceiver, rememberPosition, shieldModules, vaneBody, wraithWingBody } from './collision.mjs';
 
 export const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 export const bounds = { left: 17, right: WIDTH - 17, top: 235, bottom: HEIGHT - 37 };
-const loopTurn = .27;
 const maxReturning = 3;
 const maxReturns = 2;
-const returnSpeed = 620;
 const returnLanes = [.18, .34, .50, .66, .82].map((lane) => lane * WIDTH);
 const routeStream = 0x9e3779b9;
 const endlessFlanks = new Set(['spear', 'anvil', 'hook', 'trap', 'surge', 'specters']);
@@ -360,10 +358,10 @@ export class Flight {
         }
         this.terrainIndex++;
       }
-      const crossing = this.stage.cruisers?.[this.cruiserIndex];
-      if (crossing && !this.cruiser && this.elapsed >= crossing.at) {
+      const encounter = this.stage.cruisers?.[this.cruiserIndex];
+      if (encounter && !this.cruiser && this.elapsed >= encounter.at) {
         this.cruiserIndex++;
-        if (this.elapsed < this.stage.bossAt - 15) launchCruiser(this, crossing.variant);
+        if (this.elapsed < this.stage.bossAt - 15) launchCruiser(this, encounter.variant);
       }
       if (!this.boss && this.elapsed >= this.stage.bossAt) {
         launchBoss(this, this.stage.boss);
@@ -477,13 +475,14 @@ export class Flight {
     }
   }
 
-  startReturn(e) {
-    const edge = e.x < WIDTH / 2 ? 15 : WIDTH - 15;
+  startReturn(e, dt) {
+    const edgeInset = e.spec.size * .5 + 8;
+    const edge = e.x < WIDTH / 2 ? edgeInset : WIDTH - edgeInset;
     const newLanes = returnLanes.filter((lane) => Math.abs(lane - e.home) >= WIDTH / 4);
     const distantLanes = newLanes.filter((lane) => Math.abs(lane - e.x) >= WIDTH / 8);
     const candidates = distantLanes.length ? distantLanes : newLanes;
     const entryX = candidates[Math.floor(this.random() * candidates.length)];
-    e.loop = { edge, fromX: e.x, fromY: e.y, fromTurn: e.turn, entryX, time: 0, across: 0 };
+    e.loop = edgeReturnCourse(e, edge, entryX, dt);
     e.returnCount++;
     e.group = 0;
     e.vane = 0;
@@ -497,26 +496,9 @@ export class Flight {
   }
 
   moveReturning(e, dt) {
-    const loop = e.loop;
-    loop.time += dt;
-    const heading = loop.edge < WIDTH / 2 ? Math.PI : -Math.PI;
-    if (loop.time < loopTurn) {
-      const turn = loop.time / loopTurn;
-      const eased = turn * turn * (3 - 2 * turn);
-      e.x = loop.fromX + (loop.edge - loop.fromX) * eased;
-      e.y = loop.fromY + Math.sin(turn * Math.PI) * 10;
-      e.turn = loop.fromTurn + (heading - loop.fromTurn) * eased;
-      return;
-    }
-    e.x = loop.edge;
-    e.turn = heading;
-    if (!loop.across) e.y = Math.max(-34, e.y - returnSpeed * dt);
-    if (e.y > -34) return;
-    loop.across = Math.min(1, loop.across + dt / .21);
-    e.x = loop.edge + (loop.entryX - loop.edge) * loop.across;
-    if (loop.across < 1) return;
-    const home = loop.entryX;
-    Object.assign(e, { x: home, home, courseX: home, laneOffset: 0, y: -34, age: 0, turn: 0,
+    if (!flyReturning(e, dt)) return;
+    const home = e.loop.entryX;
+    Object.assign(e, { home, courseX: home, laneOffset: 0, age: 0, turn: 0,
       fireTimer: 1.58, side: home < WIDTH / 2 ? 1 : -1, diveAim: null, returned: true, loop: null });
     rememberPosition(e);
   }
@@ -529,7 +511,7 @@ export class Flight {
     const wingCommand = new Map(this.enemies.filter((e) => e.group && e.vane > 0 && e.hull > 0 && !e.retreat).map((e) => [e.group, e]));
     const timeToSetPiece = this.endless ? this.nextEndlessBridge - this.elapsed
       : Math.min(this.stage.bossAt, this.stage.cruisers?.[this.cruiserIndex]?.at ?? Infinity) - this.elapsed;
-    const canReturn = !this.boss && !this.cruiser && timeToSetPiece > 3;
+    const canReturn = !this.boss && !this.cruiser && timeToSetPiece > 4.2;
     let returning = this.enemies.filter((e) => e.loop && !e.retreat).length;
     const active = [];
     for (const e of this.enemies) {
@@ -554,8 +536,8 @@ export class Flight {
     separateWing(active, dt);
     for (const e of active) {
       if (canReturn && e.returns && e.returnCount < maxReturns && returning < maxReturning &&
-          e.y >= HEIGHT - e.spec.size * .55 && e.y < HEIGHT + 24) {
-        this.startReturn(e);
+          e.y >= HEIGHT && e.y < HEIGHT + 24) {
+        this.startReturn(e, dt);
         returning++;
         continue;
       }
@@ -718,7 +700,7 @@ export class Flight {
   }
 
   moveProjectiles(dt) {
-    const targets = this.enemies.filter((e) => e.hull > 0 && !e.retreat && !e.loop)
+    const targets = this.enemies.filter((e) => e.hull > 0 && !e.retreat)
       .map((e) => ({ enemy:e, body:enemyBody(e), relay:e.vane > 0 ? vaneBody(e) : null }));
     // Both sides test against the same rock positions for this simulation step.
     const rocks = this.hostile.filter((shot) => shot.live && shot.kind === 'rock').map((shot) => hostileBody({ ...shot,

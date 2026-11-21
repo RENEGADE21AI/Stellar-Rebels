@@ -26,7 +26,7 @@ export function nativeRequest(op, data) {
     const timer = setTimeout(() => {
       pending.delete(id);
       reject(Error('The native host did not respond'));
-    }, op === 'commerce-purchase' || op === 'commerce-restore' ? 300_000 : op === 'share' ? 120_000 : 4000);
+    }, op === 'commerce-purchase' || op === 'commerce-restore' ? 300_000 : 4000);
     pending.set(id, { resolve, reject, timer });
     void hostReady.then(() => {
       if (!pending.has(id)) return;

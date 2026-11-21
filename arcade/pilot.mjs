@@ -7,6 +7,19 @@ const REWARD_VERSION = 2;
 const upgrades = Object.keys(UPGRADES);
 const loadoutLimit = 2 * (STAGES.length + 1) * Object.keys(SHIPS).length * Object.keys(SPECIALS).length * 2 ** upgrades.length;
 export const DEFAULT_SETTINGS = { music: true, effects: true, reduced: false, contrast: false, steering: 'drag', sensitivity: 'standard', trainingDone: false };
+export const TOUCH_CONTROL_RANGES = {
+  stickSize: { min: 60, max: 112, initial: 76 },
+  specialSize: { min: 48, max: 84, initial: 58 },
+  specialHorizontal: { min: 0, max: 100, initial: 100 },
+  specialVertical: { min: 0, max: 100, initial: 0 }
+};
+
+export function touchControlLayout(preferences) {
+  return Object.fromEntries(Object.entries(TOUCH_CONTROL_RANGES).map(([key, { min, max, initial }]) => {
+    const value = preferences?.[key];
+    return [key, Number.isFinite(value) ? Math.round(Math.max(min, Math.min(max, value))) : initial];
+  }));
+}
 
 export function normalizeCallSign(value) {
   if (typeof value !== 'string') return null;
@@ -55,11 +68,15 @@ export function equipSpecial(pilot, key) {
   return true;
 }
 
-export function install(pilot, key) {
+export function canInstall(pilot, key) {
   const item = Object.hasOwn(UPGRADES, key) ? UPGRADES[key] : null;
-  if (!item || pilot.equipment.includes(key) || pilot.salvage < item.cost) return false;
-  if (item.needs && !pilot.equipment.includes(item.needs)) return false;
-  pilot.salvage -= item.cost;
+  return Boolean(item && !pilot.equipment.includes(key) && pilot.salvage >= item.cost &&
+    (!item.needs || pilot.equipment.includes(item.needs)));
+}
+
+export function install(pilot, key) {
+  if (!canInstall(pilot, key)) return false;
+  pilot.salvage -= UPGRADES[key].cost;
   pilot.equipment.push(key);
   return true;
 }
@@ -74,6 +91,7 @@ export function beginRun(pilot, id, mode, stage, now = Date.now(), seed = '') {
   const assistance = { ...pilot.settings };
   delete assistance.trainingDone;
   delete assistance.haptics;
+  for (const key of Object.keys(TOUCH_CONTROL_RANGES)) delete assistance[key];
   const run = {
     id, mode, stage: mode === 'arcade' ? stage : null, started: now, rules: RULES_VERSION, rewardVersion: REWARD_VERSION,
     ship: pilot.ship, equipment: [...pilot.equipment], special: hasSpecial(pilot, pilot.special) ? pilot.special : 'ghost',

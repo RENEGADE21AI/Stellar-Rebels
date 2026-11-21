@@ -611,7 +611,7 @@ test('a returning Outer Orbit pilot keeps the original mastery and earns Wraith 
   assert.deepEqual(pilot.mastery, { 5:true, wraith:true });
 });
 
-test('ordinary flight, the crossing cruiser and bosses share the same arena boundaries', async () => {
+test('ordinary flight, cruisers and bosses share the same arena boundaries', async () => {
   const [{ Flight, bounds }, , { WIDTH }] = await load;
   const { launchBoss, operatorWarnings } = await import('../arcade/bosses.mjs');
   const { markWall } = await import('../arcade/boss-patterns.mjs');
@@ -621,6 +621,7 @@ test('ordinary flight, the crossing cruiser and bosses share the same arena boun
   launchCruiser(f);
   const craft = f.cruiser;
   craft.x = 190;
+  craft.y = 196;
   const [left, right] = craft.parts;
   const partX = craft.x + left.dx;
   const partY = craft.y + left.dy;
@@ -648,8 +649,8 @@ test('ordinary flight, the crossing cruiser and bosses share the same arena boun
   assert.deepEqual(f.movementBounds, bounds);
 });
 
-test('Vesper stages two separated cruiser crossings with opposing paths and lighter patrol guns', async () => {
-  const [{ Flight, bounds }, , { WIDTH }] = await load;
+test('Vesper stages two forward cruiser encounters in offset lanes with lighter patrol guns', async () => {
+  const [{ Flight, bounds }, , { WIDTH, HEIGHT }] = await load;
   const f = new Flight({ ...context(), seed:'4288578730338ed3aecc03a02e15645c' });
   f.player.guard = Infinity;
   f.fireTimer = Infinity;
@@ -659,14 +660,15 @@ test('Vesper stages two separated cruiser crossings with opposing paths and ligh
     f.step(step);
     const craft = f.cruiser;
     if (craft && craft !== seen) {
-      visits.push({ variant:craft.variant, entry:f.elapsed, x:craft.x, y:craft.y, speed:craft.speed,
+      visits.push({ variant:craft.variant, entry:f.elapsed, x:craft.x, y:craft.y,
         turretHull:craft.parts[0].hull, mountCount:craft.parts.length, min:craft.x, max:craft.x });
     }
     if (craft) {
       const visit = visits.at(-1);
       visit.min = Math.min(visit.min, craft.x);
       visit.max = Math.max(visit.max, craft.x);
-      if (seen === craft) assert.ok((craft.x - craft.px) * craft.speed > 0);
+      visit.lastY = craft.y;
+      if (seen === craft) assert.ok(craft.y > craft.py);
     } else if (seen) visits.at(-1).exit = f.elapsed;
     seen = craft;
     f.takeEvents();
@@ -674,12 +676,12 @@ test('Vesper stages two separated cruiser crossings with opposing paths and ligh
   assert.deepEqual(visits.map((visit) => visit.variant), ['patrol','heavy']);
   const [patrol, heavy] = visits;
   assert.ok(Math.abs(patrol.entry - 46) <= step && Math.abs(heavy.entry - 82) <= step);
-  assert.ok(patrol.x > WIDTH && patrol.speed < 0);
-  assert.ok(heavy.x < 0 && heavy.speed > 0);
-  assert.ok(patrol.y + 24 < heavy.y && patrol.turretHull < heavy.turretHull);
+  assert.ok(patrol.x < WIDTH * .45 && heavy.x > WIDTH * .55);
+  assert.ok(patrol.turretHull < heavy.turretHull);
   assert.ok(patrol.exit < heavy.entry - 20 && heavy.exit < f.stage.bossAt - 29);
   for (const visit of visits) {
-    assert.ok(visit.min < 0 && visit.max > WIDTH);
+    assert.ok(visit.y < -100 && visit.lastY > HEIGHT + 100);
+    assert.ok(visit.min >= 96 && visit.max <= WIDTH - 96 && visit.max - visit.min < WIDTH * .15);
     assert.equal(visit.mountCount, 2);
   }
   assert.equal(f.boss.kind, 'gatekeeper');
@@ -687,20 +689,20 @@ test('Vesper stages two separated cruiser crossings with opposing paths and ligh
   assert.deepEqual(f.movementBounds, bounds);
 });
 
-test('fighter return paths stay clear for either scheduled Cruiser crossing', async () => {
+test('fighter return paths stay clear for either scheduled cruiser approach', async () => {
   const [{ Flight }, , { HEIGHT }] = await load;
   const f = new Flight(context());
   const diver = f.addEnemy({ kind:'diver', lane:.31 });
   for (const [index, crossing] of f.stage.cruisers.entries()) {
     f.cruiserIndex = index;
     f.elapsed = crossing.at - 2.95;
-    diver.y = HEIGHT - 13;
+    diver.y = HEIGHT + 2;
     f.moveEnemies(step);
     assert.equal(diver.loop, null);
   }
 });
 
-test('a surviving fighter visibly banks, climbs fast, and returns at most twice with its hull intact', async () => {
+test('a surviving fighter rounds the bottom edge and returns at most twice through a different lane', async () => {
   const [{ Flight }, , { HEIGHT, WIDTH }] = await load;
   const f = new Flight(context());
   const enemy = f.addEnemy({ kind:'scout', lane:.2 });
@@ -708,16 +710,33 @@ test('a surviving fighter visibly banks, climbs fast, and returns at most twice 
     const previousLane = enemy.home;
     Object.assign(enemy, { y:HEIGHT - enemy.spec.size * .5, age:9, hull:1.25 });
     f.moveEnemies(step);
-    assert.equal(enemy.returnCount, count);
-    assert.ok(enemy.loop?.fromY < HEIGHT, 'bank starts where the ship is still visible');
-    for (let i = 0; i < 40; i++) f.moveEnemies(step);
-    assert.ok(enemy.y > 0 && enemy.y < HEIGHT && Math.abs(enemy.turn) > 3);
-    const before = enemy.y;
+    assert.equal(enemy.loop, null, 'the fighter completes its downward pass');
+    while (enemy.y < HEIGHT && !enemy.loop) f.moveEnemies(step);
     f.moveEnemies(step);
-    assert.ok(Math.abs((before - enemy.y) / step - 620) < .01);
+    assert.equal(enemy.returnCount, count);
+    let edgeTicks = 0;
+    let previousX = enemy.x;
+    let previousY = enemy.y;
+    for (let i = 0; i < 300 && enemy.loop; i++) {
+      f.moveEnemies(step);
+      const dx = enemy.x - previousX;
+      const dy = enemy.y - previousY;
+      const distance = Math.hypot(dx, dy);
+      assert.ok(distance <= 12, 'the fighter travels continuously through both turns');
+      if (enemy.loop && distance > .1) {
+        assert.ok((-Math.sin(enemy.turn) * dx + Math.cos(enemy.turn) * dy) / distance > .98,
+          'the hull follows the same direction as the visible movement');
+      }
+      if (enemy.y > 0 && enemy.y < HEIGHT && dy < 0) {
+        assert.ok(enemy.x > 19 && enemy.x < WIDTH - 19, 'the target stays visible');
+        if (Math.abs(dx) < .1) edgeTicks++;
+      }
+      previousX = enemy.x;
+      previousY = enemy.y;
+    }
+    assert.ok(edgeTicks >= 85, 'the return lane stays visible long enough to follow');
     assert.equal(f.kills, 0);
     assert.equal(f.hostile.length, 0);
-    for (let i = 0; i < 80 && enemy.loop; i++) f.moveEnemies(step);
     assert.equal(enemy.returned, true);
     assert.equal(enemy.loop, null);
     assert.equal(enemy.hull, 1.25);
@@ -730,12 +749,32 @@ test('a surviving fighter visibly banks, climbs fast, and returns at most twice 
   assert.equal(f.score, 0);
 });
 
+test('friendly fire can hit a returning fighter on the visible edge without risking a ram', async () => {
+  const [{ Flight }, , { HEIGHT }] = await load;
+  const f = new Flight(context());
+  const enemy = f.addEnemy({ kind:'scout', lane:.17 });
+  enemy.y = HEIGHT + 2;
+  f.moveEnemies(step);
+  assert.ok(enemy.loop);
+  for (let i = 0; i < 100 && enemy.y > HEIGHT - 155; i++) f.moveEnemies(step);
+  assert.ok(enemy.loop && enemy.y <= HEIGHT - 155);
+  f.xIntent = f.player.x = enemy.x;
+  f.yIntent = f.player.y = enemy.y;
+  f.player.guard = 0;
+  f.step(step);
+  assert.equal(f.player.hull, f.player.maxHull);
+  f.friendly.push({ x:enemy.x, y:enemy.y + 8, vx:0, vy:-685, strength:10, live:true });
+  f.moveProjectiles(step);
+  assert.ok(enemy.hull <= 0);
+  assert.equal(f.kills, 1);
+});
+
 test('only three eligible fighters can return at once and a set piece clears the returning lane', async () => {
   const [{ Flight }, , { HEIGHT }] = await load;
   const f = new Flight(context());
   for (const [index, kind] of ['scout','diver','scout','diver','scout','lancer'].entries()) {
     const e = f.addEnemy({ kind, lane:.13 + index * .14 });
-    e.y = HEIGHT - 10;
+    e.y = HEIGHT + 2;
   }
   f.moveEnemies(step);
   assert.equal(f.enemies.filter((e) => e.loop).length, 3);
@@ -764,6 +803,30 @@ test('Scouts close space quickly while a Diver can be baited during its warning'
   while (!diver.dive && diver.age < 3) f.moveEnemies(step);
   assert.equal(diver.dive, true);
   assert.ok(diver.vector < Math.PI / 2, 'locked its dive toward the original right-side pilot');
+});
+
+test('an independent Gunner tracks the pilot only during its slow approach', async () => {
+  const [{ Flight }] = await load;
+  const left = new Flight(context());
+  const right = new Flight(context());
+  left.player.x = 54;
+  right.player.x = 330;
+  const a = left.addEnemy({ kind:'lancer', lane:.48 });
+  const b = right.addEnemy({ kind:'lancer', lane:.48 });
+  const progress = (count) => {
+    for (let i = 0; i < count; i++) {
+      left.moveEnemies(step);
+      right.moveEnemies(step);
+    }
+  };
+  progress(115);
+  assert.equal(a.x, b.x);
+  progress(100);
+  const offset = b.x - a.x;
+  assert.ok(offset >= 46 && offset <= 65, 'both ships bank toward their pilot without leaving their lane');
+  [left.player.x, right.player.x] = [right.player.x, left.player.x];
+  progress(48);
+  assert.ok(Math.abs((b.x - a.x) - offset) < .001, 'the tracked lane is held after the approach');
 });
 
 test('overlapping ships give one another space and hostile projectiles never deal friendly fire', async () => {
@@ -894,7 +957,7 @@ test('long Endless attempts keep one unclaimed supply per kind', async () => {
   assert.deepEqual(f.pickups, []);
 });
 
-test('fast beams hit rotated bodies, clear empty margins, and ignore an aircraft on its return path', async () => {
+test('fast beams hit rotated bodies, clear empty margins, and ignore retreating aircraft', async () => {
   const [{ Flight }] = await load;
   const f = new Flight(context());
   f.addEnemy({ kind:'scout', lane:.5 });
@@ -909,7 +972,7 @@ test('fast beams hit rotated bodies, clear empty margins, and ignore an aircraft
   assert.equal(target.hull, hp);
   shoot(target.x);
   assert.equal(target.hull, hp - 1);
-  target.loop = {};
+  target.retreat = true;
   shoot(target.x);
   assert.equal(target.hull, hp - 1);
 });

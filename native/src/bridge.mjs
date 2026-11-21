@@ -52,7 +52,6 @@ export function readBridgeRequest(event, flightUrl, session, platform) {
   switch (request.op) {
     case 'authorize-stage': return isArcadeStage(request.data) ? request : null;
     case 'save': return event.data.length <= maxProfileBytes && Number.isSafeInteger(request.data?.schema) ? request : null;
-    case 'share': return request.data?.schema === 1 ? request : null;
     case 'haptic': return typeof request.data === 'string' ? request : null;
     default: return null;
   }

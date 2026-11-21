@@ -9,9 +9,8 @@ import Constants from 'expo-constants';
 import { randomUUID } from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
 import { AndroidHaptics, ImpactFeedbackStyle, impactAsync, performAndroidHapticsAsync } from 'expo-haptics';
-import { shareAsync } from 'expo-sharing';
 import { unzipSync } from 'fflate';
-import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Purchases from 'react-native-purchases';
 import { WebView } from 'react-native-webview';
 import { openStoreRating, readBridgeRequest, sameFlightDocument, storeRatingAvailable } from './bridge.mjs';
@@ -45,28 +44,33 @@ async function loadFlightEntries() {
 function FlightLoading({ failed, onRetry }) {
   const window = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const availableWidth = window.width - insets.left - insets.right;
-  const availableHeight = window.height - insets.top - insets.bottom;
-  const width = Math.min(availableWidth, availableHeight / 2, 500);
+  const wordmarkWidth = Math.min(window.width - insets.left - insets.right - 36, 365);
 
   return <View style={style.loading}>
-    <View style={[style.loadingFrame, { width, height: width * 2 }]}>
-      <Image source={loadingArtwork} style={style.loadingArtwork} resizeMode="cover" fadeDuration={0} accessible={false} />
-      <Image source={loadingWordmark} style={style.loadingWordmark} resizeMode="contain" fadeDuration={0} accessible={false} />
-      <View style={style.loadingStatus}>
-        {!failed && <ActivityIndicator size="small" color="#a9edf6" accessible={false} />}
-        <Text accessibilityLiveRegion="polite" style={style.message}>
-          {failed ? 'Flight assets could not be opened.' : 'Preparing flight…'}
-        </Text>
-        {failed && <Pressable accessibilityRole="button" onPress={onRetry} style={style.retry}>
-          <Text style={style.retryLabel}>Try again</Text>
-        </Pressable>}
-      </View>
+    <Image source={loadingArtwork} style={style.loadingArtwork} resizeMode="cover" fadeDuration={0} accessible={false} />
+    <Image source={loadingWordmark} style={[style.loadingWordmark, {
+      top: Math.max(insets.top + 18, window.height * .09), width: wordmarkWidth, height: wordmarkWidth * .42
+    }]} resizeMode="contain" fadeDuration={0} accessible={false} />
+    <View style={[style.loadingStatus, { bottom: Math.max(insets.bottom + 16, window.height * .06) }]}>
+      {!failed && <ActivityIndicator size="small" color="#a9edf6" accessible={false} />}
+      <Text accessibilityLiveRegion="polite" style={style.message}>
+        {failed ? 'Flight assets could not be opened.' : 'Preparing flight…'}
+      </Text>
+      {failed && <Pressable accessibilityRole="button" onPress={onRetry} style={style.retry}>
+        <Text style={style.retryLabel}>Try again</Text>
+      </Pressable>}
     </View>
   </View>;
 }
 
 function Game() {
+  const { top, right, bottom, left } = useSafeAreaInsets();
+  const setFlightInsets = `
+    document.documentElement.style.setProperty('--native-safe-top', ${JSON.stringify(`${top}px`)});
+    document.documentElement.style.setProperty('--native-safe-right', ${JSON.stringify(`${right}px`)});
+    document.documentElement.style.setProperty('--native-safe-bottom', ${JSON.stringify(`${bottom}px`)});
+    document.documentElement.style.setProperty('--native-safe-left', ${JSON.stringify(`${left}px`)});
+  `;
   const [flight, setFlight] = useState(null);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -108,6 +112,8 @@ function Game() {
       `if (window.top === window && window.stellarNativeSession === ${JSON.stringify(token)}) { ${script} } true;`);
   }
 
+  useEffect(() => { sendToFlight(setFlightInsets); }, [setFlightInsets]);
+
   function activateFlight({ nativeEvent }) {
     if (!sameFlightDocument(nativeEvent.url, flight.home.uri)) return;
     const token = randomUUID();
@@ -115,6 +121,7 @@ function Game() {
     browser.current?.injectJavaScript(`(() => {
       const flightUrl = location.href.replace(/^file:\\/\\/\\/private\\/var\\//, 'file:///var/');
       if (window.top === window && flightUrl === ${JSON.stringify(flight.home.uri.replace('file:///private/var/', 'file:///var/'))}) {
+        ${setFlightInsets}
         Object.defineProperty(window, 'stellarNativeSession', { value: ${JSON.stringify(token)}, configurable: true });
         window.stellarNativeReady?.(window.stellarNativeSession);
         window.dispatchEvent(new CustomEvent('stellar-commerce-change', { detail: ${JSON.stringify(commerce.status())} }));
@@ -183,13 +190,6 @@ function Game() {
           reply(true);
           break;
         }
-        case 'share': {
-          const file = new File(Paths.cache, 'stellar-rebels-replay.json');
-          await file.write(JSON.stringify(request.data));
-          await shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: 'Share flight replay' });
-          reply(true);
-          break;
-        }
         default: reply(false);
       }
     }).catch(() => reply(false));
@@ -210,8 +210,12 @@ function Game() {
     mixedContentMode="never"
     mediaCapturePermissionGrantType="deny"
     allowsInlineMediaPlayback
+    allowsLinkPreview={false}
     mediaPlaybackRequiresUserAction={false}
+    automaticallyAdjustContentInsets={false}
     contentInsetAdjustmentBehavior="never"
+    bounces={false}
+    overScrollMode="never"
     setSupportMultipleWindows={false}
     webviewDebuggingEnabled={false}
     onLoadStart={() => { session.current = null; }}
@@ -224,21 +228,20 @@ function Game() {
 }
 
 export default function App() {
-  return <SafeAreaProvider>
-    <SafeAreaView style={style.webview}>
+  return <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+    <View style={style.webview}>
       <StatusBar hidden />
       <Game />
-    </SafeAreaView>
+    </View>
   </SafeAreaProvider>;
 }
 
 const style = StyleSheet.create({
   webview: { flex: 1, backgroundColor: '#080f19' },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#080f19' },
-  loadingFrame: { overflow: 'hidden', alignItems: 'center', backgroundColor: '#080f19' },
+  loading: { flex: 1, alignItems: 'center', overflow: 'hidden', backgroundColor: '#080f19' },
   loadingArtwork: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
-  loadingWordmark: { position: 'absolute', top: '9%', left: '13%', width: '74%', height: '16%' },
-  loadingStatus: { position: 'absolute', bottom: '6%', left: 16, right: 16, alignItems: 'center', gap: 10 },
+  loadingWordmark: { position: 'absolute' },
+  loadingStatus: { position: 'absolute', left: 16, right: 16, alignItems: 'center', gap: 10 },
   message: {
     fontSize: 17, color: '#fff0db', textAlign: 'center',
     textShadowColor: '#02050a', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 5

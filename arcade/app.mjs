@@ -2,7 +2,7 @@ import { BOSSES, FIXED_TICK, HEIGHT, PICKUPS, RULES_VERSION, SHIPS, SPECIALS, ST
 import { Flight } from './flight.mjs';
 import { FlightScene, loadSprite, spriteUrl } from './scene.mjs';
 import { FlightAudio } from './audio.mjs';
-import { PilotStore, abandonRun, beginRun, equip, equipSpecial, hasShip, hasSpecial, hasStage, install, loadoutBest, normalizeCallSign, settleRun } from './pilot.mjs';
+import { PilotStore, TOUCH_CONTROL_RANGES, abandonRun, beginRun, canInstall, equip, equipSpecial, hasShip, hasSpecial, hasStage, install, loadoutBest, normalizeCallSign, settleRun, touchControlLayout } from './pilot.mjs';
 import { captureReplay } from './replay.mjs';
 import { otherRealm, realmLabel } from './wraith.mjs';
 import { mountTitlePatrol } from './title-patrol.mjs';
@@ -39,7 +39,7 @@ const state = {
 const motionLimited = (preferences = state.pilot.settings) => reduced.matches || preferences.reduced;
 const appearance = (preferences) => motionLimited(preferences) === preferences.reduced
   ? preferences : { ...preferences, reduced: true };
-const usesFloatingStick = (flight) => flight.run.assistance.steering === 'stick';
+const usesFloatingStick = (preferences = state.pilot.settings) => preferences.steering === 'stick';
 let accountState = { phase:'connecting', notice:'Checking account…' };
 const googleAccount = createGoogleAccount((next) => {
   accountState = next;
@@ -97,6 +97,7 @@ function wallet() {
 function home() {
   const callSign = normalizeCallSign(state.pilot.callSign) || 'Pilot';
   const ship = SHIPS[state.pilot.ship].name;
+  const upgradeAvailable = Object.keys(UPGRADES).some((key) => canInstall(state.pilot, key));
   return `<article class="title-screen"><h1 tabindex="-1" class="brand-lockup"><img src="${media('brand/title-wordmark.png')}" alt="Stellar Rebels" width="768" height="310"></h1>
     <canvas class="title-patrol" aria-hidden="true"></canvas>
     <button type="button" class="title-ship" data-action="spin-ship" aria-label="Spin ${ship}"></button>
@@ -106,14 +107,16 @@ function home() {
         <button type="button" class="title-id" data-action="view:callSign" aria-label="Edit call sign" aria-describedby="title-call-sign">
           <span><small>Call sign</small><strong id="title-call-sign">${callSign}</strong></span>${icon('edit')}
         </button>
-        <span class="title-equipped"><small>Equipped</small><strong>${ship}</strong></span>
+        <button type="button" class="title-equipped" data-action="hangar:home" aria-label="Change ship. ${ship} equipped"><small>Equipped</small><strong>${ship}</strong></button>
       </div>
       <nav class="home-links" aria-label="Game options">
         <button class="home-link" data-action="view:stages">${icon('stages')} Arcade</button>
-        <button class="home-link" data-action="hangar:home">${icon('ship')} Hangar</button>
+        <button class="home-link" data-action="hangar:home" ${upgradeAvailable ? 'aria-describedby="hangar-upgrade-notice"' : ''}>${icon('ship')} Hangar
+          ${upgradeAvailable ? '<span class="hangar-upgrade-badge" aria-hidden="true">!</span>' : ''}</button>
         <button class="home-link" data-action="view:records">${icon('score')} Records</button>
         <button class="home-link" data-action="view:settings">${icon('settings')} Settings</button>
-      </nav>${action('Help & Legal', 'legal', 'title-help', '')}</div></article>`;
+      </nav>${upgradeAvailable ? '<span id="hangar-upgrade-notice" class="visually-hidden">Upgrade available to install.</span>' : ''}
+      ${action('Help & Legal', 'legal', 'title-help', '')}</div></article>`;
 }
 
 function callSignView() {
@@ -223,7 +226,7 @@ function upgradeView() {
   const afford = p.salvage >= target.cost;
   const copy = installed ? 'Installed on every ship.' : locked ? `Requires ${UPGRADES[target.needs].name}.` : !afford ? `Earn ${num(target.cost - p.salvage)} more Salvage.` : `${num(p.salvage - target.cost)} Salvage left after installation.`;
   return screen(target.name, 'hangar', `<div class="notice"><strong>${target.detail}</strong><p>${copy}</p></div>
-    ${action(installed ? 'Installed' : `Install for ${num(target.cost)} Salvage`, 'install', 'primary', 'check', installed || locked || !afford ? 'disabled' : '')}`, wallet());
+    ${action(installed ? 'Installed' : `Install for ${num(target.cost)} Salvage`, 'install', 'primary', 'check', canInstall(p, state.upgrade) ? '' : 'disabled')}`, wallet());
 }
 
 function recordLine(title, copy, value) {
@@ -280,6 +283,59 @@ const settings = {
   reduced: ['Reduced motion', 'Steady camera and fewer flashes'], contrast: ['High contrast hazards', 'Brighter projectile centers and warning outlines']
 };
 
+const controlLabels = {
+  stickSize: 'Joystick size',
+  specialSize: 'Ability button size',
+  specialHorizontal: 'Ability button horizontal position',
+  specialVertical: 'Ability button height'
+};
+
+function controlStyles({ stickSize, specialSize, specialHorizontal, specialVertical }) {
+  return {
+    '--stick-size': `${stickSize}px`,
+    '--special-size': `${specialSize}px`,
+    '--special-inline': specialHorizontal / 100,
+    '--special-rise': specialVertical / 100
+  };
+}
+
+function applyControlStyles(element, layout) {
+  for (const [name, value] of Object.entries(controlStyles(layout))) element.style.setProperty(name, value);
+}
+
+function touchSettings(preferences) {
+  const layout = touchControlLayout(preferences);
+  const steering = usesFloatingStick(preferences) ? 'stick' : 'drag';
+  const preview = Object.entries(controlStyles(layout)).map(([key, value]) => `${key}:${value}`).join(';');
+  const ranges = Object.entries(TOUCH_CONTROL_RANGES).map(([key, { min, max }]) => `
+    <label class="control-range" for="${key}"><span>${controlLabels[key]}</span>
+      <input id="${key}" type="range" min="${min}" max="${max}" value="${layout[key]}" ${key === 'stickSize' && steering === 'drag' ? 'disabled' : ''}></label>`).join('');
+  return `<section class="touch-settings" aria-label="Touch controls">
+    <div class="setting"><div><strong>Touch steering</strong><small>Choose how the ship follows your touch</small></div>
+      <select class="toggle" id="steering" aria-label="Touch steering">
+        <option value="drag">Finger drag</option><option value="stick" ${steering === 'stick' ? 'selected' : ''}>Floating joystick</option></select></div>
+    <div class="setting"><div><strong>Drag sensitivity</strong><small>Changes how far the ship follows a swipe</small></div>
+      <select class="toggle" id="sensitivity" aria-label="Drag sensitivity" ${steering === 'stick' ? 'disabled' : ''}>
+        ${['Gentle', 'Standard', 'Direct'].map((label) => {
+          const value = label.toLowerCase();
+          return `<option value="${value}" ${preferences.sensitivity === value ? 'selected' : ''}>${label}</option>`;
+        }).join('')}</select></div>
+    <div class="controls-preview" data-steering="${steering}" style="${preview}" aria-hidden="true">
+      <span class="preview-stick" ${steering === 'drag' ? 'hidden' : ''}></span><span class="preview-special">Ability</span></div>
+    <div class="control-adjustments">${ranges}</div></section>`;
+}
+
+function previewTouchSettings(group) {
+  const steering = group.querySelector('#steering').value;
+  const preview = group.querySelector('.controls-preview');
+  preview.dataset.steering = steering;
+  preview.querySelector('.preview-stick').hidden = steering === 'drag';
+  group.querySelector('#stickSize').disabled = steering === 'drag';
+  group.querySelector('#sensitivity').disabled = steering === 'stick';
+  const layout = Object.fromEntries(Object.keys(TOUCH_CONTROL_RANGES).map((key) => [key, group.querySelector(`#${key}`).valueAsNumber]));
+  applyControlStyles(preview, layout);
+}
+
 function settingsView() {
   const prefs = appearance(state.pilot.settings);
   const switches = Object.entries(settings).filter(([key]) => key !== 'haptics' || hapticAvailable).map(([key, [label, copy]]) => {
@@ -291,10 +347,7 @@ function settingsView() {
   return screen('Settings', 'home', `<nav class="settings-shortcuts" aria-label="Help and purchases">
     ${action('Help & Legal', 'legal', 'quiet', '')}
     ${nativeFlight ? action('Full Game Unlock', 'commerce:show', 'quiet', '') : ''}</nav>
-    ${switches}<div class="setting"><div><strong>Touch steering</strong><small>Floating stick appears where you touch</small></div>
-    <select class="toggle" id="steering" aria-label="Touch steering"><option value="drag">Drag</option><option value="stick" ${prefs.steering === 'stick' ? 'selected' : ''}>Floating stick</option></select></div>
-    <div class="setting"><div><strong>Drag sensitivity</strong><small>Changes how far the ship follows a swipe</small></div>
-    <select class="toggle" id="sensitivity" aria-label="Drag sensitivity"><option value="gentle" ${prefs.sensitivity === 'gentle' ? 'selected' : ''}>Gentle</option><option value="standard" ${prefs.sensitivity === 'standard' ? 'selected' : ''}>Standard</option><option value="direct" ${prefs.sensitivity === 'direct' ? 'selected' : ''}>Direct</option></select></div>
+    ${switches}${touchSettings(prefs)}
     <div class="notice" id="pack-status" role="status">${packCopy()}</div>${state.installed ? '' : '<p class="subtle">Install from your browser menu or Add to Home Screen in Safari.</p>'}
     ${googleSignInAvailable ? action('Account', 'view:account') : ''}
     ${action('Practice', 'help:settings', 'quiet')}${state.support ? `<p class="notice">${state.support}</p>` : ''}`);
@@ -503,7 +556,6 @@ function results() {
       ${pendingCopy}${primary}
       ${secondary.length ? `<nav class="result-secondary" aria-label="After the flight">${secondary.join('')}</nav>` : ''}
       ${firstUnlockOffer ? action('See Full Game Unlock', 'commerce:preview', 'flat result-offer', 'lock') : ''}
-      ${p.replay ? action('Save flight replay', 'save-replay', 'flat replay-link', '') : ''}
     </div>
   </article>`;
 }
@@ -879,10 +931,11 @@ function updateKeys() {
   state.flight.setDirection(Number(held.has('move_right')) - Number(held.has('move_left')), Number(held.has('move_down')) - Number(held.has('move_up')));
 }
 
-function dialog(html) {
+function dialog(html, focusSelector = 'button') {
   modal.innerHTML = `<div class="dialog-body">${html}</div>`;
   if (!modal.open) modal.showModal();
-  modal.querySelector('button')?.focus();
+  modal.scrollTop = 0;
+  modal.querySelector(focusSelector)?.focus({ preventScroll: true });
 }
 
 function pause(interrupted = false) {
@@ -893,8 +946,18 @@ function pause(interrupted = false) {
   $('pause').setAttribute('aria-label', 'Pause');
   audio.quiet();
   const flight = state.flight;
-  dialog(`<span class="caption">${flight.endless ? 'Endless' : flight.stage.name}</span><h2 id="pause-title">Paused</h2>
-    <p>${interrupted ? 'Flight paused while you were away.' : 'Your flight is on hold.'}</p>${action('Resume', 'resume', 'primary', 'play')}${action('Leave flight', 'leave', 'quiet', '')}`);
+  dialog(`<span class="caption">${flight.endless ? 'Endless' : flight.stage.name}</span><h2 id="pause-title" tabindex="-1">Paused</h2>
+    <p>${interrupted ? 'Flight paused while you were away.' : 'Your flight is on hold.'}</p>
+    ${action('Resume', 'resume', 'primary', 'play')}
+    <div class="pause-actions">${action('Settings', 'pause-settings', 'quiet', '')}${action('Leave flight', 'leave', 'quiet', '')}</div>`,
+    '#pause-title');
+}
+
+function showFlightSettings() {
+  if (state.mode !== 'paused') return;
+  dialog(`<h2 id="pause-title" tabindex="-1">Flight settings</h2>
+    ${action('Back to pause', 'pause', 'quiet', 'back')}${touchSettings(state.pilot.settings)}`,
+    '#pause-title');
 }
 
 function resume() {
@@ -994,7 +1057,7 @@ function refreshHud(restart = false) {
   const f = state.flight;
   const p = f.player;
   if (restart || lastHud.hopControl !== f.realmHop) {
-    const steering = usesFloatingStick(f) ? 'Touch and hold off-center on the stick' : 'Drag';
+    const steering = usesFloatingStick() ? 'Touch and hold off-center on the stick' : 'Drag';
     const special = f.realmHop ? 'to Hop between realms' : `for ${SPECIALS[f.special].name}`;
     sky.setAttribute('aria-label', `Flight playfield. ${steering} or use arrow keys to steer. Weapons fire automatically. Press Space ${special}.`);
     lastHud.hopControl = f.realmHop;
@@ -1009,7 +1072,7 @@ function refreshHud(restart = false) {
   if (restart || messageChanged || lastHud.bossCue !== bossCue) {
     const pickup = message?.kind === 'pickup';
     const title = message?.title || (pickup ? message.copy : bossCue ? 'Wraith' : f.stage.name);
-    const stickLesson = message?.kind === 'training' && state.training?.step === 'steer' && usesFloatingStick(f);
+    const stickLesson = message?.kind === 'training' && state.training?.step === 'steer' && usesFloatingStick();
     const tip = stickLesson ? 'Touch anywhere and hold off-center on the stick to move. Arrow keys also steer.'
       : pickup ? message.title && message.brief !== message.title ? message.brief : '' : message?.copy;
     flash.classList.toggle('shown', visible);
@@ -1099,9 +1162,14 @@ async function settle() {
   }
 }
 
-async function changeSetting(key, value) {
+async function changeSetting(key, value, controls = false) {
   const { pilot } = await store.change((saved) => { saved.settings[key] = value; });
   state.pilot = pilot;
+  if (controls) {
+    applyControlStyles(field, touchControlLayout(pilot.settings));
+    if (key === 'steering' && state.mode === 'paused') refreshHud(true);
+    return;
+  }
   audio.reflect(pilot.settings);
   show('settings', false);
   (menu.querySelector(`[data-action="toggle:${key}"]`) ?? $(key))?.focus();
@@ -1111,19 +1179,6 @@ async function handle(command) {
   const [type, value] = command.split(':');
   if (type === 'spin-ship') {
     state.titlePatrol?.spin();
-    return;
-  }
-  if (type === 'save-replay') {
-    const replay = state.pending?.replay;
-    if (!replay) return;
-    const url = URL.createObjectURL(new Blob([JSON.stringify(replay)], { type:'application/json' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `stellar-rebels-${replay.run.seed.slice(0, 12)}.json`;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
     return;
   }
   if (type === 'update-web') {
@@ -1218,6 +1273,7 @@ async function handle(command) {
     return;
   }
   if (type === 'pause') { pause(); return; }
+  if (type === 'pause-settings') { showFlightSettings(); return; }
   if (type === 'resume') { resume(); return; }
   if (type === 'leave') {
     dialog(`<h2 id="pause-title">Leave flight?</h2><p>Salvage and records are banked when a flight ends in victory or defeat.</p>
@@ -1294,9 +1350,7 @@ document.addEventListener('click', async (event) => {
   state.busy = command;
   try { await handle(target.dataset.action); }
   catch {
-    const warning = target.dataset.action === 'save-replay'
-      ? 'Flight replay could not be shared. Try again.'
-      : 'Device storage is unavailable. Try again in a moment.';
+    const warning = 'Device storage is unavailable. Try again in a moment.';
     announce(warning);
     if (target.isConnected && !field.contains(target)) {
       const status = document.createElement('p');
@@ -1310,12 +1364,17 @@ document.addEventListener('click', async (event) => {
   } finally { if (state.busy === command) state.busy = null; }
 });
 
-menu.addEventListener('change', (event) => {
-  const { id, value } = event.target;
-  if (id === 'sensitivity' || id === 'steering') {
-    const label = event.target.getAttribute('aria-label');
-    changeSetting(id, value).catch(() => announce(`${label} could not be saved.`));
-  }
+document.addEventListener('input', (event) => {
+  const group = event.target.closest('.touch-settings');
+  if (group) previewTouchSettings(group);
+});
+document.addEventListener('change', (event) => {
+  const { id, value, valueAsNumber } = event.target;
+  if (!event.target.closest('.touch-settings')) return;
+  const range = Object.hasOwn(TOUCH_CONTROL_RANGES, id);
+  if (!range && id !== 'sensitivity' && id !== 'steering') return;
+  const label = controlLabels[id] ?? event.target.getAttribute('aria-label');
+  changeSetting(id, range ? valueAsNumber : value, true).catch(() => announce(`${label} could not be saved.`));
 });
 $('pause').innerHTML = icon('pause');
 $('pause').addEventListener('click', () => pause());
@@ -1341,8 +1400,6 @@ specialButton.addEventListener('pointerdown', (event) => {
 });
 modal.addEventListener('cancel', (event) => { event.preventDefault(); if (state.mode === 'resuming') pause(); });
 
-const stickRadius = 30;
-const stickDeadZone = 5;
 const stickKnob = $('flight-stick-knob');
 
 sky.addEventListener('pointerdown', (event) => {
@@ -1352,14 +1409,17 @@ sky.addEventListener('pointerdown', (event) => {
   state.input = event.pointerType === 'mouse' ? 'pointer' : 'touch';
   if (state.keys.size) clearInput();
   const { pointerId:id, clientX:x, clientY:y } = event;
-  const floating = event.pointerType === 'touch' && usesFloatingStick(state.flight);
-  state.pointer = { id, x, y, stick: floating ? { x:0, y:0 } : null };
+  const floating = event.pointerType !== 'mouse' && usesFloatingStick();
+  const size = floating ? touchControlLayout(state.pilot.settings).stickSize : 0;
+  state.pointer = { id, x, y, stick: floating ? { x:0, y:0, radius:size * (30 / 76) } : null };
   sky.setPointerCapture(event.pointerId);
   if (floating) {
     state.flight.reanchor();
     const bounds = sky.getBoundingClientRect();
-    stick.style.left = `${x - bounds.left}px`;
-    stick.style.top = `${y - bounds.top}px`;
+    const insetX = Math.min(size / 2 + 4, bounds.width / 2);
+    const insetY = Math.min(size / 2 + 4, bounds.height / 2);
+    stick.style.left = `${Math.max(insetX, Math.min(bounds.width - insetX, x - bounds.left))}px`;
+    stick.style.top = `${Math.max(insetY, Math.min(bounds.height - insetY, y - bounds.top))}px`;
     stickKnob.style.transform = '';
     stick.hidden = false;
   }
@@ -1371,9 +1431,11 @@ function movePointer(event) {
   const dx = event.clientX - pointer.x;
   const dy = event.clientY - pointer.y;
   if (pointer.stick) {
+    const radius = pointer.stick.radius;
+    const deadZone = radius / 6;
     const distance = Math.hypot(dx, dy);
-    const clamped = Math.min(distance, stickRadius);
-    const strength = Math.max(0, (clamped - stickDeadZone) / (stickRadius - stickDeadZone));
+    const clamped = Math.min(distance, radius);
+    const strength = Math.max(0, (clamped - deadZone) / (radius - deadZone));
     const direction = distance ? strength / distance : 0;
     const knob = distance ? clamped / distance : 0;
     pointer.stick.x = dx * direction;
@@ -1381,7 +1443,7 @@ function movePointer(event) {
     stickKnob.style.transform = `translate(${dx * knob}px, ${dy * knob}px)`;
     return true;
   }
-  const sensitivity = { gentle: .78, standard: 1.12, direct: 1.37 }[state.flight.run.assistance.sensitivity] ?? 1.12;
+  const sensitivity = { gentle: .78, standard: 1.12, direct: 1.37 }[state.pilot.settings.sensitivity] ?? 1.12;
   state.flight.drag(dx / renderer.unit * sensitivity, dy / renderer.unit * sensitivity);
   pointer.x = event.clientX;
   pointer.y = event.clientY;
@@ -1578,6 +1640,7 @@ async function boot() {
   if (/^\?build=[a-f0-9]{15}$/.test(location.search)) history.replaceState(null, '', '/');
   try { state.pilot = await store.open(); }
   catch { state.pilot = store.useTemporary(); }
+  applyControlStyles(field, touchControlLayout(state.pilot.settings));
   audio.reflect(state.pilot.settings);
   const returning = googleSignInAvailable && pendingGoogleReturn();
   show(returning ? 'account' : 'home', returning);

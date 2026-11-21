@@ -585,14 +585,14 @@ export class FlightScene {
       this.enemyLooks.set(e, this.nextLook++ % 2 && this.sprites.has(alt) ? alt : e.kind);
     }
     const look = this.enemyLooks.get(e);
-    const movingAway = e.loop || e.retreat;
     const dx = e.x - e.px;
     const dy = e.y - e.py;
-    const turn = movingAway && (dx || dy) ? Math.atan2(-dx, dy) : e.turn;
-    if (e.loop) {
+    const turn = e.retreat && (dx || dy) ? Math.atan2(-dx, dy) : e.turn;
+    if (e.loop && !e.retreat) {
       const tail = hardpointAt(e, 0, -e.spec.size * .33, turn);
       line(c, tail.x, tail.y, 22 * Math.sin(turn), -22 * Math.cos(turn), '#c9956d99', 1.8);
       this.sprite(look, e.x, e.y, e.spec.size, turn, .8);
+      if (e.flash > 0) ring(c, e.x, e.y, 7, '#fff4cf99');
       return;
     }
     if (e.kind === 'diver' && Number.isFinite(e.diveAim) && !e.retreat) {

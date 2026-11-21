@@ -2,7 +2,7 @@ import { innerRoute, outerRoute } from './routes.mjs';
 
 export const WIDTH = 384;
 export const HEIGHT = 768;
-export const RULES_VERSION = 'arcade-10';
+export const RULES_VERSION = 'arcade-11';
 export const FIXED_TICK = 1 / 60;
 export const AIM_PRECISION = 16;
 export const INPUT_SHIFT = 1;
@@ -95,7 +95,7 @@ export const STAGES = [
     id: 1, name: 'Vesper Orbit', region: 'Blockade', brief: 'Fight through the blockade.', accent: '#ff8752',
     environment: 'breach', boss: 'gatekeeper', bossAt: 126, first: 78, repeat: 16, defeatCap: 20,
     cruisers: [{ at:46, variant:'patrol' }, { at:82, variant:'heavy' }],
-    chapters: [[0,'Approach'],[16,'Blockade screen'],[46,'Cruiser patrol'],[82,'Cruiser crossing'],[103,'Final approach']],
+    chapters: [[0,'Approach'],[16,'Blockade screen'],[46,'Cruiser patrol'],[82,'Heavy cruiser'],[103,'Final approach']],
     waves: [[.6,'arrow',0,'opening'],[6.4,'column',1],[12.5,'spear'],[19.5,'hook','flank'],[30,'linked'],[38,'rake'],[43,'anvil'],
       [47.4,'screen',1],[58,'linked',1],[63,'sweep'],[71,'break'],[77,'column',1],[89,'screen'],[98,'anvil','flank'],
       [103,'linked'],[112,'hook','flank'],[118,'cross']],
