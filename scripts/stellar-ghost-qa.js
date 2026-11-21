@@ -36,7 +36,7 @@ async function verify() {
   page.on('response', (response) => { if (response.status() >= 400 && response.url().startsWith(origin)) requestFailures.push(response.url()); });
   const button = (name) => page.getByRole('button', { name, exact: typeof name === 'string' });
   const shot = (name) => page.screenshot({ path: path.join(output, `${name}.png`) });
-  const meter = page.getByRole('meter', { name: 'Ghost Energy', exact: true });
+  const meter = page.getByRole('meter', { name: 'Energy', exact: true });
   const amount = async () => Number(await meter.getAttribute('aria-valuenow'));
   const ready = () => page.waitForFunction(() => document.getElementById('ghost-shift').getAttribute('aria-disabled') === 'false');
   const active = () => page.waitForFunction(() => document.getElementById('ghost-control').dataset.mode === 'active');
@@ -68,7 +68,7 @@ async function verify() {
     await button(/01 Vesper Orbit/).tap();
     await page.getByRole('button', { name:'Skip training', exact:true }).tap();
     await flight();
-    assert.equal(await amount(), 26);
+    assert.equal(await amount(), 100);
     const layout = await button('Ghost Shift').boundingBox();
     assert.ok(layout.width >= 44 && layout.height >= 44 && layout.x + layout.width < viewport.width);
     const cadence = page.evaluate(() => new Promise((resolve) => {
@@ -118,7 +118,7 @@ async function verify() {
     await button('Leave flight').tap();
     await button(/01 Vesper Orbit/).tap();
     await flight();
-    assert.equal(await amount(), 26);
+    assert.equal(await amount(), 100);
     await button('Pause').tap();
     await button('Leave flight').tap();
     await button('Leave flight').tap();
@@ -136,7 +136,7 @@ async function verify() {
     await page.locator('.craft-art').evaluate((image) => image.decode());
     await shot('interceptor-hangar');
     await button('Back').tap();
-    await button('Stage Select').tap();
+    await button('Arcade').tap();
     await button(/04 Red Sun/).tap();
     await flight();
     const railFinger = { x: viewport.width / 2, y: Math.round(viewport.height * .733), id: 1 };
@@ -216,7 +216,7 @@ async function verify() {
     await button('Back').tap();
     await button('Endless').tap();
     await flight();
-    assert.equal(await amount(), 26);
+    assert.equal(await amount(), 100);
     const secondFinger = { x: viewport.width / 2, y: Math.round(viewport.height * .733), id: 1 };
     await driveOpening(page, touch, secondFinger);
     await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });

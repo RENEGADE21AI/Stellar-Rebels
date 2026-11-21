@@ -1,8 +1,8 @@
-import { BOSSES, FIXED_TICK, HEIGHT, PICKUPS, SHIPS, STAGES, UPGRADES, WIDTH, stageById } from './catalog.mjs';
+import { BOSSES, FIXED_TICK, HEIGHT, PICKUPS, SHIPS, SPECIALS, STAGES, UPGRADES, WIDTH, stageById } from './catalog.mjs';
 import { Flight } from './flight.mjs';
 import { FlightScene, loadSprite, spriteUrl } from './scene.mjs';
 import { FlightAudio } from './audio.mjs';
-import { PilotStore, abandonRun, beginRun, equip, hasShip, hasStage, install, normalizeCallSign, settleRun } from './pilot.mjs';
+import { PilotStore, abandonRun, beginRun, equip, equipSpecial, hasShip, hasSpecial, hasStage, install, normalizeCallSign, settleRun } from './pilot.mjs';
 import { captureReplay } from './replay.mjs';
 import { otherRealm, realmLabel } from './wraith.mjs';
 import { mountTitlePatrol } from './title-patrol.mjs';
@@ -146,13 +146,24 @@ function stages() {
 
 function hangar() {
   const { pilot } = state;
+  const tabs = `<div class="dock-tabs" role="group" aria-label="Hangar sections">
+    ${[['ships', 'Ship bay'], ['upgrades', 'Upgrades'], ['specials', 'Specials']].map(([key, name]) =>
+      action(name, `tab:${key}`, 'hangar-tab', '', `aria-pressed="${state.hangarTab === key}"`)).join('')}</div>`;
+  if (state.hangarTab === 'specials') {
+    const choices = Object.entries(SPECIALS).map(([key, special]) => {
+      const equipped = pilot.special === key;
+      const choose = hasSpecial(pilot, key)
+        ? action(equipped ? 'Equipped' : 'Equip', `special:${key}`, 'quiet', equipped ? 'check' : '', `aria-label="Equip ${special.name}" aria-pressed="${equipped}"`)
+        : `<p class="special-lock">${icon('lock')} Clear ${stageById(special.clearance).name} to unlock.</p>`;
+      return `<section class="info special-choice"><div class="special-heading"><h2>${special.name}</h2>
+        <span class="caption">${special.cost} energy</span></div><p class="subtle">${special.description}</p>${choose}</section>`;
+    }).join('');
+    return screen('Hangar', state.hangarBack, tabs + `<div class="special-options">${choices}</div>`, wallet());
+  }
   const craft = SHIPS[state.inspected];
   const owned = hasShip(pilot, state.inspected);
   const active = pilot.ship === state.inspected;
   const shopOpen = state.hangarTab === 'upgrades';
-  const tabs = `<div class="dock-tabs" role="group" aria-label="Hangar sections">
-    <button class="hangar-tab" data-action="tab:ships" aria-pressed="${!shopOpen}">Ship bay</button>
-    <button class="hangar-tab" data-action="tab:upgrades" aria-pressed="${shopOpen}">Upgrades</button></div>`;
   const selection = Object.entries(SHIPS).filter(([, ship]) => ship.clearance <= STAGES.length).map(([key, ship]) => {
     const copy = key === pilot.ship ? 'Equipped' : hasShip(pilot, key) ? ship.role : `Clear ${chapter(ship.clearance)}`;
     return `<button class="craft-choice" data-action="inspect:${key}" aria-pressed="${key === state.inspected}">${ship.name}<small>${copy}</small></button>`;
@@ -258,20 +269,23 @@ function paintAccount() {
 }
 
 function helpView() {
+  const equipped = SPECIALS[state.pilot.special] ?? SPECIALS.ghost;
   const rows = [
     ['Drag to steer', 'Drag anywhere on the playfield. Lift and touch again to reanchor. Arrow keys and WASD also steer.'],
     ['Line up your shots', 'Weapons fire automatically. Aim by placing your ship beneath the target.'],
-    ['Ghost Shift', 'Land shots and destroy targets to fill Ghost Energy. Tap Shift or press Space to pass through physical fire for one second. A short recovery follows.'],
+    ['Energy', 'Start each flight with full energy. It recharges over time when you aren’t phasing. Hits and kills charge it faster.'],
+    ['Specials', 'Equip a Special in the Hangar. Tap its button or press Space to use it. Ghost Shift phases through physical fire for one second. Ion Burst clears nearby physical shots.'],
     ['Wraith realms', 'Tap Hop or press Space to change realms. Match the Wraith’s realm and shoot its marked core. Solid rounds hit physical ships. Hollow diamonds hit ghost ships.'],
     ['Read the warning', 'Leave striped beam lanes. Fly through the marked open seam in a debris wall.'],
-    ['Watch the edges', 'A surviving fighter can circle up the side and make one more pass. It keeps any damage you dealt.'],
+    ['Watch the edges', 'Some surviving fighters circle up the side and return in a different lane. They keep any damage you dealt.'],
     ['Break the modules', 'Shoot hardpoints framed by corner brackets. A crossed-out module is offline.'],
     ['Break a formation', 'Target the bracketed command relay. Stop its volley and hit the exposed wing before it recovers.'],
     ['Expose shielded escorts', 'Follow the solid blue links to the Command Ship. Destroy it to drop the escorts’ shields.'],
+    ['Supplies', 'Destroy marked enemies to release their supplies.'],
     ...Object.values(PICKUPS).map((drop) => [drop.name, drop.hint])
   ];
   return screen('Practice', state.helpBack, action('Flight basics', 'practice:basics', 'primary', 'play') +
-    action('Ghost Shift drill', 'practice:shift', 'quiet', 'play') +
+    action(`${equipped.name} drill`, 'practice:special', 'quiet', 'play') +
     rows.map(([title, text]) => `<div class="info"><strong>${title}</strong><p class="subtle">${text}</p></div>`).join(''));
 }
 
@@ -416,6 +430,7 @@ async function start(which, trainingMode = null, drill = 'basics') {
     ? (nextStage(pilot) ?? STAGES.at(-1)).id : Number(which);
   const stage = chooseStage(state.pilot);
   const launch = { controller: new AbortController(), from: state.training?.from ?? state.view, which,
+    control: trainingMode === 'practice' ? `practice:${drill}` : `fly:${which}`,
     name: trainingMode ? 'Practice' : endless ? 'Endless' : stageById(stage)?.name };
   if (!launch.name) return;
   let run;
@@ -442,7 +457,8 @@ async function start(which, trainingMode = null, drill = 'basics') {
   try {
     const seed = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
     if (trainingMode) {
-      run = { id:readId(), mode:'arcade', stage:1, ship:'kestrel', equipment:[], assistance:{ ...state.pilot.settings }, seed };
+      const special = trainingMode === 'practice' && drill === 'special' ? state.pilot.special : 'ghost';
+      run = { id:readId(), mode:'arcade', stage:1, ship:'kestrel', equipment:[], special, assistance:{ ...state.pilot.settings }, seed };
     } else {
       const saved = await store.change((pilot) => beginRun(pilot, readId(), endless ? 'endless' : 'arcade', chooseStage(pilot), Date.now(), seed));
       state.pilot = saved.pilot;
@@ -497,7 +513,7 @@ function restoreLaunch(launch, warning = '') {
   state.launch = null;
   state.busy = null;
   show(launch.from, false);
-  menu.querySelector(`[data-action="fly:${launch.which}"]`)?.focus({ preventScroll: true });
+  menu.querySelector(`[data-action="${launch.control}"]`)?.focus({ preventScroll: true });
   if (warning) {
     const notice = document.createElement('p');
     notice.className = 'notice';
@@ -607,11 +623,12 @@ function content(id, value, html = false) {
 
 function refreshGhost(f) {
   const p = f.player;
+  const special = SPECIALS[f.special];
   const energy = Math.floor(p.ghostEnergy);
   const active = p.realm === 'ghost';
-  const action = f.realmHop ? 'Hop' : p.ghostTime ? `${(Math.ceil(p.ghostTime * 10) / 10).toFixed(1)}s` : p.ghostRecovery ? 'Wait' : 'Shift';
+  const action = f.realmHop ? 'Hop' : p.ghostTime ? `${(Math.ceil(p.ghostTime * 10) / 10).toFixed(1)}s` : p.ghostRecovery ? 'Wait' : special.label;
   const mode = active ? 'active' : f.shiftReady ? 'ready' : 'charging';
-  const key = `${energy}/${action}/${mode}/${f.realmHop}`;
+  const key = `${energy}/${action}/${mode}/${f.shiftReady}/${f.realmHop}/${f.special}`;
   if (lastHud.ghost === key) return;
   lastHud.ghost = key;
   const control = $('ghost-control');
@@ -623,15 +640,17 @@ function refreshGhost(f) {
   $('ghost-shift').setAttribute('aria-disabled', String(!f.shiftReady));
   content('ghost-action', action);
   const destination = realmLabel(otherRealm(p.realm));
-  if (lastHud.realmHop !== Boolean(f.realmHop)) {
-    lastHud.realmHop = Boolean(f.realmHop);
-    sky.setAttribute('aria-label', `Flight playfield. Drag or use arrow keys to steer. Weapons fire automatically. Press Space ${f.realmHop ? 'to Hop between realms' : 'for Ghost Shift'}.`);
+  const skyAction = f.realmHop ? 'to Hop between realms' : `for ${special.name}`;
+  if (lastHud.skyAction !== skyAction) {
+    lastHud.skyAction = skyAction;
+    sky.setAttribute('aria-label', `Flight playfield. Drag or use arrow keys to steer. Weapons fire automatically. Press Space ${skyAction}.`);
   }
-  $('ghost-shift').setAttribute('aria-label', f.realmHop ? `Hop to ${destination} realm` : 'Ghost Shift');
-  content('ghost-label', f.realmHop ? `To ${destination}` : 'Ghost');
-  content('ghost-status', f.realmHop ? `Current realm is ${realmLabel(p.realm)}. ${energy} energy. Hop costs ${f.ghostCost}.`
-    : p.ghostTime ? `${action} of phasing remaining.` : p.ghostRecovery ? 'Ghost Shift is recovering.'
-      : `${energy} energy. Ghost Shift costs ${f.ghostCost}.`);
+  $('ghost-shift').setAttribute('aria-label', f.realmHop ? `Hop to ${destination} realm` : special.name);
+  content('ghost-label', f.realmHop ? `To ${destination}` : f.special === 'ion' ? 'Ion' : 'Ghost');
+  const remaining = `${energy} energy. ${f.realmHop ? 'Hop' : special.name} costs ${f.ghostCost}.`;
+  const recovery = p.ghostRecovery ? ` ${f.realmHop ? 'Hop' : special.name} is recovering.` : '';
+  content('ghost-status', f.realmHop ? `Current realm is ${realmLabel(p.realm)}. ${remaining}${recovery}`
+    : p.ghostTime ? `${action} of phasing remaining.` : remaining + recovery);
 }
 
 function refreshHud(restart = false) {
@@ -768,6 +787,14 @@ async function handle(command) {
     state.pilot = pilot;
     announce(result ? `${SHIPS[value].name} equipped.` : 'Ship locked.');
     updateHangar(`inspect:${value}`);
+    return;
+  }
+  if (type === 'special') {
+    if (state.pilot.special === value) return;
+    const { pilot, result } = await store.change((saved) => equipSpecial(saved, value));
+    state.pilot = pilot;
+    announce(result ? `${SPECIALS[value].name} equipped.` : 'Special locked.');
+    updateHangar(command);
     return;
   }
   if (type === 'install') {

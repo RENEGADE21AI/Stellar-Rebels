@@ -105,6 +105,53 @@ test('Arcade exposes a direct Special practice drill with stable flight meters',
   } finally { await browser.close(); }
 });
 
+test('Specials unlock, persist across reload, and work in practice without rewards', { skip: !origin, timeout:30000 }, async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport:{ width:390, height:844 }, isMobile:true, hasTouch:true, serviceWorkers:'block' });
+    const button = (name) => page.getByRole('button', { name, exact:true });
+    await page.route(/\/app\.mjs(\?|$)/, async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({ response, body:(await response.text()) + '\nwindow.specialsProbe = { state, store };' });
+    });
+    await page.goto(origin);
+    await button('Hangar').tap();
+    await button('Specials').tap();
+    assert.equal(await button('Equip Ghost Shift').getAttribute('aria-pressed'), 'true');
+    await page.getByText('Clear Asteroid Belt to unlock.', { exact:true }).waitFor();
+    assert.equal(await button('Equip Ion Burst').count(), 0);
+    // Seed progression in a disposable save. The campaign suite clears the route by flying it.
+    await page.evaluate(() => window.specialsProbe.store.change((pilot) => { pilot.clears = { 1:1, 2:1 }; }));
+    await page.reload();
+    await button('Hangar').tap();
+    await button('Specials').tap();
+    const equip = button('Equip Ion Burst');
+    await equip.tap();
+    assert.equal(await equip.getAttribute('aria-pressed'), 'true');
+    assert.equal(await equip.evaluate((control) => document.activeElement === control), true);
+    const before = await page.evaluate(() => window.specialsProbe.store.load());
+    await page.reload();
+    await button('Arcade').tap();
+    await button('Practice').tap();
+    await button('Flight basics').tap();
+    await page.getByText('Steer your Fighter', { exact:true }).waitFor();
+    assert.match(await page.locator('#sky').getAttribute('aria-label'), /Space for Ghost Shift/);
+    await button('End practice').tap();
+    await button('Ion Burst drill').tap();
+    const burst = button('Ion Burst');
+    await burst.waitFor();
+    assert.match(await page.locator('#sky').getAttribute('aria-label'), /Space for Ion Burst/);
+    await page.waitForFunction(() => document.getElementById('ghost-shift').getAttribute('aria-disabled') === 'false');
+    await burst.tap();
+    await page.getByText('Try again', { exact:true }).waitFor();
+    await page.getByText('Burst now', { exact:true }).waitFor();
+    await burst.tap();
+    await button('Done').tap();
+    await page.getByRole('heading', { name:'Practice', exact:true }).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.specialsProbe.store.load()), before);
+  } finally { await browser.close(); }
+});
+
 test('Arcade, Hangar and Settings keep their controls inside the landscape frame', { skip: !origin, timeout:15000 }, async () => {
   const browser = await chromium.launch();
   try {
@@ -127,6 +174,8 @@ test('Arcade, Hangar and Settings keep their controls inside the landscape frame
     await fit('.craft-choice');
     await button('Upgrades').tap();
     await fit('.shop-card');
+    await button('Specials').tap();
+    await fit('.hangar-tab, .special-choice, .special-choice button');
     await button('Back').tap();
     await button('Settings').tap();
     await fit('.setting, #sensitivity');
@@ -540,7 +589,6 @@ test('Space activates Pause on focus and uses the indicated ability from the pla
         await button('Skip training').press('Enter');
         await playing();
         assert.match(await page.locator('#sky').getAttribute('aria-label'), /Space for Ghost Shift/);
-        await page.evaluate(() => { window.controlProbe.state.flight.player.ghostEnergy = 100; });
         await page.waitForFunction(() => document.getElementById('ghost-meter').getAttribute('aria-valuenow') === '100');
         await page.keyboard.press('Tab');
         await page.keyboard.press('Tab');
@@ -557,6 +605,7 @@ test('Space activates Pause on focus and uses the indicated ability from the pla
         await page.evaluate(() => window.controlProbe.store.change((pilot) => {
           pilot.clears = { 1:1, 2:1, 3:1, 4:1 };
           pilot.ship = 'bastion';
+          pilot.special = 'ion';
           pilot.equipment = ['hull'];
         }));
 
@@ -564,6 +613,7 @@ test('Space activates Pause on focus and uses the indicated ability from the pla
         await button('Arcade').tap();
         await button(/^05 Outer Orbit/).tap();
         await playing();
+        assert.match(await page.locator('#sky').getAttribute('aria-label'), /Space for Ion Burst/);
         await page.evaluate(() => {
           const f = window.controlProbe.state.flight;
           f.elapsed = f.stage.bossAt - .02;

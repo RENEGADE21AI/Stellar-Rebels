@@ -1,4 +1,4 @@
-import { GHOST } from './catalog.mjs';
+import { GHOST, SPECIALS } from './catalog.mjs';
 
 const lessons = {
   steer: ['Steer your Fighter', 'Drag anywhere on the field or use the arrow keys.'],
@@ -6,6 +6,9 @@ const lessons = {
   shift: ['Ghost Shift', 'Stay in the shot’s path and wait for the cue.'],
   cue: ['Shift now', 'Tap Shift or press Space to phase through the shot.'],
   retry: ['Try again', 'Shift when the shot is close to your Fighter.'],
+  burst: ['Ion Burst', 'Stay in the shot’s path and wait for the cue.'],
+  burstCue: ['Burst now', 'Tap Burst or press Space to clear the shot.'],
+  burstRetry: ['Try again', 'Burst when the shot is close to your Fighter.'],
   complete: ['Ready to fly', 'Good hunting, pilot.']
 };
 
@@ -17,8 +20,8 @@ function prompt(flight, step) {
 export function startTraining(flight, drill = 'basics') {
   flight.practice = true;
   flight.player.ghostEnergy = 0;
-  const step = drill === 'shift' ? 'shift' : 'steer';
-  prompt(flight, step);
+  const step = drill === 'special' ? 'shift' : 'steer';
+  prompt(flight, step === 'shift' && flight.special === 'ion' ? 'burst' : step);
   return { step, drill, x:flight.player.x, y:flight.player.y, nextThreat:0 };
 }
 
@@ -42,21 +45,28 @@ export function advanceTraining(flight, training, events) {
     }
   }
   if (training.step !== 'shift') return;
+  const ion = flight.special === 'ion';
+  const burst = ion ? events.find((event) => event.type === 'ionBurst') : null;
   const shot = training.volley;
-  if (shot?.trainingContact === 'phased') {
+  if (ion ? burst?.detail.cleared > 0 : shot?.trainingContact === 'phased') {
     training.step = 'complete';
     prompt(flight, 'complete');
     return;
   }
   if (shot) {
-    if (shot.trainingContact || shot.y > p.y + 22) {
+    if (burst || shot.trainingContact || shot.y > p.y + 22) {
+      shot.live = false;
       training.volley = null;
       training.nextThreat = flight.elapsed + .6;
-      prompt(flight, 'retry');
-    } else if (!training.cued && flight.shiftReady && p.y - shot.y <= shot.vy * GHOST.duration * .7) {
-      training.cued = true;
-      prompt(flight, 'cue');
-      flight.signal('practiceCue', p.x, p.y);
+      prompt(flight, ion ? 'burstRetry' : 'retry');
+    } else if (!training.cued && flight.shiftReady) {
+      const inRange = ion ? Math.hypot(shot.x - p.x, shot.y - p.y) <= SPECIALS.ion.radius * .88
+        : p.y - shot.y <= shot.vy * GHOST.duration * .7;
+      if (inRange) {
+        training.cued = true;
+        prompt(flight, ion ? 'burstCue' : 'cue');
+        flight.signal('practiceCue', p.x, p.y);
+      }
     }
     return;
   }
@@ -65,5 +75,5 @@ export function advanceTraining(flight, training, events) {
   flight.projectile(p.x, p.y - 205, Math.PI / 2, 132, 'bolt', { trainingShot:true });
   training.volley = flight.hostile.at(-1);
   training.cued = false;
-  prompt(flight, 'shift');
+  prompt(flight, ion ? 'burst' : 'shift');
 }

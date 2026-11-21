@@ -96,9 +96,18 @@ button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(
 .endless-entry small{color:var(--secondary);font-size:.72rem}
 .support-actions .quiet,.support-actions .flat{font-size:20px}
 .support-actions .flat{font-size:18px;justify-content:center}
-.dock-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.dock-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .hangar-tab,.craft-choice{border:1px solid #4a5b6b;min-height:45px;background:#111d2ae6;color:#d2dce5;font:700 23px/1 var(--display);padding:6px 9px}
 .hangar-tab[aria-pressed=true],.craft-choice[aria-pressed=true]{background:#252f3d;border-color:#ff9864;color:var(--paper)}
+.special-options{display:grid;gap:9px}
+.special-choice{gap:8px}
+.special-heading{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:5px 10px}
+.special-heading h2{font-size:26px}
+.special-heading .caption{color:#ffca89;white-space:nowrap}
+.special-choice .quiet{justify-content:center;min-height:44px;font-size:21px}
+.special-choice .quiet[aria-pressed=true]{border-color:#518d83;background:#193831;color:#bcfff0}
+.special-lock{display:flex;align-items:center;gap:7px;color:#ffd0aa;font-size:.78rem}
+.special-lock .icon{width:15px;height:15px}
 .turntable{overflow:hidden;min-height:145px;max-height:298px;flex:1 1 clamp(145px,30dvh,260px);position:relative;display:grid;place-items:center;border:1px solid #3f5668;background:radial-gradient(ellipse,#4267773b 0%,#162535b3 42%,#081322f7 73%)}
 .pad{position:absolute;width:78%;height:74%;border:1px solid #8c623e94;border-radius:50%;box-shadow:0 0 0 10px #65758413,inset 0 0 0 10px #26374c75;transform:rotate(-12deg)}
 .pad::after,.pad::before{content:"";position:absolute;inset:16%;border:1px dashed #73849765;border-radius:50%}
@@ -244,8 +253,8 @@ dialog::backdrop{background:#040911af}
   .stage-tag{font-size:.61rem;gap:2px}
   .stage-tag .icon{width:11px;height:11px}
   .support-actions{grid-template-columns:minmax(0,1fr)}
-  .dock-tabs{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
-  .hangar-tab{font-size:20px;padding-inline:4px}
+  .dock-tabs{gap:5px}
+  .hangar-tab{font-size:16px;padding-inline:2px}
   .craft-grid{grid-template-columns:minmax(0,1fr)}
   .craft-choice{grid-template-columns:minmax(0,1fr) minmax(0,44%);align-items:center}
   .craft-choice small{text-align:right}
