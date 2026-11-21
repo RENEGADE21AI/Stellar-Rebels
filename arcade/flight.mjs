@@ -1,7 +1,7 @@
 import { AIM_PRECISION, ENDLESS_BOSSES, ENEMIES, GHOST, GUNNER_MUZZLES, HEIGHT, INPUT_RESUME, INPUT_SHIFT, PICKUPS, SHIPS, SPECIALS, WIDTH, enemyMuzzle, formation, hardpointAt, stageById, weaponStats } from './catalog.mjs';
 import { advanceBoss, bossPartPosition, launchBoss, operatorWarnings } from './bosses.mjs';
 import { markPull, markRail, markWall } from './boss-patterns.mjs';
-import { VANE_HULL, breakFormation, linkedVolley, vanePosition } from './formations.mjs';
+import { VANE_HULL, breakFormation, commandCharge, linkedVolley, vanePosition } from './formations.mjs';
 import { PHYSICAL, SPECTRAL, otherRealm, realmLabel } from './wraith.mjs';
 import { flightRandom } from './seed.mjs';
 import { advanceCruiser, launchCruiser } from './cruiser.mjs';
@@ -13,6 +13,8 @@ export const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 export const bounds = { left: 17, right: WIDTH - 17, top: 235, bottom: HEIGHT - 37 };
 const loopTurn = .27;
 const maxReturning = 3;
+const maxReturns = 2;
+const returnSpeed = 620;
 const returnLanes = [.18, .34, .50, .66, .82].map((lane) => lane * WIDTH);
 const projectileRadii = { bolt: 4, seed: 4.5, rock: 12, lance: 4.8, blade: 5, pulse: 4.7, orb: 5.1, specter: 5.4 };
 const duration = (value) => Math.max(0, value);
@@ -52,6 +54,7 @@ export class Flight {
     this.fireTimer = .25;
     this.spawns = [];
     this.pickups = [];
+    this.supplies = [];
     this.enemies = [];
     this.friendly = [];
     this.hostile = [];
@@ -188,6 +191,35 @@ export class Flight {
     this.signal('drop', x, y, kind);
   }
 
+  assignSupplies() {
+    for (const supply of this.supplies) {
+      const previous = supply.carrier;
+      if (previous && !previous.retreat && (previous.loop || previous.y < HEIGHT + 24)) continue;
+      if (previous) previous.carrying = null;
+      supply.carrier = null;
+      let distance = Infinity;
+      for (const enemy of this.enemies) {
+        if (enemy.hull <= 0 || enemy.retreat || enemy.loop || enemy.carrying || enemy.y < -28 ||
+            enemy.kind === 'shard' || enemy.y > Math.min(HEIGHT * .52, this.player.y - 62) ||
+            supply.opening && enemy.supplyWing) continue;
+        const offset = Math.abs(enemy.x - supply.lane * WIDTH);
+        if (offset >= distance) continue;
+        distance = offset;
+        supply.carrier = enemy;
+      }
+      if (supply.carrier) supply.carrier.carrying = supply.kind;
+    }
+  }
+
+  dropEnemySupply(enemy) {
+    const slot = this.supplies.findIndex((supply) => supply.carrier === enemy);
+    if (slot < 0) return;
+    const [supply] = this.supplies.splice(slot, 1);
+    enemy.carrying = null;
+    if (supply.opening) this.openingPowerGranted = true;
+    this.pickup(supply.kind, enemy.x / WIDTH, enemy.y);
+  }
+
   collect(drop) {
     const p = this.player;
     const type = PICKUPS[drop.kind];
@@ -243,9 +275,7 @@ export class Flight {
     }
     const wing = formation(name, flip);
     const supplyWing = reward ? { remaining: wing.length } : null;
-    const flights = wing.filter((e) => fliesBack(e.kind));
-    const returning = flights[Math.floor(this.random() * flights.length)];
-    for (const e of wing) this.spawns.push({ ...e, group, supplyWing, returns: e === returning, at: this.elapsed + e.after });
+    for (const e of wing) this.spawns.push({ ...e, group, supplyWing, at: this.elapsed + e.after });
   }
 
   updateSchedule() {
@@ -266,7 +296,7 @@ export class Flight {
         this.endlessNext = this.elapsed + Math.max(3.25, 6.1 - this.elapsed / 95);
         if (this.endlessWave % 4 === 0) {
           const supply = ['power','barrier','repair','overdrive'][(this.endlessWave / 4 - 1) % 4];
-          this.pickup(supply, this.endlessWave % 8 === 0 ? .62 : .36);
+          this.supplies.push({ kind:supply, lane:this.endlessWave % 8 === 0 ? .62 : .36 });
         }
       }
     } else {
@@ -278,8 +308,8 @@ export class Flight {
       }
       const drop = this.stage.drops[this.dropIndex];
       if (drop && this.elapsed >= drop[0]) {
-        if (!drop[3] || !this.openingPowerGranted) this.pickup(drop[1], drop[2]);
-        if (drop[3]) this.openingPowerGranted = true;
+        const [, kind, lane, opening] = drop;
+        if (!opening || !this.openingPowerGranted) this.supplies.push({ kind, lane, opening });
         this.dropIndex++;
       }
       const terrain = this.stage.terrain?.[this.terrainIndex];
@@ -316,7 +346,7 @@ export class Flight {
       group: data.group, vane: data.group && data.kind === 'relay' ? VANE_HULL : 0, jam: 0,
       supplyWing: data.supplyWing,
       pace: .94 + this.random() * .12,
-      loop: null, returned: false, returns: data.returns ?? fliesBack(data.kind)
+      loop: null, returnCount: 0, returned: false, returns: data.returns ?? fliesBack(data.kind)
     };
     this.enemies.push(enemy);
     return enemy;
@@ -415,12 +445,13 @@ export class Flight {
     const distantLanes = newLanes.filter((lane) => Math.abs(lane - e.x) >= WIDTH / 8);
     const candidates = distantLanes.length ? distantLanes : newLanes;
     const entryX = candidates[Math.floor(this.random() * candidates.length)];
-    e.loop = { edge, fromX: e.x, fromTurn: e.turn, entryX, time: 0, across: 0 };
+    e.loop = { edge, fromX: e.x, fromY: e.y, fromTurn: e.turn, entryX, time: 0, across: 0 };
+    e.returnCount++;
     e.group = 0;
     e.vane = 0;
     e.jam = 0;
     e.dive = false;
-    this.signal('returnFlyby', edge, HEIGHT - 13);
+    this.signal('returnFlyby', edge, e.y);
     if (!this.taughtReturn && !this.endless && this.stage.id === 1 && !(this.notice?.time > 0)) {
       this.taughtReturn = true;
       this.message('Escaping fighters can loop back along the sides.', 2.35, 'tactic', 'Watch the edges');
@@ -430,12 +461,18 @@ export class Flight {
   moveReturning(e, dt) {
     const loop = e.loop;
     loop.time += dt;
-    const turn = Math.min(1, loop.time / loopTurn);
-    const eased = turn * turn * (3 - 2 * turn);
-    e.x = loop.fromX + (loop.edge - loop.fromX) * eased;
-    e.turn = loop.fromTurn + (Math.PI - loop.fromTurn) * eased;
-    if (turn < 1) return;
-    if (!loop.across) e.y = Math.max(-34, e.y - 480 * dt);
+    const heading = loop.edge < WIDTH / 2 ? Math.PI : -Math.PI;
+    if (loop.time < loopTurn) {
+      const turn = loop.time / loopTurn;
+      const eased = turn * turn * (3 - 2 * turn);
+      e.x = loop.fromX + (loop.edge - loop.fromX) * eased;
+      e.y = loop.fromY + Math.sin(turn * Math.PI) * 10;
+      e.turn = loop.fromTurn + (heading - loop.fromTurn) * eased;
+      return;
+    }
+    e.x = loop.edge;
+    e.turn = heading;
+    if (!loop.across) e.y = Math.max(-34, e.y - returnSpeed * dt);
     if (e.y > -34) return;
     loop.across = Math.min(1, loop.across + dt / .21);
     e.x = loop.edge + (loop.entryX - loop.edge) * loop.across;
@@ -478,7 +515,8 @@ export class Flight {
     }
     separateWing(active, dt);
     for (const e of active) {
-      if (canReturn && e.returns && !e.returned && returning < maxReturning && e.y > HEIGHT + e.spec.size * .45) {
+      if (canReturn && e.returns && e.returnCount < maxReturns && returning < maxReturning &&
+          e.y >= HEIGHT - e.spec.size * .55 && e.y < HEIGHT + 24) {
         this.startReturn(e);
         returning++;
         continue;
@@ -486,9 +524,13 @@ export class Flight {
       const linked = wingCommand.get(e.group);
       const canFire = inFiringRange(e, this.player);
       e.fireTimer -= dt;
-      if (linked === e && canFire && e.fireTimer <= 0 && e.vane > 0) {
-        linkedVolley(this, e);
-        e.fireTimer = 2.94 / this.pressure;
+      if (linked === e && canFire && commandCharge(e)) {
+        e.volleyTarget ??= { x:this.player.x, y:this.player.y };
+        if (e.fireTimer <= 0) {
+          linkedVolley(this, e);
+          e.volleyTarget = null;
+          e.fireTimer = 2.94 / this.pressure;
+        }
       } else if (!linked && canFire && e.fireTimer <= 0 && !e.jam) {
         this.enemyFire(e);
         e.fireTimer = e.spec.cadence / this.pressure;
@@ -534,12 +576,19 @@ export class Flight {
     if (e.hull <= 0) {
       this.scoreKill(e.spec.value + (e.jam > 0 ? 125 : 0));
       this.signal('enemyDown', e.x, e.y, e.kind);
+      this.dropEnemySupply(e);
       if (e.kind === 'splitter') this.splitEnemy(e);
       if (e.supplyWing && !this.openingPowerGranted && --e.supplyWing.remaining === 0) {
         this.openingPowerGranted = true;
-        this.pickup('power', e.x / WIDTH, clamp(e.y + 12, 97, this.player.y - 65));
+        const fallback = this.supplies.findIndex((supply) => supply.opening);
+        if (fallback >= 0) {
+          const [supply] = this.supplies.splice(fallback, 1);
+          if (supply.carrier) supply.carrier.carrying = null;
+        }
+        this.pickup('power', e.x / WIDTH, e.y);
       }
       if (e.kind === 'relay') {
+        if (e.group && e.vane > 0) breakFormation(this, e);
         const exposed = this.enemies.filter((wing) => wing.kind === 'escort' && wing.hull > 0 && !wing.retreat &&
           Math.hypot(e.x-wing.x, e.y-wing.y) < 144 && !this.escortProtected(wing));
         for (const wing of exposed) this.signal('escortExposed', wing.x, wing.y);
@@ -683,6 +732,7 @@ export class Flight {
     this.ticks++;
     this.updateSchedule();
     this.moveEnemies(dt);
+    if (this.supplies.length) this.assignSupplies();
     advanceCruiser(this, dt);
     advanceBoss(this, dt);
     this.shoot(dt);

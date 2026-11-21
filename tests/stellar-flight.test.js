@@ -278,6 +278,33 @@ test('linked Gunners launch from both rotated hardware mounts', async () => {
   assert.deepEqual(f.hostile.map(({ x,y }) => ({ x,y })), GUNNER_MUZZLES.map(([dx,dy]) => hardpointAt(wing,dx,dy,wing.turn)));
 });
 
+test('a linked volley locks adjacent lanes and interrupting the Command Ship jams its wings', async () => {
+  const [{ Flight }] = await load;
+  const f = new Flight(context());
+  const command = f.addEnemy({ kind:'relay', lane:.5, group:1 });
+  const wings = [.25,.75].map((lane) => f.addEnemy({ kind:'scout', lane, group:1 }));
+  for (const enemy of [command, ...wings]) Object.assign(enemy, { y:180, fireTimer:4 });
+  f.player.x = 165;
+  f.player.y = 590;
+  command.fireTimer = .81;
+  f.moveEnemies(step);
+  assert.deepEqual(command.volleyTarget, { x:165, y:590 });
+  f.player.x = 340;
+  command.fireTimer = 0;
+  f.moveEnemies(step);
+  assert.equal(command.volleyTarget, null);
+  const landing = f.hostile.map((s) => Math.round(s.x + s.vx * (590 - s.y) / s.vy)).sort((a,b) => a - b);
+  assert.deepEqual(landing, [139,165,191]);
+  assert.ok(landing.every((lane) => Math.abs(lane - f.player.x) > 100), 'moving off the locked lanes avoids the volley');
+  f.hostile.length = 0;
+  command.fireTimer = .3;
+  f.hitEnemy(command, { strength:100, x:command.x, y:command.y });
+  assert.equal(f.breaks, 1);
+  assert.ok(wings.every((wing) => wing.jam > 3));
+  f.moveEnemies(step);
+  assert.equal(f.hostile.length, 0);
+});
+
 test('fatal rail damage ends the run before a simultaneous repair', async () => {
   const [{ Flight }] = await load;
   const f = new Flight(context(6));
@@ -513,29 +540,52 @@ test('ordinary flight, the crossing cruiser and bosses share the same arena boun
   assert.deepEqual(f.movementBounds, bounds);
 });
 
-test('a surviving fighter loops up the edge once with its existing hull and no duplicate reward', async () => {
-  const [{ Flight }, , { HEIGHT }] = await load;
+test('a surviving fighter visibly banks, climbs fast, and returns at most twice with its hull intact', async () => {
+  const [{ Flight }, , { HEIGHT, WIDTH }] = await load;
   const f = new Flight(context());
-  f.addEnemy({ kind:'scout', lane:.2 });
-  const enemy = f.enemies[0];
-  const originalLane = enemy.home;
-  Object.assign(enemy, { y:HEIGHT + 24, age:9, hull:1.25 });
-  f.moveEnemies(step);
-  assert.ok(enemy.loop);
-  assert.equal(enemy.loop.edge, 15);
-  for (let i = 0; i < 75; i++) f.moveEnemies(step);
-  assert.ok(enemy.y > 0 && enemy.y < HEIGHT && enemy.turn > 3);
-  assert.equal(f.kills, 0);
-  assert.equal(f.hostile.length, 0);
-  for (let i = 0; i < 60; i++) f.moveEnemies(step);
-  assert.equal(enemy.returned, true);
-  assert.equal(enemy.loop, null);
-  assert.equal(enemy.hull, 1.25);
-  assert.ok(Math.abs(enemy.home - originalLane) >= 96);
+  const enemy = f.addEnemy({ kind:'scout', lane:.2 });
+  for (let count = 1; count <= 2; count++) {
+    const previousLane = enemy.home;
+    Object.assign(enemy, { y:HEIGHT - enemy.spec.size * .5, age:9, hull:1.25 });
+    f.moveEnemies(step);
+    assert.equal(enemy.returnCount, count);
+    assert.ok(enemy.loop?.fromY < HEIGHT, 'bank starts where the ship is still visible');
+    for (let i = 0; i < 40; i++) f.moveEnemies(step);
+    assert.ok(enemy.y > 0 && enemy.y < HEIGHT && Math.abs(enemy.turn) > 3);
+    const before = enemy.y;
+    f.moveEnemies(step);
+    assert.ok(Math.abs((before - enemy.y) / step - 620) < .01);
+    assert.equal(f.kills, 0);
+    assert.equal(f.hostile.length, 0);
+    for (let i = 0; i < 80 && enemy.loop; i++) f.moveEnemies(step);
+    assert.equal(enemy.returned, true);
+    assert.equal(enemy.loop, null);
+    assert.equal(enemy.hull, 1.25);
+    assert.ok(Math.abs(enemy.home - previousLane) >= WIDTH / 4);
+  }
   Object.assign(enemy, { y:HEIGHT + 42, age:9 });
   f.step(step);
   assert.equal(f.enemies.includes(enemy), false);
   assert.equal(f.kills, 0);
+  assert.equal(f.score, 0);
+});
+
+test('only three eligible fighters can return at once and a set piece clears the returning lane', async () => {
+  const [{ Flight }, , { HEIGHT }] = await load;
+  const f = new Flight(context());
+  for (const [index, kind] of ['scout','diver','scout','diver','scout','lancer'].entries()) {
+    const e = f.addEnemy({ kind, lane:.13 + index * .14 });
+    e.y = HEIGHT - 10;
+  }
+  f.moveEnemies(step);
+  assert.equal(f.enemies.filter((e) => e.loop).length, 3);
+  assert.ok(f.enemies.some((e) => e.kind === 'diver' && e.loop));
+  assert.equal(f.enemies.find((e) => e.kind === 'lancer').loop, null);
+  const { launchCruiser } = await import('../arcade/cruiser.mjs');
+  launchCruiser(f);
+  assert.ok(f.enemies.filter((e) => e.loop).every((e) => e.retreat));
+  f.moveEnemies(step);
+  assert.equal(f.enemies.filter((e) => e.loop && !e.retreat).length, 0);
 });
 
 test('Scouts close space quickly while a Diver can be baited during its warning', async () => {
@@ -613,19 +663,60 @@ test('a Splitter releases one pair of telegraphed Shards with one volley each', 
   assert.equal(f.kills, 2);
 });
 
-test('the opening wing can earn the Power drop early, with a single timed fallback', async () => {
+test('the opening Multi-Shot comes from a destroyed wing or one later marked carrier', async () => {
   const [{ Flight }] = await load;
-  for (const clearWing of [true, false]) {
+  for (const clearWing of ['early','marked','late-wing']) {
     const f = new Flight(context());
     f.queue('arrow', false, 'opening');
     f.elapsed = 2;
     f.moveEnemies(step);
-    assert.equal(f.enemies.filter((enemy) => enemy.returns).length, 1);
-    if (clearWing) for (const enemy of f.enemies) f.hitEnemy(enemy, { strength: 100, x: enemy.x, y: enemy.y });
-    assert.equal(f.pickups.length, Number(clearWing));
+    const opening = [...f.enemies];
+    assert.ok(opening.every((enemy) => enemy.returns));
+    const destroy = (e) => f.hitEnemy(e, { strength:100, x:e.x, y:e.y });
+    opening.forEach((e) => { e.y = 105; });
+    if (clearWing === 'early') opening.forEach(destroy);
+    assert.equal(f.pickups.length, Number(clearWing === 'early'));
     f.elapsed = 14.01;
     f.updateSchedule();
+    const carrier = f.addEnemy({ kind:'diver', lane:.68 });
+    carrier.y = 151;
+    f.assignSupplies();
+    assert.equal(f.pickups.length, Number(clearWing === 'early'), 'schedule must not drop supply in midair');
+    assert.equal(carrier.carrying, clearWing === 'early' ? undefined : 'power');
+    if (clearWing === 'late-wing') {
+      opening.forEach(destroy);
+      assert.equal(carrier.carrying, null);
+    }
+    destroy(carrier);
     assert.deepEqual(f.pickups.map((drop) => drop.kind), ['power']);
+    const source = clearWing === 'marked' ? carrier : opening.at(-1);
+    assert.deepEqual({ x:f.pickups[0].x, y:f.pickups[0].y }, { x:source.x, y:source.y });
+  }
+});
+
+test('Arcade and Endless supplies transfer from missed carriers and drop at a real defeat', async () => {
+  const [{ Flight }, , { HEIGHT }] = await load;
+  for (const mode of ['arcade','endless']) {
+    const f = new Flight({ ...context(2), mode, stage:mode === 'endless' ? null : 2 });
+    if (mode === 'arcade') f.elapsed = 16.1;
+    else { f.elapsed = 21; f.endlessWave = 3; }
+    f.updateSchedule();
+    const first = f.addEnemy({ kind:'lancer', lane:.38 });
+    first.y = 230;
+    f.assignSupplies();
+    assert.equal(first.carrying, 'power');
+    assert.equal(f.pickups.length, 0);
+    first.y = HEIGHT + 35;
+    const second = f.addEnemy({ kind:'scout', lane:.49 });
+    second.y = 211;
+    f.assignSupplies();
+    assert.equal(first.carrying, null);
+    assert.equal(second.carrying, 'power');
+    const shot = { strength:100, x:second.x, y:second.y };
+    f.hitEnemy(second, shot);
+    f.hitEnemy(second, shot);
+    assert.deepEqual(f.pickups.map(({kind,x,y}) => ({kind,x,y})), [{ kind:'power', x:second.x, y:second.y }]);
+    assert.equal(f.supplies.length, 0);
   }
 });
 

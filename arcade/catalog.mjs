@@ -46,10 +46,10 @@ export const UPGRADES = {
 };
 
 export const PICKUPS = {
-  power: { name: 'Weapon Power', hint: 'Adds two flank shots for 12 seconds.', color: '#c8a0ff', duration: 12 },
+  power: { name: 'Multi-Shot', hint: 'Adds two flank shots for 12 seconds.', color: '#c8a0ff', duration: 12 },
   barrier: { name: 'Shield', hint: 'Blocks one hit for up to 12 seconds.', color: '#77c7ff', duration: 12 },
   repair: { name: 'Repair', hint: 'Restores up to two hull segments.', color: '#8bffd0', hull: 2 },
-  overdrive: { name: 'Overdrive', hint: 'Faster, harder shots for seven seconds.', color: '#ffd478', duration: 7 }
+  overdrive: { name: 'Rapid Fire', hint: 'Faster, harder shots for seven seconds.', color: '#ffd478', duration: 7 }
 };
 
 export const ENEMIES = {
