@@ -429,19 +429,16 @@ export class FlightScene {
     this.backdrop.width = this.canvas.width;
     this.backdrop.height = this.canvas.height;
     const c = this.backdropContext;
-    const illustrated = this.sprites.get(this.illustration);
-    const env = illustrated || this.sprites.get(`env-${flight.stage.environment}`);
+    const env = this.sprites.get(this.illustration) || this.sprites.get(`env-${flight.stage.environment}`);
     c.setTransform(this.canvas.width / WIDTH, 0, 0, this.canvas.height / HEIGHT, 0, 0);
     c.fillStyle = '#040811';
     c.fillRect(0, 0, WIDTH, HEIGHT);
     if (env) {
-      if (illustrated) {
-        const ratio = this.canvas.width / this.canvas.height;
-        const width = Math.min(env.width, env.height * ratio);
-        const height = Math.min(env.height, env.width / ratio);
-        c.drawImage(env, (env.width - width) * .5, (env.height - height) * .24, width, height, 0, 0, WIDTH, HEIGHT);
-      } else c.drawImage(env, 0, 0, WIDTH, HEIGHT);
-      if (illustrated && this.fullStrengthBackground !== true) {
+      const ratio = this.canvas.width / this.canvas.height;
+      const width = Math.min(env.width, env.height * ratio);
+      const height = Math.min(env.height, env.width / ratio);
+      c.drawImage(env, (env.width - width) * .5, (env.height - height) * .24, width, height, 0, 0, WIDTH, HEIGHT);
+      if (this.fullStrengthBackground !== true) {
         const grade = c.createLinearGradient(0, 0, WIDTH, HEIGHT * .61);
         grade.addColorStop(0, '#02091266');
         grade.addColorStop(.49, '#0209129e');

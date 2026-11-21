@@ -11,6 +11,7 @@ SOURCE = ROOT / 'source-art' / 'stellar' / 'individuals'
 MEDIA = ROOT / 'arcade' / 'media'
 ENVIRONMENTS = ('cover-space', 'vesper-playfield', 'belt-playfield', 'relay-playfield', 'sun-playfield',
                 'outer-playfield', 'fleet-playfield')
+FALLBACKS = {'vesper-playfield': 'breach', 'belt-playfield': 'belt', 'relay-playfield': 'relay'}
 
 
 def opaque_bounds(image):
@@ -66,9 +67,9 @@ def write_environments():
         with Image.open(SOURCE / (key + '.webp')) as source:
             shot = ImageOps.fit(source.convert('RGB'), (576,1152), Image.Resampling.LANCZOS)
         shot.save(MEDIA / 'environment' / (key + '.webp'), quality=86, method=6)
-        if key == 'belt-playfield':
+        if key in FALLBACKS:
             fallback = shot.resize((192, 384), Image.Resampling.LANCZOS)
-            fallback.save(MEDIA / 'sprites' / 'env-belt.png', optimize=True)
+            fallback.save(MEDIA / 'sprites' / f'env-{FALLBACKS[key]}.png', optimize=True)
 
 
 def write_wordmark():
