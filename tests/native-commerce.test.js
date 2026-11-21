@@ -226,6 +226,22 @@ test('restore is independent of offerings and uses store confirmation on a fresh
   assert.equal(commerce.status().owned, true);
 });
 
+test('a fresh store restore without the purchase releases a pending checkout for retry', async () => {
+  const { commerce, sdk, emit } = await setup();
+  await commerce.refresh();
+  sdk.purchasePackage = async () => { throw { code: codes.PAYMENT_PENDING_ERROR }; };
+  assert.equal((await commerce.purchase()).result, 'pending');
+  emit(customerInfo({ isActive: false }, '2026-11-02T12:00:00Z'));
+  sdk.restorePurchases = async () => customerInfo({ isActive: false });
+  assert.equal((await commerce.restore()).result, 'pending');
+  sdk.restorePurchases = async () => customerInfo({ isActive: false }, '2026-11-03T12:00:00Z');
+  assert.equal((await commerce.restore()).result, 'nothing');
+  assert.equal(commerce.status().pending, false);
+  assert.equal((await commerce.authorize(4)).allowed, false);
+  sdk.purchasePackage = async () => ({ customerInfo: customerInfo({}, '2026-11-04T12:00:00Z'), productIdentifier: productId });
+  assert.equal((await commerce.purchase()).result, 'purchased');
+});
+
 test('bridge accepts only the activated packaged document, capability and numeric stage', async () => {
   const { readBridgeRequest } = await import('../native/src/bridge.mjs');
   const home = 'file:///var/mobile/cache/index.html';

@@ -36,7 +36,7 @@ export function createCommerce(sdk, { platform, config, nativeAvailable }) {
     for (const listener of listeners) listener(current);
   }
 
-  function applyCustomerInfo(info, authoritative = false) {
+  function applyCustomerInfo(info, { authoritative = false, completedRestore = false } = {}) {
     const requestTime = Date.parse(info?.requestDate);
     if (!info?.entitlements || !Number.isFinite(requestTime) || requestTime < lastRequest ||
         (!authoritative && requestTime === lastRequest)) return;
@@ -45,10 +45,10 @@ export function createCommerce(sdk, { platform, config, nativeAvailable }) {
     const owned = entitlement?.isActive === true && entitlement.expirationDate === null &&
       entitlement.productIdentifier === settings.productId && entitlement.store === settings.store &&
       (entitlement.verification === verification.VERIFIED || entitlement.verification === verification.VERIFIED_ON_DEVICE);
-    update(owned ? { owned, pending: false } : { owned });
+    update(owned || (completedRestore && !entitlement) ? { owned, pending: false } : { owned });
   }
 
-  const customerUpdated = (info) => applyCustomerInfo(info, true);
+  const customerUpdated = (info) => applyCustomerInfo(info, { authoritative: true });
 
   async function initialize() {
     if (!settings) return false;
@@ -125,7 +125,9 @@ export function createCommerce(sdk, { platform, config, nativeAvailable }) {
         result = 'failed';
       } else {
         const info = restored ?? purchased?.customerInfo;
-        applyCustomerInfo(info, true);
+        // A completed store restore can release a stuck pending screen. The
+        // store still controls whether the buyer can place another order.
+        applyCustomerInfo(info, { authoritative: true, completedRestore: restore });
         const foundEntitlement = Boolean(info?.entitlements?.active?.[entitlementId]);
         result = current.owned ? (restore ? 'restored' : 'purchased') :
           (current.pending ? 'pending' : (restore && !foundEntitlement ? 'nothing' : 'failed'));
