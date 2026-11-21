@@ -19,6 +19,11 @@ assert.deepEqual(Object.keys(files).sort(), version.files);
 for (const file of version.files) {
   assert.deepEqual(Buffer.from(files[file]), fs.readFileSync(path.join(proof, file)), file);
 }
+assert.deepEqual(
+  fs.readFileSync(path.join(generated, 'loading-wordmark.png')),
+  Buffer.from(files[`arcade/${version.assetVersion}/media/brand/title-wordmark.png`]),
+  'The native loader and game must share the same wordmark'
+);
 assert.equal(version.dirty, false);
 assert.equal(version.googleSignIn, false);
 assert.equal(version.files.some((file) => /google-sign-in|google-auth-vendor/.test(file)), false);

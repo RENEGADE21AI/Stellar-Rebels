@@ -76,7 +76,7 @@ def write_wordmark():
     with Image.open(SOURCE / 'title-wordmark.webp') as source:
         mark = source.convert('RGBA')
     mark.thumbnail((768, 768), Image.Resampling.LANCZOS)
-    mark.save(MEDIA / 'brand' / 'title-wordmark.webp', quality=92, method=6)
+    mark.save(MEDIA / 'brand' / 'title-wordmark.png', optimize=True)
 
 
 def write_variants():

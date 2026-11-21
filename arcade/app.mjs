@@ -97,7 +97,7 @@ function wallet() {
 function home() {
   const callSign = normalizeCallSign(state.pilot.callSign) || 'Pilot';
   const ship = SHIPS[state.pilot.ship].name;
-  return `<article class="title-screen"><h1 tabindex="-1" class="brand-lockup"><img src="${media('brand/title-wordmark.webp')}" alt="Stellar Rebels" width="768" height="310"></h1>
+  return `<article class="title-screen"><h1 tabindex="-1" class="brand-lockup"><img src="${media('brand/title-wordmark.png')}" alt="Stellar Rebels" width="768" height="310"></h1>
     <canvas class="title-patrol" aria-hidden="true"></canvas>
     <button type="button" class="title-ship" data-action="spin-ship" aria-label="Spin ${ship}"></button>
     <div class="title-actions">${saveNotice()}

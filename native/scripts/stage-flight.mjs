@@ -78,7 +78,7 @@ for (const [file, content] of Object.entries(pack)) {
 fs.copyFileSync(path.join(repo, 'source-art/stellar/brand/png/icon-1024.png'), path.join(generated, 'icon.png'));
 fs.copyFileSync(path.join(repo, 'source-art/stellar/brand/png/emblem-light.png'), path.join(generated, 'launch.png'));
 fs.copyFileSync(path.join(source, 'media/brand/loading.jpg'), path.join(generated, 'loading.jpg'));
-fs.copyFileSync(path.join(repo, 'source-art/stellar/brand/png/stacked-light.png'), path.join(generated, 'loading-wordmark.png'));
+fs.copyFileSync(path.join(source, 'media/brand/title-wordmark.png'), path.join(generated, 'loading-wordmark.png'));
 const emblem = PNG.sync.read(fs.readFileSync(path.join(generated, 'launch.png')));
 const adaptive = new PNG({ width: 896, height: 896 });
 PNG.bitblt(emblem, adaptive, 0, 0, emblem.width, emblem.height,
