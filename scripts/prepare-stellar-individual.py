@@ -66,6 +66,9 @@ def write_environments():
         with Image.open(SOURCE / (key + '.webp')) as source:
             shot = ImageOps.fit(source.convert('RGB'), (576,1152), Image.Resampling.LANCZOS)
         shot.save(MEDIA / 'environment' / (key + '.webp'), quality=86, method=6)
+        if key == 'belt-playfield':
+            fallback = shot.resize((192, 384), Image.Resampling.LANCZOS)
+            fallback.save(MEDIA / 'sprites' / 'env-belt.png', optimize=True)
 
 
 def write_wordmark():
@@ -78,13 +81,14 @@ def write_wordmark():
 def write_variants():
     sprites = MEDIA / 'sprites'
     for path in sorted((SOURCE / 'variants').glob('*.webp')):
-        key = path.stem
+        key, _, number = path.stem.partition('.')
         with Image.open(sprites / (key + '.png')) as base_file, Image.open(path) as source_file:
             base = base_file.convert('RGBA')
             source = source_file.convert('RGBA')
         # Preserve each role's silhouette, collision mask, and existing transparent edge.
         recolored = paint_inside_frame(base, source, key, opacity=204)
-        recolored.save(sprites / (key + '-alt.webp'), quality=90, method=6)
+        suffix = f'-alt-{number}' if number else '-alt'
+        recolored.save(sprites / (key + suffix + '.webp'), quality=90, method=6)
 
 
 if __name__ == '__main__':

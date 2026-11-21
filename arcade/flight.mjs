@@ -558,12 +558,14 @@ export class Flight {
   splitEnemy(parent) {
     if (this.enemies.filter((enemy) => enemy.hull > 0).length > 33) return;
     const center = clamp(parent.x, 27, WIDTH - 27);
-    this.signal('splitterSplit', parent.x, parent.y);
+    const children = [];
     for (const side of [-1, 1]) {
       const lane = (center + side * 11) / WIDTH;
       const child = this.addEnemy({ kind:'shard', lane });
       Object.assign(child, { y:parent.y - 5, splitSide:side, fireTimer:.91 + side * .045, turn:-side * .16 });
+      children.push(child);
     }
+    this.signal('splitterSplit', parent.x, parent.y, { parent, children });
     if (!this.taughtSplit && this.notice?.kind !== 'warning') {
       this.taughtSplit = true;
       this.message('Two Shards fan out when its hull breaks.', 2.4, 'tactic', 'Splitter');

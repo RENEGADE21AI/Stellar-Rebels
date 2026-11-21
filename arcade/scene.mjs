@@ -7,7 +7,7 @@ import { shieldModules } from './collision.mjs';
 import { spriteBodies } from './silhouettes.mjs';
 
 export function spriteUrl(key) {
-  return new URL(`./media/sprites/${key}.${key.endsWith('-alt') ? 'webp' : 'png'}`, import.meta.url).href;
+  return new URL(`./media/sprites/${key}.${/-alt(?:-\d+)?$/.test(key) ? 'webp' : 'png'}`, import.meta.url).href;
 }
 
 export function loadSprite(key, signal, wait = 3200) {
@@ -32,7 +32,8 @@ export function loadSprite(key, signal, wait = 3200) {
 }
 
 const regular = [...Object.keys(ENEMIES), 'turret', 'shield-node', 'rock', ...Object.keys(PICKUPS).map((name) => `pickup-${name}`)];
-const variantKeys = Object.keys(ENEMIES).map((key) => `${key}-alt`);
+const rockLooks = ['rock', 'rock-alt', 'rock-alt-2'];
+const variantKeys = [...Object.keys(ENEMIES).map((key) => `${key}-alt`), ...rockLooks.slice(1)];
 const playfields = { breach:'vesper', belt:'belt', relay:'relay', sun:'sun', outer:'outer', flagship:'fleet' };
 const fallbackEnvironments = new Set(['breach','belt','relay']);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -200,7 +201,13 @@ export class FlightScene {
         case 'hit': this.burst(e.x, e.y, '#adfff1', reduce ? 2 : 5, 84, .18); break;
         case 'shieldHit': this.burst(e.x, e.y, '#a0bfff', 3, 52, .25); break;
         case 'enemyDown': this.explode(e.x, e.y, '#ff8a5c', 17, 13); break;
-        case 'splitterSplit': this.burst(e.x, e.y, '#ffc88e', 14, 138, .42); break;
+        case 'splitterSplit': {
+          const { parent, children } = e.detail;
+          const look = this.enemyLooks.get(parent) === 'splitter-alt' && this.sprites.has('shard-alt') ? 'shard-alt' : 'shard';
+          for (const child of children) this.enemyLooks.set(child, look);
+          this.burst(e.x, e.y, '#ffc88e', 14, 138, .42);
+          break;
+        }
         case 'formationBreak':
           this.explode(e.x, e.y, '#ac91fd', 22, 38);
           this.burst(e.x, e.y, '#a1fff1', 16, 182, .57);
@@ -584,7 +591,8 @@ export class FlightScene {
     const arming = e.kind === 'shard' && e.age < shardArmTime;
     if (arming) {
       const progress = e.age / shardArmTime;
-      ring(c, e.x, e.y, 15 - 7 * progress, '#ffc78f9b', 1.15);
+      const muzzle = enemyMuzzle(e);
+      filled(c, muzzle.x, muzzle.y, lerp(1.45, 2.65, progress), '#ffc78f');
     }
     const canTelegraph = e.kind !== 'splitter' && !(e.kind === 'shard' && (arming || e.volley > 0));
     if (canTelegraph && e.fireTimer < .26 && e.y > 102 && !e.dive && !e.retreat) {
@@ -781,10 +789,11 @@ export class FlightScene {
     let left;
     let right;
     for (const rock of w.rocks) {
+      const look = this.debrisLook(rock.x, rock.y);
       if (rock.x < w.x) left = rock.x;
       else right ??= rock.x;
       if (reduced) {
-        this.sprite('rock', rock.x, rock.y, rockSize, 0, .58);
+        this.sprite(look, rock.x, rock.y, rockSize, 0, .58);
         continue;
       }
       const offset = seededNoise(rock.x * .41 + w.y * .17);
@@ -798,7 +807,7 @@ export class FlightScene {
       const x = lerp(originX, rock.x, spread);
       const y = lerp(w.origin.y, rock.y, travel) + arc * (offset - .65);
       const size = lerp(9 + offset * 7, rockSize, spread);
-      this.sprite('rock', x, y, size, side * (1 - travel) * (.65 + offset), lerp(.55, 1, spread));
+      this.sprite(look, x, y, size, side * (1 - travel) * (.65 + offset), lerp(.55, 1, spread));
       if (travel > .18 && travel < .9) {
         const dust = Math.sin(Math.PI * travel);
         const color = ambient ? '#8b9aa9' : '#a48c78';
@@ -833,10 +842,20 @@ export class FlightScene {
     line(c, s.x - x * .34, s.y - y * .34, x * .73, y * .73, ghost || s.powered ? '#f1ddff' : '#d5fff6', 2.0);
   }
 
+  debrisLook(x, originY) {
+    const lane = Math.round(x / 34);
+    const row = Math.round(originY);
+    const group = Math.floor(lane / rockLooks.length);
+    const look = rockLooks[(lane + ((group ^ row) & 3)) % rockLooks.length];
+    return this.sprites.has(look) ? look : 'rock';
+  }
+
   enemyShot(s, contrast, pilotRealm) {
     const c = this.ctx;
     if (s.kind === 'rock') {
-      this.sprite('rock', s.x, s.y, rockSize, s.age * .7);
+      // Recover the warning's launch row so each rock keeps its original finish.
+      const originY = s.y - s.vy * s.age;
+      this.sprite(this.debrisLook(s.x, originY), s.x, s.y, rockSize, s.age * .7);
       if (contrast) ring(c, s.x, s.y, s.radius + 1, '#ffcc93', 2);
       return;
     }

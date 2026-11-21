@@ -191,7 +191,7 @@ export const spriteColliderDigests = {
   "gatekeeper": "0e145a6602cb2d84b58ac676a85403cb42936a6c963abf16354aeaefaa2dd624",
   "warden": "bbe99dd67c21ef2c7648be537b8279d8a6462a177da64543d1d61d3d21ac2a85",
   "matron": "0a6dfd3eece4639c51dacff04b1191cd413a6470dbc12e87f4712a90d52d9875",
-  "tyrant": "d7492fd04f99cc1fa3095986965f75bce63d68baa17616445d94ad38041e1948",
+  "tyrant": "e17c65ca43e0dacbe8508d73dbbfcd17e5926081fa7e842a7597ef1a8fe31700",
   "siphon": "8b384dc1efefed564ef9604ed00b66618ec0d50ae714e0a6b1311bf6aaa684e1",
   "wraith": "b43a7f95d06db40e4be4aa996f69b3534e79aaf225ebc25d05d457e87048bef6",
   "crown": "bae10dcb09cb0d93a5ad25911b55cb1f3e2db888af41361b401d426ad9ed019a",
