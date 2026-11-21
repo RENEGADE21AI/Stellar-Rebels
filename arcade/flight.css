@@ -98,6 +98,7 @@ button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(
 .support-actions .flat{font-size:18px;justify-content:center}
 .dock-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .hangar-tab,.craft-choice{border:1px solid #4a5b6b;min-height:45px;background:#111d2ae6;color:#d2dce5;font:700 23px/1 var(--display);padding:6px 9px}
+.hangar-tab{min-width:0;padding-inline:3px;font-size:clamp(16px,5.9cqw,23px);white-space:nowrap}
 .hangar-tab[aria-pressed=true],.craft-choice[aria-pressed=true]{background:#252f3d;border-color:#ff9864;color:var(--paper)}
 .special-options{display:grid;gap:9px}
 .special-choice{gap:8px}
@@ -254,7 +255,7 @@ dialog::backdrop{background:#040911af}
   .stage-tag .icon{width:11px;height:11px}
   .support-actions{grid-template-columns:minmax(0,1fr)}
   .dock-tabs{gap:5px}
-  .hangar-tab{font-size:16px;padding-inline:2px}
+  .hangar-tab{font-size:15px;padding-inline:2px}
   .craft-grid{grid-template-columns:minmax(0,1fr)}
   .craft-choice{grid-template-columns:minmax(0,1fr) minmax(0,44%);align-items:center}
   .craft-choice small{text-align:right}

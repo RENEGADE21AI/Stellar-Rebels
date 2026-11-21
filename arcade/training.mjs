@@ -72,7 +72,7 @@ export function advanceTraining(flight, training, events) {
   }
   if (flight.elapsed < training.nextThreat || p.ghostRecovery) return;
   p.ghostEnergy = GHOST.capacity;
-  flight.projectile(p.x, p.y - 205, Math.PI / 2, 132, 'bolt', { trainingShot:true });
+  flight.projectile(p.x, p.y - 205, Math.PI / 2, ion ? 104 : 132, 'bolt', { trainingShot:true });
   training.volley = flight.hostile.at(-1);
   training.cued = false;
   prompt(flight, ion ? 'burst' : 'shift');

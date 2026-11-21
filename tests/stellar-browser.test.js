@@ -108,7 +108,7 @@ test('Arcade exposes a direct Special practice drill with stable flight meters',
 test('Specials unlock, persist across reload, and work in practice without rewards', { skip: !origin, timeout:30000 }, async () => {
   const browser = await chromium.launch();
   try {
-    const page = await browser.newPage({ viewport:{ width:390, height:844 }, isMobile:true, hasTouch:true, serviceWorkers:'block' });
+    const page = await browser.newPage({ viewport:{ width:320, height:568 }, isMobile:true, hasTouch:true, serviceWorkers:'block' });
     const button = (name) => page.getByRole('button', { name, exact:true });
     await page.route(/\/app\.mjs(\?|$)/, async (route) => {
       const response = await route.fetch();
@@ -117,6 +117,9 @@ test('Specials unlock, persist across reload, and work in practice without rewar
     await page.goto(origin);
     await button('Hangar').tap();
     await button('Specials').tap();
+    await page.evaluate(() => document.fonts.ready);
+    assert.equal(await page.locator('.hangar-tab').evaluateAll(tabs =>
+      tabs.every((tab) => tab.scrollWidth <= tab.clientWidth)), true);
     assert.equal(await button('Equip Ghost Shift').getAttribute('aria-pressed'), 'true');
     await page.getByText('Clear Asteroid Belt to unlock.', { exact:true }).waitFor();
     assert.equal(await button('Equip Ion Burst').count(), 0);
@@ -127,7 +130,7 @@ test('Specials unlock, persist across reload, and work in practice without rewar
     await button('Specials').tap();
     const equip = button('Equip Ion Burst');
     await equip.tap();
-    assert.equal(await equip.getAttribute('aria-pressed'), 'true');
+    await page.locator('button[data-action="special:ion"][aria-pressed="true"]').waitFor();
     assert.equal(await equip.evaluate((control) => document.activeElement === control), true);
     const before = await page.evaluate(() => window.specialsProbe.store.load());
     await page.reload();
