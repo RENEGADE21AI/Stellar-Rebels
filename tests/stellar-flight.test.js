@@ -265,6 +265,10 @@ test('the debris seam fits every ship and asteroids stop fire without breaking',
     flight.player.x = field.x;
     const hull = flight.player.hull;
     operatorWarnings(flight, field.windup);
+    const entering = [...flight.hostile];
+    assert.deepEqual([...new Set(entering.map((rock) => rock.y))], [-86, -42]);
+    for (let tick = 0; tick < 100; tick++) flight.moveProjectiles(step);
+    assert.ok(entering.every((rock) => flight.hostile.includes(rock) && rock.y > 0), 'Both rows enter from above');
     for (let tick = 0; tick < 330; tick++) flight.moveProjectiles(step);
     assert.equal(flight.player.hull, hull, `${ship} remains safe through both rows`);
   }

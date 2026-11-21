@@ -793,7 +793,8 @@ export class Flight {
         if (this.damage(x, y, s.realm, cause) && s.kind !== 'rock') s.live = false;
       }
     }
-    this.hostile = this.hostile.filter((s) => s.live && s.age < 8 && s.y < HEIGHT + 28 && s.y > -40 && s.x > -42 && s.x < WIDTH + 42);
+    this.hostile = this.hostile.filter((s) => s.live && s.age < 8 && s.y < HEIGHT + 28 &&
+      (s.y > -40 || (s.kind === 'rock' && s.vy > 0)) && s.x > -42 && s.x < WIDTH + 42);
   }
 
   step(dt, recordedAim = null) {
