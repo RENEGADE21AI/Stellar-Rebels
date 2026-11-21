@@ -6,7 +6,7 @@ const SCHEMA = 1;
 const REWARD_VERSION = 2;
 const upgrades = Object.keys(UPGRADES);
 const loadoutLimit = 2 * (STAGES.length + 1) * Object.keys(SHIPS).length * Object.keys(SPECIALS).length * 2 ** upgrades.length;
-export const DEFAULT_SETTINGS = { music: true, effects: true, reduced: false, contrast: false, sensitivity: 'standard', trainingDone: false };
+export const DEFAULT_SETTINGS = { music: true, effects: true, reduced: false, contrast: false, steering: 'drag', sensitivity: 'standard', trainingDone: false };
 
 export function normalizeCallSign(value) {
   if (typeof value !== 'string') return null;

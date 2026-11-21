@@ -2,6 +2,7 @@ const effects = {
   shot: [535, 282, .055, .023, 'triangle'],
   hit: [1640, 1370, .088, .075, 'triangle', .003],
   shieldHit: [1080, 450, .09, .047, 'triangle'],
+  rockHit: [254, 95, .057, .043, 'triangle'],
   enemyDown: [150, 41, .24, .18, 'sawtooth'],
   moduleDown: [225, 34, .36, .23, 'triangle'],
   splitterSplit: [178, 390, .14, .066, 'triangle'],

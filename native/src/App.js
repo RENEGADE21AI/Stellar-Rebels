@@ -3,6 +3,7 @@ import { AppState, Platform, Pressable, StatusBar, StyleSheet, Text, View } from
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Asset } from 'expo-asset';
 import { Directory, File, Paths } from 'expo-file-system';
+import { AndroidHaptics, ImpactFeedbackStyle, impactAsync, performAndroidHapticsAsync } from 'expo-haptics';
 import { shareAsync } from 'expo-sharing';
 import { unzipSync } from 'fflate';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -13,6 +14,11 @@ const version = require('../generated/version.json');
 const profileKey = 'stellar-rebels.profile.v1';
 const maxProfileBytes = 512 * 1024;
 const maxReplayBytes = 4_000_000;
+const impacts = {
+  light: { ios: ImpactFeedbackStyle.Light, android: AndroidHaptics.Keyboard_Tap },
+  medium: { ios: ImpactFeedbackStyle.Medium, android: AndroidHaptics.Context_Click },
+  heavy: { ios: ImpactFeedbackStyle.Heavy, android: AndroidHaptics.Long_Press }
+};
 
 function sameFlightDocument(url, expected) {
   if (typeof url !== 'string' || !url.startsWith('file:///') || !expected) return false;
@@ -51,6 +57,7 @@ function Game() {
   const [reload, setReload] = useState(0);
   const browser = useRef(null);
   const transactions = useRef(Promise.resolve());
+  const lastFeedback = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -83,6 +90,19 @@ function Game() {
 
     const reply = (ok, value) => browser.current?.injectJavaScript(
       `window.stellarNativeReply?.(${JSON.stringify({ id: request.id, client: request.client, ok, value })}); true;`);
+    if (request.op === 'haptic') {
+      const strength = request.data;
+      if (typeof strength !== 'string' || !Object.hasOwn(impacts, strength)) { reply(false); return; }
+      const now = Date.now();
+      if (AppState.currentState === 'active' && now - lastFeedback.current >= 125) {
+        lastFeedback.current = now;
+        const effect = impacts[strength];
+        const feedback = Platform.OS === 'android' ? performAndroidHapticsAsync(effect.android) : impactAsync(effect.ios);
+        void feedback.catch(() => {});
+      }
+      reply(true);
+      return;
+    }
     transactions.current = transactions.current.then(async () => {
       switch (request.op) {
         case 'load': {

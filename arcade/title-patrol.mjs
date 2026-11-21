@@ -14,7 +14,7 @@ function crossing(depth, now, previous) {
   return { depth, start, duration, next:start + duration + depth.rest * between(.55, 1.65),
     ship:ships[Math.floor(Math.random() * ships.length)], direction:Math.random() < .5 ? -1 : 1,
     y:depth.y + between(-.043, .041), drift:between(-.095, .095), bow:between(-.029, .064),
-    size:depth.size * between(.78, 1.23), members:Math.floor(between(1, depth.members + 1)) };
+    size:depth.size * between(.78, 1.23), members:Math.floor(between(1, depth.members + 1)), destroyed:new Set() };
 }
 const specks = Array.from({ length:49 }, (_, index) => ({
   x: ((index * 73 + 31) % 223) / 223,
@@ -81,6 +81,11 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
   let time = 0;
   let lastFrame = 0;
   let started = null;
+  let spinStarted = null;
+  let patrolCraft = [];
+  let shot = null;
+  let spark = null;
+  let shotAt = -Infinity;
   let handle;
   let width = 0;
   let height = 0;
@@ -92,6 +97,45 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
     const dpr = Math.min(window.devicePixelRatio || 1, 1.65, Math.sqrt(725000 / (width * height)));
     canvas.width = Math.max(1, Math.round(width * dpr));
     canvas.height = Math.max(1, Math.round(height * dpr));
+  }
+
+  function paintPatrolShot() {
+    if (shot) {
+      const target = patrolCraft.find(({ patrol, member }) => patrol === shot.patrol && member === shot.member);
+      if (!target) shot = null;
+      else {
+        const progress = clamp((time - shotAt) / .24);
+        const fromX = width * .5;
+        const fromY = height * 1.08;
+        const x = fromX + (target.x - fromX) * progress;
+        const y = fromY + (target.y - fromY) * progress;
+        c.lineCap = 'round';
+        const tail = .08 * (1 - progress) + .045;
+        c.strokeStyle = '#a0eaff9a';
+        c.lineWidth = 2.7 - progress * 1.8;
+        c.beginPath();
+        c.moveTo(x - (target.x - fromX) * tail, y - (target.y - fromY) * tail);
+        c.lineTo(x, y);
+        c.stroke();
+        lamp(c, x, y, 1.7 - progress * .95, '#d4f7ff');
+        c.lineCap = 'butt';
+        if (progress === 1) {
+          target.patrol.destroyed.add(target.member);
+          spark = { x:target.x, y:target.y, size:Math.min(9, target.size * .19), at:time };
+          shot = null;
+        }
+      }
+    }
+    if (!spark) return;
+    const age = (time - spark.at) / .23;
+    if (age >= 1) { spark = null; return; }
+    c.globalAlpha = .8 * (1 - age);
+    lamp(c, spark.x, spark.y, spark.size * (.34 + age * .76), '#ff9469');
+    lamp(c, spark.x, spark.y, spark.size * .31 * (1 - age), '#fff4d7');
+    for (const [dx, dy] of [[-.7,-.55],[.82,-.24],[.26,.8]]) {
+      lamp(c, spark.x + dx * spark.size * (1 + age * 1.5), spark.y + dy * spark.size * (1 + age * 1.5), 1.05, '#ffc58a');
+    }
+    c.globalAlpha = 1;
   }
 
   function paint() {
@@ -106,6 +150,7 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
       c.fillStyle = speck.lit ? '#d3e7ff8a' : '#9ab4cc51';
       c.fillRect(x, y, speck.lit ? 1.4 : 1, length);
     }
+    patrolCraft = [];
     for (let i = 0; i < patrols.length; i++) {
       if (time >= patrols[i].next) patrols[i] = crossing(patrols[i].depth, time, patrols[i]);
       const patrol = patrols[i];
@@ -118,12 +163,16 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
       const slope = height * (patrol.drift + Math.PI * patrol.bow * Math.cos(Math.PI * phase));
       const turn = Math.atan2(slope, width * sign * 1.6) - Math.PI / 2;
       const alpha = patrol.depth.light * (1 - launchPhase * .65);
-      for (let i = patrol.members - 1; i >= 0; i--) {
-        const wing = i === 0 ? 0 : i % 2 === 1 ? -1 : 1;
-        drawCraft(c, images.get(patrol.ship), x - sign * i * size * .75, y + wing * size * .39,
-          i === 0 ? size : size * .88, turn, alpha);
+      for (let member = patrol.members - 1; member >= 0; member--) {
+        if (patrol.destroyed.has(member)) continue;
+        const wing = member === 0 ? 0 : member % 2 === 1 ? -1 : 1;
+        const craft = { patrol, member, x:x - sign * member * size * .75, y:y + wing * size * .39,
+          size:member === 0 ? size : size * .88 };
+        drawCraft(c, images.get(patrol.ship), craft.x, craft.y, craft.size, turn, alpha);
+        if (craft.x > 0 && craft.x < width) patrolCraft.push(craft);
       }
     }
+    paintPatrolShot();
     const launchProgress = launchPhase ** 1.7;
     const hover = reduce ? 0 : Math.sin(time * 1.3);
     const heroOrigin = width <= 239 ? .40 : .44;
@@ -131,7 +180,10 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
     const heroY = height * (heroOrigin - (heroOrigin + .25) * launchProgress) + hover * (1 - launchPhase) * 3.2;
     const heroSize = width * (heroScale + (.26 - heroScale) * launchProgress);
     const bank = (.12 + hover * .027) * (1 - launchPhase);
-    if (images.has(ship)) drawCraft(c, images.get(ship), width * .5, heroY, heroSize, bank,
+    const spin = spinStarted === null ? 0 : clamp((time - spinStarted) / .68);
+    if (spin === 1) spinStarted = null;
+    const roll = 2 * Math.PI * (1 - (1 - spin) ** 2.4);
+    if (images.has(ship)) drawCraft(c, images.get(ship), width * .5, heroY, heroSize, bank + roll,
       1, ship, .13 + hover * .021 + launchPhase * .91);
   }
 
@@ -174,7 +226,28 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
 
   if (!reduce) handle = requestAnimationFrame(frame);
   return {
-    launch() { if (!reduce && started === null) started = time; },
+    spin() { if (!reduce && started === null && spinStarted === null && images.has(ship)) spinStarted = time; },
+    shootAt(clientX, clientY) {
+      if (reduce || started !== null || shot || time - shotAt < .75) return;
+      const bounds = canvas.getBoundingClientRect();
+      const x = clientX - bounds.left;
+      const y = clientY - bounds.top;
+      let nearest = Infinity;
+      for (const craft of patrolCraft) {
+        const distance = Math.hypot(craft.x - x, craft.y - y);
+        if (distance < nearest && distance <= Math.min(19, Math.max(10, craft.size * .43))) {
+          nearest = distance;
+          shot = craft;
+        }
+      }
+      if (shot) shotAt = time;
+    },
+    launch() {
+      if (reduce || started !== null) return;
+      spinStarted = null;
+      shot = spark = null;
+      started = time;
+    },
     stop
   };
 }

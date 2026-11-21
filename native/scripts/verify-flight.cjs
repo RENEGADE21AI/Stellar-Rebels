@@ -30,6 +30,7 @@ async function check(engine, viewport) {
   const diagnostics = { webRequests: [], failedFiles: [], scriptErrors: [], bridge: new Set() };
   let saved;
   const clients = new Set();
+  const haptics = [];
   page.on('request', (request) => {
     if (/^https?:/.test(request.url())) diagnostics.webRequests.push(request.url());
   });
@@ -46,12 +47,19 @@ async function check(engine, viewport) {
     const reply = { id: request.id, client: request.client, ok: true };
     if (request.op === 'load') reply.value = saved;
     else if (request.op === 'save') saved = structuredClone(request.data);
+    else if (request.op === 'haptic') haptics.push(request.data);
     else throw Error(`Unexpected native request: ${request.op}`);
     return reply;
   });
   await page.addInitScript(() => {
     window.ReactNativeWebView = {
-      postMessage: (text) => window.pilotHost(JSON.parse(text)).then((reply) => window.stellarNativeReply(reply))
+      postMessage: (text) => {
+        const request = JSON.parse(text);
+        return window.pilotHost(request).then((reply) => {
+          if (request.op === 'haptic') window.lastNativePulse = request.data;
+          window.stellarNativeReply(reply);
+        });
+      }
     };
     const play = HTMLMediaElement.prototype.play;
     HTMLMediaElement.prototype.play = function () {
@@ -71,6 +79,8 @@ async function check(engine, viewport) {
     await page.getByText('Replay sharing', { exact: true }).waitFor();
     await page.getByRole('button', { name: 'Back', exact: true }).tap();
     const contrast = page.getByRole('button', { name: 'High contrast hazards' });
+    const vibration = page.getByRole('button', { name: 'Vibration', exact: true });
+    assert.equal(await vibration.getAttribute('aria-pressed'), 'true');
     const desired = (await contrast.getAttribute('aria-pressed')) !== 'true';
     await contrast.tap();
     await page.waitForFunction((expected) => document.querySelector('[aria-label="High contrast hazards"]')?.getAttribute('aria-pressed') === String(expected), desired);
@@ -85,6 +95,10 @@ async function check(engine, viewport) {
     await page.locator('#training-actions').waitFor({ state: 'hidden' });
     await page.locator('#sky').waitFor();
     await page.waitForFunction(() => document.querySelector('#clock').textContent === '00:02', null, { timeout: 9000 });
+    const special = page.getByRole('button', { name:'Ghost Shift', exact:true });
+    await special.tap();
+    await page.waitForFunction(() => window.lastNativePulse === 'light');
+    assert.ok(haptics.includes('light'), 'A touch-activated Shift reaches the native haptic bridge');
     await page.waitForFunction(() => window.lastStellarTrack?.src.endsWith('/audio/gravitys-edge.mp3'), null, { timeout: 9000 });
     await page.waitForFunction(() => window.lastStellarTrack?.currentTime > .1 && !window.lastStellarTrack.paused);
     const track = await page.evaluate(() => ({ source: new URL(window.lastStellarTrack.src).protocol, ready: window.lastStellarTrack.readyState,
@@ -104,9 +118,9 @@ async function check(engine, viewport) {
     assert.deepEqual(diagnostics.webRequests, []);
     assert.deepEqual(diagnostics.failedFiles, []);
     assert.deepEqual(diagnostics.scriptErrors, []);
-    assert.deepEqual([...diagnostics.bridge].sort(), ['load', 'save']);
+    assert.deepEqual([...diagnostics.bridge].sort(), ['haptic', 'load', 'save']);
     await page.screenshot({ path: path.join(output, `${engine.name()}.png`) });
-    return { engine: engine.name(), viewport, audio: track, privacyPolicyOpens: true, settingsPersisted: true, interruptionPaused: true, offlineRequests: 0 };
+    return { engine: engine.name(), viewport, audio: track, privacyPolicyOpens: true, settingsPersisted: true, interruptionPaused: true, hapticBridge: haptics, offlineRequests: 0 };
   } finally {
     await browser.close();
   }

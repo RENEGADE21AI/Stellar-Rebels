@@ -30,8 +30,7 @@ function route(Flight, stage, seed, consumeCombatRandomness = false) {
 }
 
 test('selected Arcade wings can attack from either flank without changing their roster, timing, or scripted neighbors', async () => {
-  const [{ Flight }, { STAGES, RULES_VERSION }] = await load;
-  assert.equal(RULES_VERSION, 'arcade-9');
+  const [{ Flight }, { STAGES }] = await load;
   for (const stage of STAGES) {
     const reference = route(Flight, stage, seeds[0]);
     assert.deepEqual(route(Flight, stage, seeds[0], true), reference, `${stage.name} uses an independent route seed`);
@@ -88,4 +87,104 @@ test('Endless preserves its opening and varies selected later wings independentl
     assert.deepEqual(candidate.map((wing) => wing.map(([kind, , after]) => [kind, after])),
       reference.map((wing) => wing.map(([kind, , after]) => [kind, after])));
   }
+});
+
+test('Endless repeats wings, cruiser bridge, and boss with time for each handoff', async () => {
+  const [{ Flight }, { FIXED_TICK }] = await load;
+  const flight = makeFlight(Flight, null, seeds[0], 'endless');
+  // Keep the pilot alive and let the encounters run until the explicit boss clear.
+  flight.fireTimer = 1_000;
+  const waves = [];
+  const encounters = [];
+  const departures = [];
+  const cruiserShots = [];
+  let clearAt;
+  while (flight.elapsed < 180 && flight.endlessBossCount < 2) {
+    const previousWave = flight.endlessWave;
+    const previousCruiser = flight.cruiser;
+    flight.player.guard = 2;
+    flight.step(FIXED_TICK);
+    const events = flight.takeEvents();
+    const crossing = events.some((event) => event.type === 'cruiserEnter');
+    if (flight.endlessWave !== previousWave && !crossing) waves.push(flight.elapsed);
+    if (previousCruiser && !flight.cruiser) departures.push(flight.elapsed);
+    for (const event of events) {
+      if (event.type === 'cruiserEnter' || event.type === 'boss') {
+        encounters.push({ kind:event.detail, at:flight.elapsed });
+      }
+      if (event.type === 'cruiserEnter' && event.detail === 'patrol') {
+        assert.ok(flight.supplies.some((supply) => supply.kind === 'repair'));
+        assert.deepEqual(flight.pickups, []);
+      }
+      if (event.type === 'bossFire' && flight.cruiser) cruiserShots.push(flight.elapsed);
+      if (event.type === 'boss') {
+        assert.equal(flight.cruiser, null);
+        assert.equal(flight.spawns.length, 0);
+        assert.ok(flight.enemies.every((enemy) => enemy.retreat));
+        assert.equal(flight.hostile.length, 0);
+      }
+    }
+    if (flight.boss?.kind === 'gatekeeper' && flight.boss.age >= 50) {
+      const { x, y } = flight.boss;
+      assert.ok(flight.hitBoss({ x, y, strength:1_000 }));
+      assert.equal(flight.boss, null);
+      clearAt = flight.elapsed;
+    }
+  }
+
+  assert.deepEqual(encounters.map(({ kind }) => kind), ['patrol', 'Warden', 'heavy', 'Harrow']);
+  const [patrol, firstBoss, heavy, secondBoss] = encounters;
+  assert.ok(Math.abs(firstBoss.at - 79) <= FIXED_TICK + 1e-8);
+  assert.ok(waves.filter((at) => at < patrol.at).length >= 10);
+  assert.ok(!waves.some((at) => at >= patrol.at && at < clearAt));
+  const recoveryWaves = waves.filter((at) => at > clearAt && at < heavy.at);
+  assert.ok(recoveryWaves.length >= 4);
+  assert.ok(recoveryWaves[0] - clearAt >= 2.5 - FIXED_TICK);
+  assert.ok(secondBoss.at - clearAt >= 44 - FIXED_TICK);
+  assert.ok(!waves.some((at) => at >= heavy.at && at <= secondBoss.at));
+  assert.equal(departures.length, 2);
+  assert.ok(firstBoss.at - departures[0] >= 3.9);
+  assert.ok(secondBoss.at - departures[1] >= 3.9);
+  assert.ok(cruiserShots.some((at) => at > patrol.at && at < departures[0]));
+  assert.ok(cruiserShots.some((at) => at > heavy.at && at < departures[1]));
+  assert.deepEqual(flight.pickups, []);
+});
+
+test('later heavy fighters gain hull by route tier independently of the player loadout', async () => {
+  const [{ Flight }, { ENEMIES }] = await load;
+  const upgrades = ['rails', 'chamber', 'cells', 'hull'];
+  const fighter = (stage, equipment = []) => new Flight({
+    mode:'arcade', stage, seed:seeds[0], ship:'kestrel', equipment, assistance:{}
+  });
+  const intro = fighter(3);
+  const midRoute = fighter(4);
+  const lateStock = fighter(6);
+  const lateUpgraded = fighter(6, upgrades);
+  const spawn = (flight, kind) => flight.addEnemy({ kind, lane:.5 });
+  for (const kind of ['lancer', 'sweeper', 'escort', 'relay']) {
+    const base = spawn(intro, kind).hull;
+    const mid = spawn(midRoute, kind).hull;
+    const later = spawn(lateStock, kind).hull;
+    assert.equal(base, ENEMIES[kind].hull, `${kind} keeps its early-route hull`);
+    assert.ok(mid > base && later > mid && later <= base * 1.1, `${kind} has a capped increase`);
+    assert.equal(later, spawn(lateUpgraded, kind).hull, `${kind} does not respond to pilot upgrades`);
+  }
+  for (const kind of ['scout', 'diver', 'splitter', 'shard', 'phantom']) {
+    assert.equal(spawn(lateUpgraded, kind).hull, ENEMIES[kind].hull, `${kind} keeps its tuned hull`);
+  }
+
+  const shotsToDestroy = (flight, kind) => {
+    const enemy = spawn(flight, kind);
+    const strength = flight.ship.guns[0][3] * flight.stats.damage;
+    let hits = 0;
+    while (enemy.hull > 0) {
+      flight.hitEnemy(enemy, { x:enemy.x, y:enemy.y, strength });
+      hits++;
+    }
+    return hits;
+  };
+  assert.equal(shotsToDestroy(fighter(3, upgrades), 'sweeper'), 7);
+  assert.equal(shotsToDestroy(lateUpgraded, 'sweeper'), 8);
+  assert.equal(shotsToDestroy(lateStock, 'sweeper'), 9);
+  assert.equal(shotsToDestroy(lateUpgraded, 'scout'), 3);
 });

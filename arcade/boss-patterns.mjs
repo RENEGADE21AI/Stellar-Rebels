@@ -14,15 +14,27 @@ export function startWallWarning(flight, warning) {
 export function markWall(flight, slot, options = {}) {
   const gap = globalThis.debrisSafeGap(slot, { slots:5, width:WIDTH, asteroidRadius:12, playerRadius:flight.ship.hit, margin:8 });
   const delay = options.delay ?? 0;
-  const y = options.y ?? 176;
-  const width = Math.max(94, gap.width);
-  const margin = 18;
-  const span = WIDTH - 2 * margin;
-  const steps = Math.round(span / 34);
+  const y = options.y ?? -86;
+  const width = Math.max(68, Math.min(76, gap.width - 24));
+  const varied = options.varied ?? flight.stage.id >= 5;
   const rocks = [];
-  for (let lane = 0; lane <= steps; lane++) {
-    const x = margin + span * lane / steps;
-    if (Math.abs(x - gap.center) >= width / 2 + 15) rocks.push({ x, y });
+  for (let row = 0; row < 2; row++) {
+    for (const side of [-1, 1]) {
+      const edge = side < 0 ? 16 : WIDTH - 16;
+      const mouth = gap.center + side * (width / 2 + 18 + (1 - row) * 6);
+      if ((mouth - edge) * side > 0) continue;
+      const steps = Math.max(1, Math.round(Math.abs(mouth - edge) / (row ? 37 : 42)));
+      for (let lane = 0; lane <= steps; lane++) {
+        const x = edge + (mouth - edge) * lane / steps;
+        const rock = { x, y:y + row * 44 };
+        if (varied && lane !== steps) {
+          const profile = (lane + row * 2 + (side < 0 ? 0 : 1) + slot) % 3;
+          rock.size = [34, 42, 48][profile];
+          rock.pace = [.91, 1.02, 1.09][profile];
+        }
+        rocks.push(rock);
+      }
+    }
   }
   const warning = {
     kind:'wall', x:gap.center, y, width, rocks, age:-delay, windup:1.12,
@@ -56,8 +68,8 @@ export function harrow(flight, boss, phase) {
     const speed = globalThis.debrisWardenRowSpeed(boss.hull / boss.spec.hull, 'wall') * 60;
     const y = boss.y + 81 * boss.artScale;
     const emitter = 49 * boss.artScale;
-    markWall(flight, gap, { speed, y, emitter });
-    if (phase && turn % 2 === 0) markWall(flight, gapOrder[(turn + 1) % gapOrder.length], { speed, y, emitter, delay:2.12 });
+    markWall(flight, gap, { speed, y, emitter, varied:Boolean(phase) });
+    if (phase && turn % 2 === 0) markWall(flight, gapOrder[(turn + 1) % gapOrder.length], { speed, y, emitter, delay:2.12, varied:true });
   }
   boss.timer = lighter ? 2.32 : phase ? 3.25 : 3.75;
 }

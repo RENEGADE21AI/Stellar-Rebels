@@ -3,20 +3,28 @@
   "version": "0.1.0",
   "private": true,
   "main": "index.js",
-  "engines": { "node": ">=22.13 <23" },
-  "scripts": { "prepare:flight": "node scripts/stage-flight.mjs" },
+  "engines": {
+    "node": ">=22.13 <23"
+  },
+  "scripts": {
+    "prepare:flight": "node scripts/stage-flight.mjs"
+  },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "58.0.26",
     "expo-asset": "~58.0.21",
     "expo-file-system": "~58.0.14",
+    "expo-haptics": "58.0.8",
     "expo-sharing": "~58.0.23",
     "expo-splash-screen": "~58.0.14",
-    "@react-native-async-storage/async-storage": "2.2.0",
     "fflate": "0.8.2",
     "react": "19.3.0",
     "react-native": "0.88.1",
     "react-native-safe-area-context": "~5.11.1",
     "react-native-webview": "14.0.1"
   },
-  "devDependencies": { "esbuild": "0.25.12", "pngjs": "7.0.0" }
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "pngjs": "7.0.0"
+  }
 }

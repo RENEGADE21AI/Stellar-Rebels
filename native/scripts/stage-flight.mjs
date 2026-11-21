@@ -48,6 +48,7 @@ const built = await build({
       body = body.slice(0, start) + "  if (type === 'save-replay') {\n    if (state.pending?.replay) await nativeRequest('share', state.pending.replay);\n    return;\n  }\n" + body.slice(end);
       body += `\nwindow.addEventListener('stellar-native-pause', () => { pause(true); audio.quiet(); });\n`;
       body += `window.addEventListener('stellar-native-foreground', () => { if (state.mode === 'menu') audio.play('hangar'); });\n`;
+      body += `window.addEventListener('stellar-native-haptic', (event) => { void nativeRequest('haptic', event.detail).catch(() => {}); });\n`;
       return { contents: body, loader: 'js', resolveDir: source };
     });
   } }]

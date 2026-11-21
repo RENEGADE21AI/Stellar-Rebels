@@ -180,7 +180,7 @@ function shotProfile(kind, radius) {
 }
 
 export function hostileBody(s) {
-  if (s.kind === 'rock') return spriteBody('rock', s, 42, s.age * .7);
+  if (s.kind === 'rock') return spriteBody('rock', s, s.size ?? 42, s.age * .7);
   const turn = Math.atan2(s.vy, s.vx);
   return bodyAt(shotProfile(s.kind, s.radius ?? 4), s, Number.isFinite(turn) ? turn : 0);
 }

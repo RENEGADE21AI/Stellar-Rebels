@@ -20,6 +20,8 @@ button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(
 .title-screen::before{background:radial-gradient(ellipse at 48% 45%,#4f83aa35,transparent 58%),linear-gradient(180deg,#04091412 10%,#050a1609 46%,#040a1460 74%,#050912eb 98%),url('media/environment/cover-space.webp') 52% 48%/cover;transition:transform .6s cubic-bezier(.3,.75,.2,1)}
 .title-screen::after{z-index:-1;background:linear-gradient(180deg,#01061036,transparent 41%,transparent 62%,#05091230 83%,#050912ac)}
 .title-patrol{position:absolute;z-index:-2;inset:0;width:100%;height:100%;pointer-events:none}
+.title-ship{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:max(44px,52cqw);height:max(44px,51cqw);padding:0;border:0;border-radius:22%;background:transparent}
+.frame[data-reduced-motion=true] .title-ship,.is-launching .title-ship{display:none}
 .brand-lockup{width:min(93%,365px);margin:0;line-height:0;filter:drop-shadow(0 4px 12px #000c);transition:opacity .32s,transform .45s}
 .brand-lockup img{width:100%;height:auto}
 .title-actions{width:min(100%,330px);display:grid;gap:10px;transition:opacity .24s,transform .34s}
@@ -156,6 +158,8 @@ button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(
 .flight{overflow:hidden;background:#070a13}
 #sky{display:block;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;background:#070a13}
 #sky:focus{outline:none}
+.flight-stick{position:absolute;width:76px;height:76px;display:grid;place-items:center;transform:translate(-50%,-50%);border:1px solid #a0ecde85;border-radius:50%;background:#09162286;box-shadow:0 0 0 1px #071019b3;pointer-events:none}
+#flight-stick-knob{width:14px;height:14px;border-radius:50%;border:1px solid #e3fff6;background:#91efd7;box-shadow:0 1px 4px #030811}
 .screen h1:focus{outline:none}
 .flight-ui{position:absolute;inset:0;pointer-events:none}
 .flight-controls{position:absolute;top:max(8px,env(safe-area-inset-top));right:max(7px,env(safe-area-inset-right));display:grid;grid-template-columns:auto 44px;align-items:center;gap:6px}
@@ -190,6 +194,14 @@ button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(
 #ghost-value{height:100%;background:linear-gradient(90deg,#d89537,#ffe47e);transform-origin:left center;transform:scaleX(0)}
 .ghost-control[data-mode=ready] #ghost-shift{color:#e7fff8;background:#13312ed9;border-color:#7ce7d4ac}
 .ghost-control[data-mode=active] #ghost-shift{color:#fff;background:#442969e5;border-color:#d2aefc}
+.flight[data-touch-controls]{--control-top:max(8px,env(safe-area-inset-top));--control-right:max(7px,env(safe-area-inset-right));--special-bottom:max(20px,calc(env(safe-area-inset-bottom) + 12px))}
+.flight[data-touch-controls] .flight-controls{inset:0;display:block}
+.flight[data-touch-controls] #pause{position:absolute;top:var(--control-top);right:var(--control-right)}
+.flight[data-touch-controls] .flight-points{position:absolute;top:calc(var(--control-top) + 22px);right:calc(var(--control-right) + 50px);transform:translateY(-50%)}
+.flight[data-touch-controls] .ghost-control{position:absolute;right:max(16px,calc(env(safe-area-inset-right) + 8px));bottom:var(--special-bottom);width:58px}
+.flight[data-touch-controls] #ghost-shift{height:58px;border-radius:50%;gap:3px;touch-action:none;box-shadow:0 0 0 2px #07101a9c,0 2px 10px #02060db3}
+.flight[data-touch-controls] #ghost-shift .caption{font-size:.56rem}
+.flight[data-touch-controls] #ghost-shift:active{filter:brightness(1.25)}
 #flight-score{color:#f4f8ff;font:700 .91rem/1 var(--mono);font-variant-numeric:tabular-nums}
 #chain{color:#ffca89;font:700 .69rem/1 var(--mono);white-space:nowrap}
 #field-effects{display:flex;gap:2px 5px;justify-content:flex-end;flex-wrap:wrap}
@@ -198,6 +210,7 @@ button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(
 .training-actions{position:absolute;inset:auto 12px max(12px,calc(env(safe-area-inset-bottom) + 7px));display:flex;justify-content:center;gap:6px;pointer-events:none}
 .training-actions button{pointer-events:auto;min-width:100px;min-height:44px;justify-content:center;text-align:center;font-size:17px}
 .training-actions .quiet{background:#091321eb}
+@container (max-width:265px){.flight[data-touch-controls] .training-actions{bottom:calc(var(--special-bottom) + 64px)}}
 dialog{width:min(calc(100vw - 24px),calc(50dvh - 24px),346px);max-height:90dvh;margin:auto;background:linear-gradient(155deg,#202d40,#0b1420 76%);color:var(--paper);border:1px solid #647b8c;padding:23px 20px;box-shadow:0 16px 54px #000a}
 dialog::backdrop{background:#040911af}
 .dialog-body{display:grid;gap:13px;text-align:center}
@@ -256,6 +269,7 @@ dialog::backdrop{background:#040911af}
   .segment{width:8px}
   #flight-score{font-size:.79rem}
   .title-screen{padding-inline:max(8px,env(safe-area-inset-left)) max(8px,env(safe-area-inset-right))}
+  .title-ship{top:40%;width:max(44px,43cqw);height:max(44px,43cqw)}
   .title-actions{gap:7px}
   .title-actions .primary{min-height:48px;font-size:26px}
   .title-pilot small{font-size:.58rem}

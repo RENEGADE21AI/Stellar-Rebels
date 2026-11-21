@@ -51,13 +51,18 @@ function seededNoise(i) {
   return n - Math.floor(n);
 }
 
-const stars = Array.from({ length: 102 }, (_, index) => {
-  const i = index + 1;
-  const streak = i % 11 === 0;
-  return { x: seededNoise(i) * WIDTH, y: seededNoise(i + 205) * HEIGHT, streak,
-    speed: streak ? 59 : i % 3 === 0 ? 22 : 9, alpha: streak ? .56 : .14 + seededNoise(i + 430) * .27,
-    color: i % 5 === 0 ? '#acd9ff' : '#d3dbea' };
-});
+const starDepths = [
+  { count:78, size:1, length:1.15, speed:10, range:8, alpha:.18 },
+  { count:43, size:1.26, length:1.55, speed:28, range:15, alpha:.27 },
+  { count:16, size:1.55, length:4.7, speed:60, range:22, alpha:.38 }
+];
+let starIndex = 0;
+const stars = starDepths.flatMap((depth) => Array.from({ length:depth.count }, () => {
+  const i = ++starIndex;
+  return { x:seededNoise(i) * WIDTH, y:seededNoise(i + 205) * HEIGHT,
+    size:depth.size, length:depth.length, speed:depth.speed + seededNoise(i + 311) * depth.range,
+    alpha:depth.alpha + seededNoise(i + 430) * .19, color:i % 5 === 0 ? '#acd9ff' : '#d3dbea' };
+}));
 
 function line(c, x, y, dx, dy, color, width) {
   c.strokeStyle = color;
@@ -151,7 +156,7 @@ export class FlightScene {
     const illustration = `${playfields[environment]}-playfield`;
     const fallback = `env-${environment}`;
     const keyList = new Set([...regular, ...variantKeys, flight.run.ship, flight.stage.boss, illustration]);
-    if (flight.stage.cruisers?.length && !flight.endless) {
+    if (flight.endless || flight.stage.cruisers?.length) {
       keyList.add('cruiser');
       keyList.add('cruiser-alt');
     }
@@ -200,6 +205,7 @@ export class FlightScene {
       switch (e.type) {
         case 'hit': this.burst(e.x, e.y, '#adfff1', reduce ? 2 : 5, 84, .18); break;
         case 'shieldHit': this.burst(e.x, e.y, '#a0bfff', 3, 52, .25); break;
+        case 'rockHit': this.burst(e.x, e.y, '#ffc694', 2, 49, .14); break;
         case 'enemyDown': this.explode(e.x, e.y, '#ff8a5c', 17, 13); break;
         case 'splitterSplit': {
           const { parent, children } = e.detail;
@@ -335,9 +341,11 @@ export class FlightScene {
     for (const enemy of flight.enemies) this.enemy(enemy, flight.elapsed);
     if (flight.boss?.hull > 0) this.boss(flight.boss, prefs);
     if (this.bossWreck) this.drawBossWreck();
+    let debrisAlert = null;
     for (const warning of flight.hazards) {
       if (warning.kind === 'wall' && warning.age >= 0 && warning.age < warning.windup) {
         this.debrisWindup(warning, prefs);
+        debrisAlert = Math.min(debrisAlert ?? 1, warning.age / warning.windup);
       }
     }
     for (const drop of flight.pickups) this.drop(drop, prefs);
@@ -346,6 +354,10 @@ export class FlightScene {
     if (flight.status !== 'defeat') this.pilot(flight, prefs);
     else if (this.death) this.wreck(flight);
     this.effects();
+    if (debrisAlert !== null) {
+      const opacity = prefs.reduced ? 1 : lerp(1, .38, saturate((debrisAlert - .84) / .16));
+      debrisWarningBadge(c, WIDTH / 2, 61, prefs.contrast ? '#fff4b7' : '#ffd090', opacity);
+    }
     if (this.arrival) this.arrivalSweep(flight);
     this.collisionOverlay?.(c, flight);
     c.restore();
@@ -425,14 +437,18 @@ export class FlightScene {
     const c = this.ctx;
     if (!this.backdropReady || this.backdropFull !== this.fullStrengthBackground) this.paintBackdrop(flight);
     c.setTransform(1, 0, 0, 1, 0, 0);
-    c.drawImage(this.backdrop, 0, 0);
+    const drift = reduce ? 0 : .045;
+    const { width, height } = this.canvas;
+    const distance = height * drift;
+    c.drawImage(this.backdrop, -width * drift / 2, -distance + (1 - Math.exp(-flight.elapsed / 112)) * distance,
+      width * (1 + drift), height + distance);
     c.setTransform(this.canvas.width / WIDTH, 0, 0, this.canvas.height / HEIGHT, 0, 0);
     const t = reduce ? 0 : flight.elapsed;
     for (const star of stars) {
-      const y = (star.y + t * star.speed) % HEIGHT;
+      const y = (star.y + t * star.speed) % (HEIGHT + 12) - 6;
       c.globalAlpha = star.alpha;
       c.fillStyle = star.color;
-      c.fillRect(star.x, y, star.streak ? 1.6 : 1, star.streak && !reduce ? 5 : 1.3);
+      c.fillRect(star.x, y, star.size, reduce ? 1.2 : star.length);
     }
     c.globalAlpha = 1;
   }
@@ -562,10 +578,14 @@ export class FlightScene {
       this.enemyLooks.set(e, this.nextLook++ % 2 && this.sprites.has(alt) ? alt : e.kind);
     }
     const look = this.enemyLooks.get(e);
+    const movingAway = e.loop || e.retreat;
+    const dx = e.x - e.px;
+    const dy = e.y - e.py;
+    const turn = movingAway && (dx || dy) ? Math.atan2(-dx, dy) : e.turn;
     if (e.loop) {
-      const tail = hardpointAt(e, 0, -e.spec.size * .33, e.turn);
-      line(c, tail.x, tail.y, 22 * Math.sin(e.turn), -22 * Math.cos(e.turn), '#c9956d99', 1.8);
-      this.sprite(look, e.x, e.y, e.spec.size, e.turn, .8);
+      const tail = hardpointAt(e, 0, -e.spec.size * .33, turn);
+      line(c, tail.x, tail.y, 22 * Math.sin(turn), -22 * Math.cos(turn), '#c9956d99', 1.8);
+      this.sprite(look, e.x, e.y, e.spec.size, turn, .8);
       return;
     }
     if (e.kind === 'diver' && Number.isFinite(e.diveAim) && !e.retreat) {
@@ -589,7 +609,7 @@ export class FlightScene {
       c.fill();
       c.restore();
     }
-    this.sprite(look, e.x, e.y, e.spec.size, e.turn, e.retreat ? .66 : 1);
+    this.sprite(look, e.x, e.y, e.spec.size, turn, e.retreat ? .66 : 1);
     if (e.carrying && !e.retreat) {
       const supply = PICKUPS[e.carrying];
       const rack = hardpointAt(e, 0, -e.spec.size * .22, e.turn);
@@ -790,47 +810,33 @@ export class FlightScene {
   }
 
   debrisWindup(w, prefs) {
-    if (!w.origin || !w.rocks?.length) return;
+    if (!w.origin || w.origin.y < 0 || !w.rocks?.length) return;
     const c = this.ctx;
     const phase = saturate(w.age / w.windup);
-    const { reduced, contrast } = prefs;
-    const ambient = w.origin.y < 0;
-    let left;
-    let right;
+    const { reduced } = prefs;
     for (const rock of w.rocks) {
       const look = this.debrisLook(rock.x, rock.y);
-      if (rock.x < w.x) left = rock.x;
-      else right ??= rock.x;
-      if (reduced) {
-        this.sprite(look, rock.x, rock.y, rockSize, 0, .58);
-        continue;
-      }
-      const offset = seededNoise(rock.x * .41 + w.y * .17);
+      const offset = seededNoise(rock.x * .41 + rock.y * .17);
       const delay = .035 + offset * .23;
-      const travel = saturate((phase - delay) / (1 - delay));
+      const travel = reduced ? phase : saturate((phase - delay) / (1 - delay));
       if (!travel) continue;
-      const originX = ambient ? lerp(w.origin.x, rock.x, .82) : w.origin.x;
+      const originX = w.origin.x;
       const spread = 1 - (1 - travel) ** 2.15;
       const side = Math.sign(rock.x - originX);
-      const arc = Math.sin(Math.PI * travel) * (6 + offset * 19);
+      const arc = reduced ? 0 : Math.sin(Math.PI * travel) * (6 + offset * 19);
       const x = lerp(originX, rock.x, spread);
       const y = lerp(w.origin.y, rock.y, travel) + arc * (offset - .65);
-      const size = lerp(9 + offset * 7, rockSize, spread);
-      this.sprite(look, x, y, size, side * (1 - travel) * (.65 + offset), lerp(.55, 1, spread));
-      if (travel > .18 && travel < .9) {
+      const size = lerp(9 + offset * 7, rock.size ?? rockSize, spread);
+      this.sprite(look, x, y, size, reduced ? 0 : side * (1 - travel) * (.65 + offset), lerp(.55, 1, spread));
+      if (!reduced && travel > .18 && travel < .9) {
         const dust = Math.sin(Math.PI * travel);
-        const color = ambient ? '#8b9aa9' : '#a48c78';
+        const color = '#a48c78';
         c.save();
         c.globalAlpha = .45 * dust;
         filled(c, x - side * (size * .31 + 7), y - 5 - 13 * offset, 1.3, color);
         filled(c, x - side * (size * .42 + 12), y - 10 + 18 * offset, .85, color);
         c.restore();
       }
-    }
-    const opacity = reduced ? 1 : lerp(1, .38, saturate((phase - .84) / .16));
-    const color = contrast ? '#fff4b7' : '#ffd090';
-    for (const x of [left, right]) {
-      if (x !== undefined) debrisWarningBadge(c, x, w.y + 31, color, opacity);
     }
   }
 
@@ -864,8 +870,9 @@ export class FlightScene {
     if (s.kind === 'rock') {
       // Recover the warning's launch row so each rock keeps its original finish.
       const originY = s.y - s.vy * s.age;
-      this.sprite(this.debrisLook(s.x, originY), s.x, s.y, rockSize, s.age * .7);
-      if (contrast) ring(c, s.x, s.y, s.radius + 1, '#ffcc93', 2);
+      const size = s.size ?? rockSize;
+      this.sprite(this.debrisLook(s.x, originY), s.x, s.y, size, s.age * .7);
+      if (contrast) ring(c, s.x, s.y, (s.radius + 1) * size / rockSize, '#ffcc93', 2);
       return;
     }
     const color = contrast ? '#ff8c6e' : s.kind === 'pulse' ? '#d796ff' : '#ff6047';

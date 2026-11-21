@@ -6,10 +6,11 @@ import { bodiesMeet, pilotBody, railBody, rememberPosition } from './collision.m
 export function launchBoss(flight, kind) {
   const spec = BOSSES[kind];
   const artScale = spec.size / (spec.artSize ?? spec.size);
+  const entryY = -Math.ceil(spec.size / 2) - 8;
   for (const enemy of flight.enemies) enemy.retreat = true;
   flight.spawns.length = 0;
   flight.boss = {
-    kind, spec, artScale, x: WIDTH / 2, y: -100, hull: spec.hull, age: 0, timer: 2.9, attack: 0,
+    kind, spec, artScale, x: WIDTH / 2, y:entryY, entryY, hull: spec.hull, age: 0, timer: 2.9, attack: 0,
     entryTime: 1.55, hitFlash: 0, parts: spec.parts.map(([dx, dy]) => ({ dx: dx * artScale, dy: dy * artScale, size: 43 * artScale,
       radius: 12.5 * artScale, muzzle: 14 * artScale, hull: spec.partHull, flash: 0 }))
   };
@@ -49,7 +50,7 @@ export function advanceBoss(flight, dt) {
   for (const part of b.parts) part.flash = Math.max(0, part.flash - dt);
   const entry = Math.min(1, b.age / b.entryTime);
   const arrivalY = b.spec.arrivalY ?? 230;
-  b.y = -100 + (100 + arrivalY) * (1 - (1 - entry) ** 2) + 7 * Math.sin(b.age * 1.1) * entry;
+  b.y = b.entryY + (arrivalY - b.entryY) * (1 - (1 - entry) ** 2) + 7 * Math.sin(b.age * 1.1) * entry;
   b.x = WIDTH / 2 + b.spec.motion * Math.sin(Math.max(0, b.age - b.entryTime) * .78);
   if (b.kind === 'wraith') {
     advanceWraith(flight, b, dt);
@@ -75,7 +76,9 @@ export function operatorWarnings(flight, dt) {
       if (warning.kind === 'wall') {
         warning.rowY = warning.y;
         warning.rowSpeed = warning.speed * flight.pressure;
-        for (const { x, y } of warning.rocks) flight.projectile(x, y, Math.PI/2, warning.speed, 'rock');
+        for (const { x, y, size, pace } of warning.rocks) {
+          flight.projectile(x, y, Math.PI / 2, warning.speed * (pace ?? 1), 'rock', { size });
+        }
       }
     }
     if (warning.kind === 'rail' && bodiesMeet(pilotBody(flight), railBody(warning))) {

@@ -13,10 +13,15 @@ const $ = (id) => document.getElementById(id);
 const menu = $('menu');
 const sky = $('sky');
 const field = $('flight');
+const stick = $('flight-stick');
 const modal = $('flight-modal');
 const nativeFlight = document.documentElement.dataset.nativeFlight === 'true';
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
-const hapticAvailable = !nativeFlight && typeof navigator.vibrate === 'function' && navigator.maxTouchPoints > 0;
+const coarseTouch = matchMedia('(hover: none) and (pointer: coarse)');
+const placeTouchControls = () => field.toggleAttribute('data-touch-controls', nativeFlight || coarseTouch.matches);
+placeTouchControls();
+coarseTouch.addEventListener('change', placeTouchControls);
+const hapticAvailable = nativeFlight || (typeof navigator.vibrate === 'function' && navigator.maxTouchPoints > 0);
 const store = new PilotStore(globalThis.indexedDB);
 const audio = new FlightAudio();
 const clock = globalThis.createFixedStepClock();
@@ -29,6 +34,7 @@ const state = {
 const motionLimited = (preferences = state.pilot.settings) => reduced.matches || preferences.reduced;
 const appearance = (preferences) => motionLimited(preferences) === preferences.reduced
   ? preferences : { ...preferences, reduced: true };
+const usesFloatingStick = (flight) => flight.run.assistance.steering === 'stick';
 let accountState = { phase:'connecting', notice:'Checking account…' };
 const googleAccount = createGoogleAccount((next) => {
   accountState = next;
@@ -88,6 +94,7 @@ function home() {
   const ship = SHIPS[state.pilot.ship].name;
   return `<article class="title-screen"><h1 tabindex="-1" class="brand-lockup"><img src="${media('brand/title-wordmark.webp')}" alt="Stellar Rebels" width="768" height="310"></h1>
     <canvas class="title-patrol" aria-hidden="true"></canvas>
+    <button type="button" class="title-ship" data-action="spin-ship" aria-label="Spin ${ship}"></button>
     <div class="title-actions">${saveNotice()}
       ${action('Play', 'fly:next', 'primary', 'play')}
       <div class="title-pilot">
@@ -271,7 +278,9 @@ function settingsView() {
     return `<div class="setting"><span><strong>${label}</strong><small>${systemMotion ? 'On in your device settings' : copy}</small></span>
       <button class="toggle" data-action="toggle:${key}" aria-label="${label}" aria-pressed="${on}" ${systemMotion ? 'disabled' : ''}>${on ? 'On' : 'Off'}</button></div>`;
   }).join('');
-  return screen('Settings', 'home', `${switches}<div class="setting"><div><strong>Drag sensitivity</strong><small>Changes how far the ship follows a swipe</small></div>
+  return screen('Settings', 'home', `${switches}<div class="setting"><div><strong>Touch steering</strong><small>Floating stick appears where you touch</small></div>
+    <select class="toggle" id="steering" aria-label="Touch steering"><option value="drag">Drag</option><option value="stick" ${prefs.steering === 'stick' ? 'selected' : ''}>Floating stick</option></select></div>
+    <div class="setting"><div><strong>Drag sensitivity</strong><small>Changes how far the ship follows a swipe</small></div>
     <select class="toggle" id="sensitivity" aria-label="Drag sensitivity"><option value="gentle" ${prefs.sensitivity === 'gentle' ? 'selected' : ''}>Gentle</option><option value="standard" ${prefs.sensitivity === 'standard' ? 'selected' : ''}>Standard</option><option value="direct" ${prefs.sensitivity === 'direct' ? 'selected' : ''}>Direct</option></select></div>
     <div class="notice" id="pack-status" role="status">${packCopy()}</div>${state.installed ? '' : '<p class="subtle">Install from your browser menu or Add to Home Screen in Safari.</p>'}
     ${googleSignInAvailable ? action('Account', 'view:account') : ''}
@@ -315,7 +324,9 @@ function paintAccount() {
 function helpView() {
   const equipped = SPECIALS[state.pilot.special] ?? SPECIALS.ghost;
   const rows = [
-    ['Drag to steer', 'Drag anywhere on the playfield. Lift and touch again to reanchor. Arrow keys and WASD also steer.'],
+    ['Steering', state.pilot.settings.steering === 'stick'
+      ? 'Touch anywhere on the playfield and hold away from the center of the stick to move. Arrow keys and WASD also steer.'
+      : 'Drag anywhere on the playfield. Lift and touch again to reanchor. Try Floating stick in Settings. Arrow keys and WASD also steer.'],
     ['Line up your shots', 'Weapons fire automatically. Aim by placing your ship beneath the target.'],
     ['Energy', 'Start each flight with full energy. It recharges over time when you aren’t phasing. Hits and kills charge it faster.'],
     ['Specials', 'Equip a Special in the Hangar. Tap its button or press Space to use it. Ghost Shift phases through physical fire for one second. Ion Burst clears nearby physical shots.'],
@@ -609,6 +620,7 @@ function restoreLaunch(launch, warning = '') {
 function releasePointer() {
   const active = state.pointer;
   state.pointer = null;
+  if (active?.stick) stick.hidden = true;
   if (active && sky.hasPointerCapture(active.id)) sky.releasePointerCapture(active.id);
 }
 
@@ -727,11 +739,6 @@ function refreshGhost(f) {
   $('ghost-shift').setAttribute('aria-disabled', String(!f.shiftReady));
   content('ghost-action', action);
   const destination = realmLabel(otherRealm(p.realm));
-  const skyAction = f.realmHop ? 'to Hop between realms' : `for ${special.name}`;
-  if (lastHud.skyAction !== skyAction) {
-    lastHud.skyAction = skyAction;
-    sky.setAttribute('aria-label', `Flight playfield. Drag or use arrow keys to steer. Weapons fire automatically. Press Space ${skyAction}.`);
-  }
   $('ghost-shift').setAttribute('aria-label', f.realmHop ? `Hop to ${destination} realm` : special.name);
   content('ghost-label', f.realmHop ? `To ${destination}` : f.special === 'ion' ? 'Ion' : 'Ghost');
   const remaining = `${energy} energy. ${f.realmHop ? 'Hop' : special.name} costs ${f.ghostCost}.`;
@@ -743,6 +750,12 @@ function refreshGhost(f) {
 function refreshHud(restart = false) {
   const f = state.flight;
   const p = f.player;
+  if (restart || lastHud.hopControl !== f.realmHop) {
+    const steering = usesFloatingStick(f) ? 'Touch and hold off-center on the stick' : 'Drag';
+    const special = f.realmHop ? 'to Hop between realms' : `for ${SPECIALS[f.special].name}`;
+    sky.setAttribute('aria-label', `Flight playfield. ${steering} or use arrow keys to steer. Weapons fire automatically. Press Space ${special}.`);
+    lastHud.hopControl = f.realmHop;
+  }
   const activeBoss = Boolean(f.boss && f.boss.hull > 0);
   const showRealm = activeBoss && f.realmHop;
   const message = f.notice?.time > 0 ? f.notice : null;
@@ -753,7 +766,9 @@ function refreshHud(restart = false) {
   if (restart || messageChanged || lastHud.bossCue !== bossCue) {
     const pickup = message?.kind === 'pickup';
     const title = message?.title || (pickup ? message.copy : bossCue ? 'Wraith' : f.stage.name);
-    const tip = pickup ? message.title && message.brief !== message.title ? message.brief : '' : message?.copy;
+    const stickLesson = message?.kind === 'training' && state.training?.step === 'steer' && usesFloatingStick(f);
+    const tip = stickLesson ? 'Touch anywhere and hold off-center on the stick to move. Arrow keys also steer.'
+      : pickup ? message.title && message.brief !== message.title ? message.brief : '' : message?.copy;
     flash.classList.toggle('shown', visible);
     flash.dataset.kind = message?.kind ?? (bossCue ? 'warning' : '');
     content('flight-name', visible ? title : '');
@@ -764,7 +779,7 @@ function refreshHud(restart = false) {
     $('boss-realm').hidden = !bossCue;
     lastHud.bossCue = bossCue;
     if (message && (restart || messageChanged) && ['warning', 'pickup', 'tactic', 'training'].includes(message.kind)) {
-      announce([message.title, message.copy].filter(Boolean).join('. '));
+      announce([message.title, stickLesson ? tip : message.copy].filter(Boolean).join('. '));
     }
     lastHud.message = message;
   }
@@ -846,11 +861,15 @@ async function changeSetting(key, value) {
   state.pilot = pilot;
   audio.reflect(pilot.settings);
   show('settings', false);
-  menu.querySelector(key === 'sensitivity' ? '#sensitivity' : `[data-action="toggle:${key}"]`)?.focus();
+  (menu.querySelector(`[data-action="toggle:${key}"]`) ?? $(key))?.focus();
 }
 
 async function handle(command) {
   const [type, value] = command.split(':');
+  if (type === 'spin-ship') {
+    state.titlePatrol?.spin();
+    return;
+  }
   if (type === 'save-replay') {
     const replay = state.pending?.replay;
     if (!replay) return;
@@ -992,6 +1011,10 @@ menu.addEventListener('submit', async (event) => {
 
 document.addEventListener('click', async (event) => {
   const target = event.target.closest('button[data-action]');
+  if (!target && event.detail > 0 && event.target.matches('.title-screen')) {
+    state.titlePatrol?.shootAt(event.clientX, event.clientY);
+    return;
+  }
   if (target?.dataset.action === 'cancel-flight' && state.launch) { restoreLaunch(state.launch); return; }
   if (!target || target.disabled || state.busy) return;
   const command = {};
@@ -1013,7 +1036,11 @@ document.addEventListener('click', async (event) => {
 });
 
 menu.addEventListener('change', (event) => {
-  if (event.target.id === 'sensitivity') changeSetting('sensitivity', event.target.value).catch(() => announce('Drag sensitivity could not be saved.'));
+  const { id, value } = event.target;
+  if (id === 'sensitivity' || id === 'steering') {
+    const label = event.target.getAttribute('aria-label');
+    changeSetting(id, value).catch(() => announce(`${label} could not be saved.`));
+  }
 });
 $('pause').innerHTML = icon('pause');
 $('pause').addEventListener('click', () => pause());
@@ -1023,30 +1050,64 @@ function useShift() {
   audio.unlock();
   refreshHud();
 }
-$('ghost-shift').addEventListener('click', useShift);
-$('ghost-shift').addEventListener('pointerdown', (event) => {
-  if (event.pointerType === 'touch' && !event.isPrimary) {
-    event.preventDefault();
-    useShift();
-  }
+const specialButton = $('ghost-shift');
+let specialTouchPress = false;
+specialButton.addEventListener('click', (event) => {
+  if (specialTouchPress && event.detail > 0) return;
+  state.input = event.detail > 0 ? 'pointer' : 'keyboard';
+  useShift();
+});
+specialButton.addEventListener('pointerdown', (event) => {
+  specialTouchPress = event.pointerType === 'touch';
+  if (!specialTouchPress) return;
+  event.preventDefault();
+  state.input = 'touch';
+  useShift();
 });
 modal.addEventListener('cancel', (event) => { event.preventDefault(); if (state.mode === 'resuming') pause(); });
 
+const stickRadius = 30;
+const stickDeadZone = 5;
+const stickKnob = $('flight-stick-knob');
+
 sky.addEventListener('pointerdown', (event) => {
-  if (state.mode !== 'playing' || state.pointer || !event.isPrimary || event.button !== 0) return;
+  if (state.mode !== 'playing' || state.pointer || event.button !== 0 || (!event.isPrimary && event.pointerType !== 'touch')) return;
   event.preventDefault();
   audio.unlock();
   state.input = event.pointerType === 'mouse' ? 'pointer' : 'touch';
   if (state.keys.size) clearInput();
-  state.pointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  const { pointerId:id, clientX:x, clientY:y } = event;
+  const floating = event.pointerType === 'touch' && usesFloatingStick(state.flight);
+  state.pointer = { id, x, y, stick: floating ? { x:0, y:0 } : null };
   sky.setPointerCapture(event.pointerId);
+  if (floating) {
+    state.flight.reanchor();
+    const bounds = sky.getBoundingClientRect();
+    stick.style.left = `${x - bounds.left}px`;
+    stick.style.top = `${y - bounds.top}px`;
+    stickKnob.style.transform = '';
+    stick.hidden = false;
+  }
 });
 
 function movePointer(event) {
   const pointer = state.pointer;
   if (!pointer || pointer.id !== event.pointerId || state.mode !== 'playing') return false;
+  const dx = event.clientX - pointer.x;
+  const dy = event.clientY - pointer.y;
+  if (pointer.stick) {
+    const distance = Math.hypot(dx, dy);
+    const clamped = Math.min(distance, stickRadius);
+    const strength = Math.max(0, (clamped - stickDeadZone) / (stickRadius - stickDeadZone));
+    const direction = distance ? strength / distance : 0;
+    const knob = distance ? clamped / distance : 0;
+    pointer.stick.x = dx * direction;
+    pointer.stick.y = dy * direction;
+    stickKnob.style.transform = `translate(${dx * knob}px, ${dy * knob}px)`;
+    return true;
+  }
   const sensitivity = { gentle: .78, standard: 1.12, direct: 1.37 }[state.flight.run.assistance.sensitivity] ?? 1.12;
-  state.flight.drag((event.clientX - pointer.x) / renderer.unit * sensitivity, (event.clientY - pointer.y) / renderer.unit * sensitivity);
+  state.flight.drag(dx / renderer.unit * sensitivity, dy / renderer.unit * sensitivity);
   pointer.x = event.clientX;
   pointer.y = event.clientY;
   return true;
@@ -1054,6 +1115,10 @@ function movePointer(event) {
 
 sky.addEventListener('pointermove', movePointer);
 sky.addEventListener('pointerup', (event) => {
+  if (state.pointer?.id === event.pointerId && state.pointer.stick) {
+    clearInput();
+    return;
+  }
   if (!movePointer(event)) return;
   // Keep a short swipe that finished between simulation ticks. Limit long flicks
   // so the ship never keeps travelling across the arena after the pilot lifts.
@@ -1119,7 +1184,10 @@ function pulseFeedback(events, timestamp) {
   let length = 0;
   for (const { type } of events) length = Math.max(length, hapticPulse[type] ?? 0);
   if (length) {
-    navigator.vibrate(length);
+    if (nativeFlight) {
+      const strength = length >= 25 ? 'heavy' : length >= 18 ? 'medium' : 'light';
+      window.dispatchEvent(new CustomEvent('stellar-native-haptic', { detail:strength }));
+    } else navigator.vibrate(length);
     lastHaptic = timestamp;
   }
 }
@@ -1129,6 +1197,11 @@ function loop(timestamp) {
   if (state.mode === 'playing') {
     const prefs = appearance(f.run.assistance);
     const tick = globalThis.advanceFixedStep(clock, timestamp, (dt) => {
+      const steering = state.pointer?.stick;
+      if (steering && (steering.x || steering.y)) {
+        const travel = f.ship.speed * FIXED_TICK;
+        f.drag(steering.x * travel, steering.y * travel);
+      }
       f.step(FIXED_TICK);
       renderer.advanceEffects(dt / 1000);
     });

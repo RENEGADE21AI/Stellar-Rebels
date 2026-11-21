@@ -209,7 +209,7 @@ test('rail and gravity lanes take effect only at the marked place and time', asy
   assert.equal(f.xIntent, before);
 
   f.hazards.length = 0;
-  markWall(f, 1, { delay:1.25 });
+  markWall(f, 1, { delay:1.25, varied:false });
   operatorWarnings(f, 1.18);
   assert.equal(f.hostile.length, 0);
   operatorWarnings(f, 1.20);
@@ -218,7 +218,8 @@ test('rail and gravity lanes take effect only at the marked place and time', asy
   const wall = f.hazards[0];
   f.hostile.forEach((shot) => { shot.y += shot.vy * .4; });
   operatorWarnings(f, .4);
-  assert.ok(f.hostile.every((shot) => Math.abs(shot.y - wall.rowY) < .001));
+  const rows = [...new Set(f.hostile.map((shot) => Math.round(shot.y - wall.rowY)))].sort((a, b) => a - b);
+  assert.deepEqual(rows, [0, 44]);
 });
 
 test('Harrow marks the actual asteroid launch origin and exact collidable positions', async () => {
@@ -237,17 +238,60 @@ test('Harrow marks the actual asteroid launch origin and exact collidable positi
   assert.equal(wall.origin.x, boss.x);
   assert.ok(wall.origin.y > boss.y && wall.origin.y < wall.y);
   assert.ok(wall.rocks.length >= 5);
-  assert.ok(wall.rocks.every(({ x, y }) => Math.abs(x - wall.x) >= wall.width/2 + 15 && y === wall.y));
+  assert.ok(wall.width < 94);
+  assert.ok(wall.rocks.every(({ x, y }) => Math.abs(x - wall.x) >= wall.width / 2 + 17.9 && [wall.y, wall.y + 44].includes(y)));
 
   operatorWarnings(f, wall.windup - .04);
   assert.equal(f.hostile.length, 0);
   operatorWarnings(f, .05);
-  assert.deepEqual(f.hostile.map(({ x,y }) => ({ x,y })), wall.rocks);
+  assert.deepEqual(f.hostile.map(({ x,y }) => ({ x,y })), wall.rocks.map(({ x,y }) => ({ x,y })));
+  assert.ok(new Set(f.hostile.map((rock) => rock.vy)).size >= 3);
+  assert.ok(new Set(f.hostile.map((rock) => rock.size).filter(Boolean)).size >= 3);
 
   boss.x = 193;
   operatorWarnings(f, -second.age + .01);
   assert.equal(second.origin.x, boss.x);
   assert.equal(f.hostile.length, wall.rocks.length);
+});
+
+test('the debris seam fits every ship and asteroids stop fire without breaking', async () => {
+  const [{ Flight }, , { SHIPS }, { operatorWarnings }] = await load;
+  const { markWall } = await import('../arcade/boss-patterns.mjs');
+  for (const ship of Object.keys(SHIPS)) {
+    const flight = new Flight({ ...context(2), ship });
+    markWall(flight, 2, { varied:true });
+    const field = flight.hazards[0];
+    flight.player.guard = 0;
+    flight.player.x = field.x;
+    const hull = flight.player.hull;
+    operatorWarnings(flight, field.windup);
+    for (let tick = 0; tick < 330; tick++) flight.moveProjectiles(step);
+    assert.equal(flight.player.hull, hull, `${ship} remains safe through both rows`);
+  }
+
+  const flight = new Flight(context(2));
+  flight.player.x = 192;
+  flight.player.y = 520;
+  flight.player.guard = 0;
+  const target = flight.addEnemy({ kind:'scout', lane:.5 });
+  target.y = 340;
+  flight.projectile(192, 420, Math.PI / 2, 80, 'rock', { size:48 });
+  const rock = flight.hostile[0];
+  flight.projectile(192, 360, Math.PI / 2, 1700, 'bolt');
+  flight.friendly.push({ x:192, y:490, vx:0, vy:-1800, strength:20, live:true });
+  const hull = flight.player.hull;
+  const targetHull = target.hull;
+  flight.moveProjectiles(.11);
+  assert.deepEqual(flight.hostile, [rock]);
+  assert.equal(flight.friendly.length, 0);
+  assert.equal(flight.player.hull, hull);
+  assert.equal(target.hull, targetHull);
+  assert.equal(flight.events.filter((event) => event.type === 'rockHit').length, 2);
+
+  flight.player.y = rock.y;
+  flight.moveProjectiles(step);
+  assert.equal(flight.player.hull, hull - 1);
+  assert.deepEqual(flight.hostile, [rock]);
 });
 
 test('every mounted boss target is reachable from the pilot side of its hull', async () => {

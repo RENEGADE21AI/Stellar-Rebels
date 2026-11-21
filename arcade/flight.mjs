@@ -18,6 +18,7 @@ const returnSpeed = 620;
 const returnLanes = [.18, .34, .50, .66, .82].map((lane) => lane * WIDTH);
 const routeStream = 0x9e3779b9;
 const endlessFlanks = new Set(['spear', 'anvil', 'hook', 'trap', 'surge', 'specters']);
+const armorPerTier = { lancer:.18, sweeper:.21, escort:.18, relay:.14 };
 const projectileRadii = { bolt: 4, seed: 4.5, rock: 12, lance: 4.8, blade: 5, pulse: 4.7, orb: 5.1, specter: 5.4 };
 const duration = (value) => Math.max(0, value);
 
@@ -71,6 +72,7 @@ export class Flight {
     this.endlessWave = 0;
     this.endlessNext = 1;
     this.endlessBossCount = 0;
+    this.endlessBridgeStarted = false;
     this.nextEndlessBoss = 79;
     this.xIntent = WIDTH / 2;
     this.yIntent = HEIGHT * .80;
@@ -283,31 +285,54 @@ export class Flight {
     for (const e of wing) this.spawns.push({ ...e, group, supplyWing, at: this.elapsed + e.after });
   }
 
+  get nextEndlessBridge() {
+    return this.nextEndlessBoss - (this.endlessBossCount ? 18 : 15);
+  }
+
+  updateEndlessSchedule() {
+    this.pressure = 1.08 + Math.min(.45, this.elapsed / 485);
+    if (this.boss) return;
+    if (this.elapsed >= this.nextEndlessBoss && !this.cruiser) {
+      const boss = ENDLESS_BOSSES[this.endlessBossCount % ENDLESS_BOSSES.length];
+      this.endlessBossCount++;
+      this.nextEndlessBoss = this.elapsed + 82;
+      this.endlessBridgeStarted = false;
+      launchBoss(this, boss);
+      return;
+    }
+    if (this.elapsed >= this.nextEndlessBridge) {
+      if (!this.endlessBridgeStarted) {
+        this.endlessBridgeStarted = true;
+        launchCruiser(this, this.endlessBossCount ? 'heavy' : 'patrol');
+        this.queue('screen', this.endlessBossCount % 2 === 0);
+        this.countEndlessWing();
+      }
+      return;
+    }
+    if (this.elapsed < this.endlessNext || this.nextEndlessBridge - this.elapsed < 4) return;
+    const loop = ['arrow','spear','cross','anvil','hook','splitWing','sweep','escort','break','trap','surge','specters'];
+    const unlocked = Math.min(loop.length, 4 + Math.floor(this.elapsed / 23));
+    const wing = loop[this.endlessWave % unlocked];
+    const flip = this.endlessWave >= 8 && endlessFlanks.has(wing) ? this.flankRandom() < .5 : this.endlessWave % 2 === 1;
+    this.queue(wing, flip);
+    this.endlessNext = this.elapsed + Math.max(3.25, 6.1 - this.elapsed / 95);
+    this.countEndlessWing();
+  }
+
+  countEndlessWing() {
+    this.endlessWave++;
+    if (this.endlessWave % 4 === 0) {
+      const kind = ['power','barrier','repair','overdrive'][(this.endlessWave / 4 - 1) % 4];
+      if (!this.supplies.some((supply) => supply.kind === kind)) {
+        this.supplies.push({ kind, lane:this.endlessWave % 8 === 0 ? .62 : .36 });
+      }
+    }
+  }
+
   updateSchedule() {
     if (this.practice) return;
     if (this.endless) {
-      this.pressure = 1.08 + Math.min(.45, this.elapsed / 485);
-      if (!this.boss && this.elapsed >= this.nextEndlessBoss) {
-        const boss = ENDLESS_BOSSES[this.endlessBossCount % ENDLESS_BOSSES.length];
-        this.endlessBossCount++;
-        this.nextEndlessBoss = this.elapsed + 82;
-        launchBoss(this, boss);
-      }
-      if (!this.boss && this.elapsed >= this.endlessNext) {
-        const loop = ['arrow','spear','cross','anvil','hook','splitWing','sweep','escort','break','trap','surge','specters'];
-        const unlocked = Math.min(loop.length, 4 + Math.floor(this.elapsed / 23));
-        const wing = loop[this.endlessWave % unlocked];
-        const flip = this.endlessWave >= 8 && endlessFlanks.has(wing) ? this.flankRandom() < .5 : this.endlessWave % 2 === 1;
-        this.queue(wing, flip);
-        this.endlessWave++;
-        this.endlessNext = this.elapsed + Math.max(3.25, 6.1 - this.elapsed / 95);
-        if (this.endlessWave % 4 === 0) {
-          const kind = ['power','barrier','repair','overdrive'][(this.endlessWave / 4 - 1) % 4];
-          if (!this.supplies.some((supply) => supply.kind === kind)) {
-            this.supplies.push({ kind, lane:this.endlessWave % 8 === 0 ? .62 : .36 });
-          }
-        }
-      }
+      this.updateEndlessSchedule();
     } else {
       this.pressure = 1.08 + .035 * (this.stage.id - 1) + Math.min(.075, this.elapsed / 1400);
       const beat = this.stage.waves[this.waveIndex];
@@ -350,8 +375,10 @@ export class Flight {
     if (this.enemies.length >= 35 && this.enemies.filter((enemy) => enemy.hull > 0).length >= 35) return;
     const spec = ENEMIES[data.kind];
     const x = WIDTH * data.lane;
+    const tier = this.endless ? Math.min(3, this.endlessBossCount) : Math.max(0, this.stage.id - 3);
+    const hull = spec.hull + tier * (armorPerTier[data.kind] ?? 0);
     const enemy = {
-      kind: data.kind, spec, x, home: x, courseX: x, laneOffset: 0, y: -32, age: 0, hull: spec.hull,
+      kind: data.kind, spec, x, home: x, courseX: x, laneOffset: 0, y: -32, age: 0, hull,
       fireTimer: data.group && data.kind === 'relay' ? 2.83 : data.kind === 'scout' ? 1.13 + data.lane * .6 : 1.41 + data.lane * .7,
       flash: 0, turn: 0, volley: 0, side: x < WIDTH / 2 ? 1 : -1, dive: false, retreat: false,
       group: data.group, vane: data.group && data.kind === 'relay' ? VANE_HULL : 0, jam: 0,
@@ -500,7 +527,7 @@ export class Flight {
     }
     this.spawns = this.spawns.filter((queued) => queued.at > this.elapsed);
     const wingCommand = new Map(this.enemies.filter((e) => e.group && e.vane > 0 && e.hull > 0 && !e.retreat).map((e) => [e.group, e]));
-    const timeToSetPiece = this.endless ? this.nextEndlessBoss - this.elapsed
+    const timeToSetPiece = this.endless ? this.nextEndlessBridge - this.elapsed
       : Math.min(this.stage.bossAt, this.stage.cruisers?.[this.cruiserIndex]?.at ?? Infinity) - this.elapsed;
     const canReturn = !this.boss && !this.cruiser && timeToSetPiece > 3;
     let returning = this.enemies.filter((e) => e.loop && !e.retreat).length;
@@ -610,11 +637,11 @@ export class Flight {
     }
   }
 
-  hitModules(b, s, beam) {
+  hitModules(b, s, beam, before = Infinity) {
     for (const part of b.parts) {
       if (part.hull <= 0) continue;
       const time = contactTime(beam, moduleBody(b, part));
-      if (time === Infinity) continue;
+      if (time >= before) continue;
       const { x, y } = bossPartPosition(b, part);
       const impact = impactAt(s, time);
       part.hull -= s.strength;
@@ -631,23 +658,23 @@ export class Flight {
     return false;
   }
 
-  hitCruiser(s, beam = friendlyBody(s)) {
+  hitCruiser(s, beam = friendlyBody(s), before = Infinity) {
     const b = this.cruiser;
     if (!b) return false;
-    if (this.hitModules(b, s, beam)) return true;
+    if (this.hitModules(b, s, beam, before)) return true;
     const time = contactTime(beam, bossBody(b));
-    if (time === Infinity) return false;
+    if (time >= before) return false;
     const impact = impactAt(s, time);
     this.signal('shieldHit', impact.x, impact.y);
     return true;
   }
 
-  hitBoss(s, beam = friendlyBody(s)) {
+  hitBoss(s, beam = friendlyBody(s), before = Infinity) {
     const b = this.boss;
     if (!b || b.age < b.entryTime - .25 || b.hull <= 0) return false;
-    if (this.hitModules(b, s, beam)) return true;
+    if (this.hitModules(b, s, beam, before)) return true;
     const time = contactTime(beam, b.kind === 'wraith' ? coreBody(b) : bossBody(b));
-    const hitsCore = time !== Infinity;
+    const hitsCore = time < before;
     const impact = hitsCore ? impactAt(s, time) : null;
     if (b.kind === 'wraith') {
       const sameRealm = b.realm === (s.realm ?? PHYSICAL);
@@ -657,7 +684,7 @@ export class Flight {
       }
       if (!hitsCore && sameRealm) {
         const armorTime = contactTime(beam, wraithWingBody(b));
-        if (armorTime !== Infinity) {
+        if (armorTime < before) {
           const armor = impactAt(s, armorTime);
           this.signal('shieldHit', armor.x, armor.y);
           return true;
@@ -681,6 +708,7 @@ export class Flight {
       if (this.endless) {
         this.boss = null;
         this.nextEndlessBoss = Math.max(this.elapsed + 44, this.nextEndlessBoss);
+        this.endlessNext = this.elapsed + 2.5;
         this.message(`${b.spec.name} destroyed`, 2.5, 'pickup', 'Threat cleared');
       } else {
         this.status = 'clear';
@@ -692,6 +720,14 @@ export class Flight {
   moveProjectiles(dt) {
     const targets = this.enemies.filter((e) => e.hull > 0 && !e.retreat && !e.loop)
       .map((e) => ({ enemy:e, body:enemyBody(e), relay:e.vane > 0 ? vaneBody(e) : null }));
+    // Both sides test against the same rock positions for this simulation step.
+    const rocks = this.hostile.filter((shot) => shot.live && shot.kind === 'rock').map((shot) => hostileBody({ ...shot,
+      px:shot.x, py:shot.y, x:shot.x + shot.vx * dt, y:shot.y + shot.vy * dt, age:shot.age + dt }));
+    const rockContact = (body) => {
+      let first = Infinity;
+      for (const rock of rocks) first = Math.min(first, contactTime(body, rock));
+      return first;
+    };
     for (const s of this.friendly) {
       if (!s.live) continue;
       rememberPosition(s);
@@ -711,16 +747,23 @@ export class Flight {
         target = entry.enemy;
         hitsVane = vaneHit <= bodyHit;
       }
-      if (target && hitsVane) {
+      const rock = rockContact(beam);
+      if (target && earliest < rock && hitsVane) {
         target.vane -= s.strength;
         const impact = impactAt(s, earliest);
         this.signal('hit', impact.x, impact.y);
         if (target.vane <= 0) breakFormation(this, target);
         s.live = false;
-      } else if (target) {
+      } else if (target && earliest < rock) {
         this.hitEnemy(target, { ...impactAt(s, earliest), strength:s.strength });
         s.live = false;
-      } else if (this.hitCruiser(s, beam) || this.hitBoss(s, beam)) s.live = false;
+      } else if (!target && (this.hitCruiser(s, beam, rock) || this.hitBoss(s, beam, rock))) {
+        s.live = false;
+      } else if (rock !== Infinity) {
+        const impact = impactAt(s, rock);
+        this.signal('rockHit', impact.x, impact.y);
+        s.live = false;
+      }
     }
     this.friendly = this.friendly.filter((s) => s.live && s.y > -35 && s.x > -30 && s.x < WIDTH + 30);
     if (this.status !== 'active') return;
@@ -730,16 +773,24 @@ export class Flight {
       s.age += dt;
       s.x += s.vx * dt;
       s.y += s.vy * dt;
-      if (s.live && this.practice && s.trainingShot) {
-        if (!s.trainingContact && bodiesMeet(hostileBody(s), cockpit)) {
+      if (!s.live) continue;
+      const canHitPilot = (s.realm ?? PHYSICAL) === this.player.realm && !this.player.guard;
+      if (!canHitPilot && !s.trainingShot && (!rocks.length || s.kind === 'rock')) continue;
+      const body = hostileBody(s);
+      const contact = canHitPilot ? contactTime(body, cockpit) : Infinity;
+      const rock = s.kind === 'rock' ? Infinity : rockContact(body);
+      if (rock !== Infinity && rock <= contact) {
+        const impact = impactAt(s, rock);
+        this.signal('rockHit', impact.x, impact.y);
+        s.live = false;
+      } else if (this.practice && s.trainingShot) {
+        if (!s.trainingContact && bodiesMeet(body, cockpit)) {
           s.trainingContact = this.player.ghostTime > 0 ? 'phased' : 'missed';
         }
-      } else if (s.live && (s.realm ?? PHYSICAL) === this.player.realm && !this.player.guard) {
-        const contact = contactTime(hostileBody(s), cockpit);
-        if (contact === Infinity) continue;
+      } else if (contact !== Infinity) {
         const { x, y } = impactAt(s, contact);
         const cause = s.kind === 'rock' ? 'debris' : s.realm === SPECTRAL ? 'spectral' : 'fire';
-        if (this.damage(x, y, s.realm, cause)) s.live = false;
+        if (this.damage(x, y, s.realm, cause) && s.kind !== 'rock') s.live = false;
       }
     }
     this.hostile = this.hostile.filter((s) => s.live && s.age < 8 && s.y < HEIGHT + 28 && s.y > -40 && s.x > -42 && s.x < WIDTH + 42);
