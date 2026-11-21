@@ -458,7 +458,7 @@ async function start(which, trainingMode = null, drill = 'basics') {
     audio.play('flight');
     sky.setAttribute('tabindex', '-1');
     sky.focus({ preventScroll: true });
-    announce(endless ? 'Endless flight launched.' : `${flight.stage.name} launched. ${flight.stage.brief}`);
+    if (!trainingMode) announce(endless ? 'Endless flight launched.' : `${flight.stage.name} launched. ${flight.stage.brief}`);
     launched = true;
     if (document.hidden) pause(true);
   } catch {
@@ -548,7 +548,16 @@ function showTrainingAction() {
   if (!training) return;
   const done = training.step === 'complete';
   const label = training.mode === 'intro' ? done ? 'Start arcade' : 'Skip training' : done ? 'Done' : 'End practice';
-  container.innerHTML = action(label, 'finish-practice', done ? 'primary' : 'quiet', done ? 'play' : '');
+  const button = container.querySelector('button[data-action="finish-practice"]');
+  if (!button) {
+    container.innerHTML = action(label, 'finish-practice', done ? 'primary' : 'quiet', done ? 'play' : '');
+    return;
+  }
+  const text = button.querySelector('span');
+  if (text.textContent !== label) text.textContent = label;
+  button.className = done ? 'primary' : 'quiet';
+  if (done && !button.querySelector('svg')) button.insertAdjacentHTML('beforeend', icon('play'));
+  if (!done) button.querySelector('svg')?.remove();
 }
 
 async function finishPractice() {

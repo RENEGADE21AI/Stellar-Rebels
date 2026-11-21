@@ -41,7 +41,8 @@ button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(
 .home-link{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:48px;border:0;border-right:1px solid #748caa2b;color:#dae3ec;background:transparent;font-size:clamp(.68rem,2.8vw,.81rem);font-weight:650;padding:4px 3px}
 .home-link:last-child{border-right:0}
 .home-link .icon{color:#a1c5db}
-.home-link:hover,.quiet:hover:not(:disabled),.flat:hover:not(:disabled){background:#24394b;border-color:#8598a4}
+.home-link:hover{background:#24394b}
+.quiet:hover:not(:disabled),.flat:hover:not(:disabled){background:#24394b;border-color:#8598a4}
 .is-launching::before{transform:scale(1.075) translateY(2%)}
 .is-launching .brand-lockup{opacity:0;transform:translateY(-14px);pointer-events:none}
 .is-launching .title-actions{opacity:0;transform:translateY(13px);pointer-events:none}

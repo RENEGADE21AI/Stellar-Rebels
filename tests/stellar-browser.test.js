@@ -144,9 +144,14 @@ test('first Play teaches steering, targeting and Shift before starting a recorde
     await page.goto(origin);
     await page.getByRole('button', { name:'Play', exact:true }).click();
     await page.getByText('Steer your Fighter', { exact:true }).waitFor();
+    assert.match(await page.locator('#announcer').textContent(), /^Steer your Fighter\./);
+    const skip = page.getByRole('button', { name:'Skip training', exact:true });
+    await skip.focus();
     await page.keyboard.down('ArrowRight');
     await page.getByText('Line up a shot', { exact:true }).waitFor();
     await page.keyboard.up('ArrowRight');
+    assert.equal(await skip.evaluate((button) => document.activeElement === button), true);
+    await page.locator('#sky').focus();
     const move = () => page.evaluate(() => {
       const { training, flight } = window.trainingProbe.state;
       return training.step === 'fire' && flight.enemies.length ? flight.enemies[0].x - flight.player.x : null;

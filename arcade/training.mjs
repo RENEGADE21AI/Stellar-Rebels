@@ -56,6 +56,7 @@ export function advanceTraining(flight, training, events) {
     } else if (!training.cued && flight.shiftReady && p.y - shot.y <= shot.vy * GHOST.duration * .7) {
       training.cued = true;
       prompt(flight, 'cue');
+      flight.signal('practiceCue', p.x, p.y);
     }
     return;
   }
