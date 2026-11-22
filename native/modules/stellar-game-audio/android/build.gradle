@@ -8,4 +8,11 @@ version = '1.0.0'
 
 android {
   namespace 'expo.modules.stellargameaudio'
+  defaultConfig {
+    consumerProguardFiles 'consumer-rules.pro'
+  }
+}
+
+dependencies {
+  implementation 'com.facebook.react:react-android'
 }
