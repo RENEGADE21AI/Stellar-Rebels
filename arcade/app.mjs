@@ -1,14 +1,16 @@
-import { BOSSES, FIXED_TICK, HEIGHT, PICKUPS, RULES_VERSION, SHIPS, SPECIALS, STAGES, UPGRADES, WIDTH, stageById } from './catalog.mjs';
+import { ACTS, FIXED_TICK, FREE_MISSIONS, HEIGHT, PICKUPS, RULES_VERSION, SHIPS, SIDE_OPERATIONS, SPECIALS, STAGES, UPGRADES, WIDTH, nextStage, stageById } from './catalog.mjs';
 import { Flight } from './flight.mjs';
 import { FlightScene, loadSprite, spriteUrl } from './scene.mjs';
 import { FlightAudio } from './audio.mjs';
-import { PilotStore, TOUCH_CONTROL_RANGES, abandonRun, beginRun, canInstall, equip, equipSpecial, hasShip, hasSpecial, hasStage, install, loadoutBest, normalizeCallSign, settleRun, touchControlLayout } from './pilot.mjs';
+import { PilotStore, TOUCH_CONTROL_RANGES, abandonRun, beginRun, canInstall, completionCounts, equip, equipSpecial, hasEndless, hasShip, hasSpecial, hasStage, hasVeteran, install, loadoutBest, nextMission, normalizeCallSign, pilotRank, settleRun, touchControlLayout, upgradeStatus } from './pilot.mjs';
 import { captureReplay } from './replay.mjs';
 import { otherRealm, realmLabel } from './wraith.mjs';
 import { mountTitlePatrol } from './title-patrol.mjs';
 import { advanceTraining, startTraining } from './training.mjs';
 import { createGoogleAccount, googleSignInAvailable, pendingGoogleReturn } from './account.mjs';
 import { helpPages } from './help-content.mjs';
+import { STORY_BEATS, storyBeatFor } from './story.mjs';
+import { createPacingRecorder } from './pacing.mjs';
 
 const $ = (id) => document.getElementById(id);
 const menu = $('menu');
@@ -17,7 +19,8 @@ const field = $('flight');
 const stick = $('flight-stick');
 const modal = $('flight-modal');
 const nativeFlight = document.documentElement.dataset.nativeFlight === 'true';
-const firstPaidStage = 4;
+const firstPaidMission = FREE_MISSIONS + 1;
+const callSignWords = ['NOVA', 'COMET', 'FALCON', 'RAVEN', 'STRIKER', 'PIPER', 'KITE', 'ARROW', 'MERLIN', 'SWIFT', 'HARRIER', 'LARK', 'KODIAK', 'RANGER', 'SPARROW', 'HORIZON'];
 const nativeCommerce = nativeFlight ? window.stellarCommerce : null;
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
 const coarseTouch = matchMedia('(hover: none) and (pointer: coarse)');
@@ -29,9 +32,11 @@ const store = new PilotStore(globalThis.indexedDB);
 const audio = new FlightAudio();
 const clock = globalThis.createFixedStepClock();
 const renderer = new FlightScene(sky);
+const pacing = createPacingRecorder(location);
+if (pacing) window.stellarPacing = () => pacing.snapshot();
 const state = {
   pilot: null, view: 'home', mode: 'menu', hangarTab: 'ships', inspected: 'kestrel', hangarBack: 'home',
-  helpBack: 'home', upgrade: null, flight: null, pending: null, last: null, busy: null, launch: null,
+  helpBack: 'home', campaignVariant: 'standard', story: null, callSign: null, upgrade: null, flight: null, pending: null, last: null, busy: null, launch: null,
   legalFrom: null, policyFrom: null, rating: { available:null, message:'' },
   commerce: { owned:false, price:'', ready:false }, commerceWork: null, commerceScreen: null,
   pointer: null, keys: new Set(), input: 'touch', support: '', pack: 'waiting', packCheck: 0, installed: false, resumeAt: 0, finishAt: 0
@@ -63,11 +68,14 @@ const icons = {
   check: '<path d="m4 12 5 5L20 6"/>',
   endless: '<path d="M9 10c-1.7-2.2-5.8-3.3-7 .3-1.2 3.4 2.4 6.6 5.6 3.9l8.9-6.6c3.2-2.7 6.8.5 5.6 3.9-1.1 3.6-5.3 2.5-7 .3"/>',
   arrowout: '<path d="M12 4h8v8m0-8-9 9m7 2v5H4V6h5"/>',
-  edit: '<path d="m15 5 4 4M5 15l-1 5 5-1L20 8l-4-4Z"/>'
+  edit: '<path d="m15 5 4 4M5 15l-1 5 5-1L20 8l-4-4Z"/>',
+  book: '<path d="M4 5h6l2 2 2-2h6v13h-6l-2 2-2-2H4zM12 7v13"/>',
+  reroll: '<path d="M20 4v6h-6M4 20v-6h6M4 9a8 8 0 0 1 14-3l2 4m0 5a8 8 0 0 1-14 3l-2-4"/>'
 };
 const icon = (name, cls = '') => `<svg aria-hidden="true" viewBox="0 0 24 24" class="icon ${cls}">${icons[name] ?? ''}</svg>`;
 const format = new Intl.NumberFormat();
 const num = (value) => format.format(value);
+const percent = new Intl.NumberFormat(undefined, { style:'percent', maximumFractionDigits:2 });
 const time = (value) => {
   const t = Math.max(0, Math.floor(value));
   return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
@@ -94,23 +102,35 @@ function wallet() {
   return `<span class="balance">${icon('salvage')} ${num(state.pilot.salvage)} Salvage</span>`;
 }
 
+function playMission() {
+  const next = nextMission(state.pilot);
+  if (next && !requiresPurchase(next.id)) return next;
+  if (next && requiresPurchase(next.id)) return STAGES[FREE_MISSIONS - 1];
+  return STAGES.at(-1);
+}
+
 function home() {
-  const callSign = normalizeCallSign(state.pilot.callSign) || 'Pilot';
+  const callSign = normalizeCallSign(state.pilot.callSign);
   const ship = SHIPS[state.pilot.ship].name;
+  const mission = playMission();
   const upgradeAvailable = Object.keys(UPGRADES).some((key) => canInstall(state.pilot, key));
+  const replay = Boolean(state.pilot.clears[mission.id]);
   return `<article class="title-screen"><h1 tabindex="-1" class="brand-lockup"><img src="${media('brand/title-wordmark.png')}" alt="Stellar Rebels" width="768" height="310"></h1>
     <canvas class="title-patrol" aria-hidden="true"></canvas>
-    <button type="button" class="title-ship" data-action="spin-ship" aria-label="Spin ${ship}"></button>
+    <button type="button" class="title-ship" data-action="hangar:home" aria-label="Open Hangar for ${ship}"></button>
     <div class="title-actions">${saveNotice()}
-      ${action('Play', 'fly:next', 'primary', 'play')}
+      <div class="title-mission"><span id="title-mission-label"><small>${replay ? 'Replay' : `Mission ${chapter(mission.number)}`}</small><strong>${mission.name}</strong></span>
+        <button type="button" class="title-salvage" data-action="shop:home" aria-label="${num(state.pilot.salvage)} Salvage. Open upgrades.">${icon('salvage')} ${num(state.pilot.salvage)}</button>
+      </div>
+      ${action('Play', 'fly:next', 'primary', 'play', 'aria-describedby="title-mission-label"')}
       <div class="title-pilot">
         <button type="button" class="title-id" data-action="view:callSign" aria-label="Edit call sign" aria-describedby="title-call-sign">
-          <span><small>Call sign</small><strong id="title-call-sign">${callSign}</strong></span>${icon('edit')}
+          <span><small>Call sign</small><strong id="title-call-sign">${callSign || 'Set call sign'}</strong></span>${icon('edit')}
         </button>
         <button type="button" class="title-equipped" data-action="hangar:home" aria-label="Change ship. ${ship} equipped"><small>Equipped</small><strong>${ship}</strong></button>
       </div>
       <nav class="home-links" aria-label="Game options">
-        <button class="home-link" data-action="view:stages">${icon('stages')} Arcade</button>
+        <button class="home-link" data-action="campaign:standard">${icon('stages')} Campaign</button>
         <button class="home-link" data-action="hangar:home" ${upgradeAvailable ? 'aria-describedby="hangar-upgrade-notice"' : ''}>${icon('ship')} Hangar
           ${upgradeAvailable ? '<span class="hangar-upgrade-badge" aria-hidden="true">!</span>' : ''}</button>
         <button class="home-link" data-action="view:records">${icon('score')} Records</button>
@@ -119,64 +139,117 @@ function home() {
       ${action('Help & Legal', 'legal', 'title-help', '')}</div></article>`;
 }
 
+function suggestCallSign(previous) {
+  const word = callSignWords[Math.floor(Math.random() * callSignWords.length)];
+  const value = `${word}-${1 + Math.floor(Math.random() * 24)}`;
+  return value === previous ? `${word}-25` : value;
+}
+
+function openCallSign(from, launch = null) {
+  state.callSign = { from, launch, suggestion:suggestCallSign() };
+  show('callSign');
+}
+
 function callSignView() {
-  const callSign = normalizeCallSign(state.pilot.callSign) ?? '';
-  return screen('Call sign', 'home', `<form class="call-sign-form" id="call-sign-form">
-    <label for="call-sign">Pilot name</label>
-    <input id="call-sign" name="callSign" value="${callSign}" placeholder="Pilot" maxlength="32"
-      autocapitalize="words" autocomplete="off" spellcheck="false" aria-describedby="call-sign-hint call-sign-error">
-    <p class="subtle" id="call-sign-hint">Up to 16 characters. Letters, numbers, spaces, and hyphens.</p>
+  const { from, launch, suggestion } = state.callSign;
+  const callSign = normalizeCallSign(state.pilot.callSign) || suggestion;
+  return screen('Call sign', from, `<form class="call-sign-form" id="call-sign-form">
+    <label for="call-sign">Pilot call sign</label>
+    <div class="call-sign-entry">
+      <input id="call-sign" name="callSign" value="${callSign}" maxlength="16"
+        autocapitalize="characters" autocomplete="off" spellcheck="false" aria-describedby="call-sign-hint call-sign-error">
+      ${action('Reroll', 'reroll-call-sign', 'quiet', 'reroll')}
+    </div>
+    <p class="subtle" id="call-sign-hint">Up to 16 letters, numbers, spaces or hyphens.</p>
     <p class="notice" id="call-sign-error" role="status" hidden></p>
-    <button class="primary" type="submit">Save call sign ${icon('check')}</button>
+    <button class="primary" type="submit">${launch ? 'Confirm & continue' : 'Save call sign'} ${icon('check')}</button>
   </form>`);
 }
 
-function nextStage(pilot) {
-  return STAGES.find((stage) => !pilot.clears[stage.id] && hasStage(pilot, stage.id));
+function requiresPurchase(id) {
+  return nativeFlight && isPaidMission(stageById(id)) && !state.commerce.owned;
 }
 
-function requiresPurchase(id) {
-  return nativeFlight && id >= firstPaidStage && !state.commerce.owned;
+function isPaidMission(mission) {
+  return mission?.side ? mission.act > 1 : mission?.number >= firstPaidMission;
+}
+
+function tierTotal(tiers) {
+  return Object.values(tiers ?? {}).reduce((sum, tier) => sum + tier, 0);
 }
 
 function loadoutContext(pilot) {
   const special = SPECIALS[pilot.special]?.name ?? SPECIALS.ghost.name;
-  const mods = pilot.equipment.length;
-  return `${special} · ${mods ? `${mods} upgrade${mods === 1 ? '' : 's'}` : 'Stock'}`;
+  const mods = tierTotal(pilot.tiers);
+  return `${special} · ${mods ? `${mods} upgrade tier${mods === 1 ? '' : 's'}` : 'Stock'}`;
 }
 
 function stages() {
-  const { pilot } = state;
-  const next = nextStage(pilot);
-  const rows = STAGES.map((s) => {
-    const paywalled = requiresPurchase(s.id);
-    const available = hasStage(pilot, s.id) && !paywalled;
-    const clear = Boolean(pilot.clears[s.id]);
-    const tag = paywalled ? `${icon('lock')} Full Game` : available ? clear ? `${icon('check')} Replay` : 'Launch' : `${icon('lock')} Locked`;
-    const record = available ? loadoutBest(pilot, s.id) : null;
-    const mastered = Boolean(pilot.mastery?.[s.mastery?.key ?? s.id]);
-    const goal = s.mastery?.condition === 'parts' ? 'Disarm both turrets' : 'No hull loss at boss';
-    let note = s.region;
-    let nextGoal = '';
-    if (!available && !paywalled) note = `Clear ${stageById(s.id - 1)?.name ?? 'the previous stage'}`;
-    else if (record?.status === 'clear') {
-      note = `${num(record.score)} loadout best${mastered ? ' · Mastered' : ''}`;
-      if (s.mastery && !mastered) nextGoal = `<span class="stage-mastery-goal">${goal}</span>`;
-    }
-    else if (clear && s.mastery) {
-      note = mastered ? 'Set a loadout best' : goal;
-    } else if (record) note = `${num(record.score)} best attempt`;
-    return `<li><button class="stage ${paywalled ? 'stage-purchase' : s.id === next?.id ? 'next' : ''}" style="--stage-color:${s.accent}" data-action="fly:${s.id}" ${available || paywalled ? '' : 'disabled'}>
-      <span class="stage-num">${chapter(s.id)}</span><span><span class="stage-name">${s.name}</span><span class="stage-note">${note}${nextGoal}</span></span>
-      <span class="stage-tag">${tag}</span></button></li>`;
+  const { pilot, campaignVariant:variant } = state;
+  const veteran = variant === 'veteran';
+  const clears = veteran ? pilot.veteranClears : pilot.clears;
+  const mastery = veteran ? pilot.veteranMastery : pilot.mastery;
+  const next = nextMission(pilot, variant);
+  const missions = ACTS.map(({id, name}) => {
+    const rows = STAGES.filter((stage) => stage.act === id).map((mission) =>
+      missionRow(mission, clears, mastery, variant, next?.id)).join('');
+    const operations = SIDE_OPERATIONS.filter((mission) => mission.act === id);
+    return `<section class="campaign-act" aria-labelledby="act-${id}"><header><small>Act ${['I','II','III'][id - 1]}</small><h2 id="act-${id}">${name}</h2></header>
+      <ol class="stage-list" start="${(id - 1) * 5 + 1}">${rows}</ol>
+      ${veteran ? '' : operationList(operations)}</section>`;
   }).join('');
   const survival = loadoutBest(pilot, null);
-  return screen('Stage Select', 'home', `
+  const veteranReady = hasVeteran(pilot) && !requiresPurchase(STAGES.at(-1).id);
+  const endlessReady = hasEndless(pilot) && (!requiresPurchase(STAGES.at(-1).id) || pilot.legacy?.endlessQualified === true);
+  const context = veteran ? 'More demanding formations and attack patterns.' : 'Complete Standard to unlock Veteran and Endless.';
+  const storyAction = STORY_BEATS.some(storyAvailable) ? action('Story log', 'view:storyLog', 'quiet', 'book') : '';
+  return screen(veteran ? 'Veteran Campaign' : 'Campaign', 'home', `
+    <div class="campaign-options" role="group" aria-label="Campaign activities">
+      ${action('Practice', 'help:stages', 'quiet', 'play')}
+      ${storyAction}
+    </div>
+    ${veteranReady ? `<div class="campaign-options" role="group" aria-label="Campaign difficulty">
+      ${action('Standard', 'campaign:standard', 'hangar-tab', '', `aria-pressed="${!veteran}"`)}
+      ${action('Veteran', 'campaign:veteran', 'hangar-tab', '', `aria-pressed="${veteran}"`)}
+    </div>` : ''}
     <div class="cardline"><div class="stage-loadout"><strong>${SHIPS[pilot.ship].name}</strong><small>${loadoutContext(pilot)}</small></div><button data-action="hangar:stages">Change ship ${icon('next')}</button></div>
-    ${action('Practice', 'help:stages', 'quiet', 'play')}
-    <ol class="stage-list" aria-label="Arcade stages">${rows}</ol>
-    <div class="support-actions"><div class="endless-entry">${action('Endless', 'fly:endless', 'quiet', 'endless', 'aria-describedby="endless-note"')}
-    <small id="endless-note">${survival ? `${time(survival.duration)} loadout best` : 'Survival record'} · 0 Salvage</small></div></div>`, wallet());
+    ${missions}
+    <div class="campaign-postgame"><div class="endless-entry">${action('Endless', 'fly:endless', 'quiet', endlessReady ? 'endless' : 'lock', `aria-describedby="endless-note" ${endlessReady ? '' : 'disabled'}`)}
+    <small id="endless-note">${endlessReady ? survival ? `${time(survival.duration)} loadout best` : 'Survival record' : 'Unlocks after the Standard campaign'}</small></div>
+    ${!veteranReady || veteran ? `<p class="subtle">${context}</p>` : ''}</div>`, wallet());
+}
+
+function missionRow(mission, clears, mastery, variant, next) {
+  const pilot = state.pilot;
+  const paid = requiresPurchase(mission.id);
+  const playable = hasStage(pilot, mission.id, variant);
+  const clear = Boolean(clears[mission.id]);
+  const mastered = Boolean(mastery?.[mission.mastery?.key ?? mission.id]);
+  const record = playable && !paid ? loadoutBest(pilot, mission.id, variant) : null;
+  const prerequisite = mission.side ? STAGES[mission.requires - 1]?.name : STAGES[mission.number - 2]?.name;
+  const note = clear ? `Cleared${mastered ? ' · Mastered' : ''}${record?.status === 'clear' ? ` · ${num(record.score)} best` : ''}`
+    : playable ? mission.objective ?? mission.region : `Clear ${prerequisite ?? 'the previous mission'}`;
+  const tag = paid ? `${icon('lock')} Full game` : playable ? clear ? `${icon('check')} Replay` : 'Launch' : `${icon('lock')} Locked`;
+  const fly = variant === 'veteran' ? 'fly-veteran' : 'fly';
+  return `<li><button class="stage ${paid ? 'stage-purchase' : mission.id === next ? 'next' : ''}" style="--stage-color:${mission.accent}"
+    data-action="${fly}:${mission.id}" ${playable || (paid && !mission.side) ? '' : 'disabled'}>
+    <span class="stage-num">${mission.side ? mission.code : chapter(mission.number)}</span>
+    <span><span class="stage-name">${mission.name}</span><span class="stage-note">${note}</span></span>
+    <span class="stage-tag">${tag}</span></button></li>`;
+}
+
+function operationList(operations) {
+  const { pilot, pending } = state;
+  const available = operations.filter((mission) =>
+    hasStage(pilot, mission.id) && !requiresPurchase(mission.id) && !pilot.sideClears[mission.id]).length;
+  const clears = operations.filter((mission) => pilot.sideClears[mission.id]).length;
+  const activity = available ? `${available} available` : `${clears}/${operations.length} cleared`;
+  const last = stageById(pending?.run.stage);
+  const showOperations = operations.some((mission) => last?.side && last.id === mission.id);
+  return `<details class="side-operations" ${showOperations ? 'open' : ''}><summary><span>Side Operations</span><small>${activity}</small></summary>
+    <ul class="stage-list" aria-label="Optional operations">
+      ${operations.map((mission) => missionRow(mission, pilot.sideClears, pilot.sideMastery, 'standard', null)).join('')}
+    </ul></details>`;
 }
 
 function hangar() {
@@ -198,35 +271,49 @@ function hangar() {
   const craft = SHIPS[state.inspected];
   const owned = hasShip(pilot, state.inspected);
   const active = pilot.ship === state.inspected;
-  const shopOpen = state.hangarTab === 'upgrades';
-  const selection = Object.entries(SHIPS).filter(([, ship]) => ship.clearance <= STAGES.length).map(([key, ship]) => {
-    const copy = key === pilot.ship ? 'Equipped' : hasShip(pilot, key) ? ship.role : `Clear ${chapter(ship.clearance)}`;
+  if (state.hangarTab === 'upgrades') return screen('Hangar', state.hangarBack, tabs + shopTracks(), wallet());
+  const selection = Object.entries(SHIPS).map(([key, ship]) => {
+    const copy = key === pilot.ship ? 'Equipped' : hasShip(pilot, key) ? ship.role : `Clear ${chapter(stageById(ship.clearance).number)}`;
     return `<button class="craft-choice" data-action="inspect:${key}" aria-pressed="${key === state.inspected}">${ship.name}<small>${copy}</small></button>`;
   }).join('');
-  const availableAssets = state.inspected === 'kestrel' || STAGES.length >= SHIPS[state.inspected].clearance;
-  const bay = `<div class="turntable"><span class="pad"></span>${availableAssets ? `<img class="craft-art" src="${spriteUrl(state.inspected)}" alt="${craft.name}" width="240" height="240">` : ''}</div>
+  const bay = `<div class="turntable"><span class="pad"></span><img class="craft-art" src="${spriteUrl(state.inspected)}" alt="${craft.name}" width="240" height="240"></div>
     <div class="ship-identity"><h2>${craft.name}</h2>${craft.name === craft.role ? '' : `<span class="caption">${craft.role}</span>`}</div><p class="subtle">${craft.description}</p>
-    <div class="craft-specs"><span>${craft.hull + Number(pilot.equipment.includes('hull'))} hull</span><span>${craft.speed >= 370 ? 'Agile' : craft.speed < 280 ? 'Heavy' : 'Balanced'} handling</span></div>
+    <p class="subtle crew-note">Three-person strikecraft configuration.</p>
+    <div class="craft-specs"><span>${craft.hull} hull</span><span>${craft.speed >= 370 ? 'Agile' : craft.speed < 280 ? 'Heavy' : 'Balanced'} handling</span></div>
     <div class="craft-grid" role="group" aria-label="Available ships">${selection}</div>
     ${owned ? action(active ? 'Equipped' : `Equip ${craft.name}`, `equip:${state.inspected}`, active ? 'quiet' : 'primary', active ? 'check' : 'next', active ? 'disabled' : '') : `<div class="notice">Clear ${stageById(craft.clearance)?.name ?? `stage ${craft.clearance}`} to unlock ${craft.name}.</div>`}`;
-  const shop = `<div class="shop-list">${Object.entries(UPGRADES).map(([key, item]) => {
-    const installed = pilot.equipment.includes(key);
-    const prereq = item.needs && !pilot.equipment.includes(item.needs) ? ` · Requires ${UPGRADES[item.needs].name}` : '';
-    return `<button class="shop-card" data-action="upgrade:${key}">${icon(item.icon, 'icon-large')}<span><strong>${item.name}</strong><small>${item.detail}${prereq}</small></span>
-      <span class="price">${installed ? 'Installed' : num(item.cost)}</span></button>`;
+  return screen('Hangar', state.hangarBack, tabs + bay, wallet());
+}
+
+function upgradeText(key, benefit) {
+  const names = { damage:'shot damage', rate:'fire rate', thrusters:'maximum speed', energy:'energy regeneration' };
+  return `+${percent.format(benefit)} ${names[key]}`;
+}
+
+function shopTracks() {
+  return `<div class="shop-list">${Object.entries(UPGRADES).map(([key, item]) => {
+    const { tier, limit, nextCost, nextBenefit, affordable, available } = upgradeStatus(state.pilot, key);
+    const cost = nextCost === null ? 'Complete' : `${num(nextCost)} Salvage`;
+    return `<button class="shop-card" data-action="upgrade:${key}">${icon(item.icon ?? 'power', 'icon-large')}<span>
+      <strong>${item.name}</strong><small>Tier ${tier}/15 · Unlocked to ${limit}</small>
+      ${nextBenefit === null ? '' : `<small>Next tier ${upgradeText(key, nextBenefit)}</small>`}
+      <span class="tier-bar" aria-hidden="true" style="--tier:${tier / 15};--unlocked-tier:${limit / 15}"></span></span>
+      <span class="price" data-affordable="${affordable}">${cost}${nextCost !== null && !available ? '<small>Locked</small>' : ''}</span></button>`;
   }).join('')}</div>`;
-  return screen('Hangar', state.hangarBack, tabs + (shopOpen ? shop : bay), wallet());
 }
 
 function upgradeView() {
-  const target = UPGRADES[state.upgrade];
+  const key = state.upgrade;
+  const target = UPGRADES[key];
   const p = state.pilot;
-  const installed = p.equipment.includes(state.upgrade);
-  const locked = target.needs && !p.equipment.includes(target.needs);
-  const afford = p.salvage >= target.cost;
-  const copy = installed ? 'Installed on every ship.' : locked ? `Requires ${UPGRADES[target.needs].name}.` : !afford ? `Earn ${num(target.cost - p.salvage)} more Salvage.` : `${num(p.salvage - target.cost)} Salvage left after installation.`;
-  return screen(target.name, 'hangar', `<div class="notice"><strong>${target.detail}</strong><p>${copy}</p></div>
-    ${action(installed ? 'Installed' : `Install for ${num(target.cost)} Salvage`, 'install', 'primary', 'check', canInstall(p, state.upgrade) ? '' : 'disabled')}`, wallet());
+  const { tier, limit, nextCost, installedBenefit, nextBenefit, affordable, available } = upgradeStatus(p, key);
+  const finished = nextCost === null;
+  const condition = finished ? 'All tiers installed.' : !available ? `Clear Mission ${limit} to open Tier ${tier + 1}.`
+    : !affordable ? `Earn ${num(nextCost - p.salvage)} more Salvage.` : `${num(p.salvage - nextCost)} Salvage left after installation.`;
+  return screen(target.name, 'hangar', `<div class="notice"><strong>Tier ${tier}/15</strong>
+      <p>${tier ? upgradeText(key, installedBenefit) : 'Stock configuration'}. Unlocked to Tier ${limit}.</p>
+      ${finished ? '' : `<p>Tier ${tier + 1} adds ${upgradeText(key, nextBenefit)}.</p>`}<p>${condition}</p></div>
+    ${action(finished ? 'Complete' : `Install Tier ${tier + 1} · ${num(nextCost)} Salvage`, 'install', 'primary', 'check', canInstall(p, key) ? '' : 'disabled')}`, wallet());
 }
 
 function recordLine(title, copy, value) {
@@ -242,7 +329,10 @@ function recordContext(record) {
   if (record.assistance?.reduced) assistance.push('Reduced motion');
   if (record.assistance?.contrast) assistance.push('High contrast');
   if (['gentle', 'direct'].includes(record.assistance?.sensitivity)) assistance.push(`${record.assistance.sensitivity} drag`);
-  const mods = (record.equipment ?? []).flatMap((key) => Object.hasOwn(UPGRADES, key) ? [UPGRADES[key].name] : []).join(', ') || 'Stock';
+  const names = { rails:'Calibrated Rails', chamber:'Cycling Chamber', cells:'Resonant Cells', hull:'Ablative Hull' };
+  const current = Object.keys(UPGRADES).flatMap((key) => record.tiers?.[key] ? [`${UPGRADES[key].name} ${record.tiers[key]}`] : []);
+  const legacy = (record.equipment ?? []).flatMap((key) => names[key] ? [names[key]] : []);
+  const mods = [...current, ...legacy].join(', ') || 'Stock';
   const notes = [SHIPS[record.ship]?.name ?? 'Fighter', SPECIALS[record.special]?.name ?? SPECIALS.ghost.name, mods, ...assistance];
   if (record.stage === 5 && record.rules === 'arcade-1') notes.push('Original route · Gravity Platform');
   const version = recordVersion(record);
@@ -250,37 +340,61 @@ function recordContext(record) {
   return notes.join(' · ');
 }
 
+function recordStageName(stage, record) {
+  if (record.rules === RULES_VERSION) return stage.name;
+  const legacyNames = { 1:'Vesper Orbit', 2:'Asteroid Belt', 3:'Relay Station', 4:'Red Sun',
+    5:record.rules === 'arcade-1' ? 'Gravity Platform' : 'Outer Orbit', 6:'The Flagship' };
+  return legacyNames[stage.id] ?? stage.name;
+}
+
 function records() {
   const { pilot } = state;
-  const { arcade, endless, history = {} } = pilot.records;
-  const rows = STAGES.map((s) => {
-    const best = loadoutBest(pilot, s.id);
+  const { arcade, veteran = {}, side = {}, endless, history = {} } = pilot.records;
+  const counts = completionCounts(pilot);
+  const rank = pilotRank(pilot.lifetimeXp);
+  const profile = `<section class="pilot-summary" aria-labelledby="pilot-record-name">
+    <div class="profile-caption"><span class="caption">Pilot profile</span>${action('Edit call sign', 'view:callSign', 'profile-edit', 'edit')}</div>
+    <h2 id="pilot-record-name">${normalizeCallSign(pilot.callSign) || 'Pilot'}</h2><p class="pilot-rank">${rank.name}</p>
+    <dl class="profile-stats"><div><dt>Lifetime XP</dt><dd>${num(pilot.lifetimeXp)}</dd></div>
+      <div><dt>Main campaign</dt><dd>${counts.main} / ${counts.mainLimit}</dd></div>
+      <div><dt>Side Operations</dt><dd>${counts.side} / ${counts.sideLimit}</dd></div>
+      <div><dt>Total cleared</dt><dd>${counts.total} / ${counts.totalLimit}</dd></div></dl>
+    ${rank.nextXp ? `<p class="subtle">${num(rank.nextXp - pilot.lifetimeXp)} XP to next rank</p>` : ''}
+  </section>`;
+  const rows = ['standard', 'veteran'].flatMap((variant) => (variant === 'standard' ? [...STAGES, ...SIDE_OPERATIONS] : STAGES).map((s) => {
+    const best = loadoutBest(pilot, s.id, variant);
     if (!best) return '';
-    return recordLine(s.name, `${best.status === 'clear' ? 'Clear' : 'Best attempt'} · ${time(best.duration)}`, num(best.score));
-  }).join('');
+    return recordLine(s.name, `${variant === 'veteran' ? 'Veteran · ' : s.side ? 'Side Operation · ' : ''}${best.status === 'clear' ? 'Clear' : 'Best attempt'} · ${time(best.duration)}`, num(best.score));
+  })).join('');
   const bestSurvival = loadoutBest(pilot, null);
   const survival = bestSurvival ? recordLine('Endless survival', `${num(bestSurvival.score)} points`, time(bestSurvival.duration)) : '';
   const archived = Object.values(history);
-  const careerRows = STAGES.flatMap((s) => [arcade[s.id], ...archived.filter((r) => r.mode === 'arcade' && r.stage === s.id)]
+  const careerRows = [...STAGES, ...SIDE_OPERATIONS].flatMap((s) => [arcade[s.id], veteran[s.id], side[s.id], ...archived.filter((r) => r.mode === 'arcade' && r.stage === s.id)]
     .filter(Boolean).sort((a, b) => recordVersion(b) - recordVersion(a))
-    .map((r) => recordLine(s.name, `${r.status === 'clear' ? 'Cleared' : 'Best attempt'} · ${time(r.duration)} · ${recordContext(r)}`, num(r.score)))).join('');
+    .map((r) => recordLine(recordStageName(s, r), `${r.variant === 'veteran' ? 'Veteran · ' : s.side ? 'Side Operation · ' : ''}${r.status === 'clear' ? 'Cleared' : 'Best attempt'} · ${time(r.duration)} · ${recordContext(r)}`, num(r.score)))).join('');
   const careerSurvival = [endless, ...archived.filter((r) => r.mode === 'endless')].filter(Boolean)
     .sort((a, b) => recordVersion(b) - recordVersion(a))
     .map((r) => recordLine('Endless survival', `${num(r.score)} points · ${recordContext(r)}`, time(r.duration))).join('');
   const career = careerRows || careerSurvival ? `<details class="career-records" ${rows || survival ? '' : 'open'}><summary>Career records</summary>
     <div class="career-list">${careerRows}${careerSurvival}</div></details>` : '';
-  const earned = STAGES.filter((s) => s.mastery && pilot.mastery?.[s.mastery.key ?? s.id]).map((s) => s.mastery.name);
-  if (pilot.mastery?.[5]) earned.push('Gravity Platform mastery · Original route');
-  const mastery = earned.length ? `<section class="record-heading" aria-labelledby="record-mastery">
-    <h2 id="record-mastery">Mastery</h2><ul class="mastery-list">${earned.map((name) => `<li>${name}</li>`).join('')}</ul></section>` : '';
-  return screen('Records', 'home', `<div class="record-heading"><h2>Current loadout</h2><p class="subtle">${SHIPS[pilot.ship].name} · ${loadoutContext(pilot)} · Current rules</p></div>
+  const earned = [...STAGES, ...SIDE_OPERATIONS].flatMap((s) => {
+    if (!s.mastery) return [];
+    const key = s.mastery.key ?? s.id;
+    return [(s.side ? pilot.sideMastery : pilot.mastery)?.[key] ? s.mastery.name : '', !s.side && pilot.veteranMastery?.[key] ? `${s.mastery.name} · Veteran` : ''].filter(Boolean);
+  });
+  const legacy = Object.keys(pilot.legacy?.mastery ?? {}).filter((key) => pilot.legacy.mastery[key]).length;
+  const mastery = earned.length || legacy ? `<section class="record-heading" aria-labelledby="record-mastery">
+    <h2 id="record-mastery">Mastery</h2><ul class="mastery-list">${earned.map((name) => `<li>${name}</li>`).join('')}
+    ${legacy ? `<li>${num(legacy)} earned on the original campaign</li>` : ''}</ul></section>` : '';
+  return screen('Records', 'home', `${profile}<div class="record-heading"><h2>Current loadout</h2><p class="subtle">${SHIPS[pilot.ship].name} · ${loadoutContext(pilot)} · Current rules</p></div>
     ${rows || survival ? rows + survival : '<p class="subtle">Fly with this loadout to set a record.</p>'}${mastery}${career}`);
 }
 
 const settings = {
   music: ['Music', 'Hangar and flight tracks'], effects: ['Sound effects', 'Weapons, hits, pickups and warnings'],
   haptics: ['Vibration', 'Short pulses for hits and abilities'],
-  reduced: ['Reduced motion', 'Steady camera and fewer flashes'], contrast: ['High contrast hazards', 'Brighter projectile centers and warning outlines']
+  reduced: ['Reduced motion', 'Steady camera and fewer flashes'], contrast: ['High contrast hazards', 'Brighter projectile centers and warning outlines'],
+  skipStory: ['Skip story', 'Skip automatic story scenes. Replay them through Campaign.']
 };
 
 const controlLabels = {
@@ -314,7 +428,7 @@ function touchSettings(preferences) {
     <div class="setting"><div><strong>Touch steering</strong><small>Choose how the ship follows your touch</small></div>
       <select class="toggle" id="steering" aria-label="Touch steering">
         <option value="drag">Finger drag</option><option value="stick" ${steering === 'stick' ? 'selected' : ''}>Floating joystick</option></select></div>
-    <div class="setting"><div><strong>Drag sensitivity</strong><small>Changes how far the ship follows a swipe</small></div>
+    <div class="setting" data-drag-sensitivity ${steering === 'stick' ? 'hidden' : ''}><div><strong>Drag sensitivity</strong><small>Changes how far the ship follows a swipe</small></div>
       <select class="toggle" id="sensitivity" aria-label="Drag sensitivity" ${steering === 'stick' ? 'disabled' : ''}>
         ${['Gentle', 'Standard', 'Direct'].map((label) => {
           const value = label.toLowerCase();
@@ -331,6 +445,7 @@ function previewTouchSettings(group) {
   preview.dataset.steering = steering;
   preview.querySelector('.preview-stick').hidden = steering === 'drag';
   group.querySelector('#stickSize').disabled = steering === 'drag';
+  group.querySelector('[data-drag-sensitivity]').hidden = steering === 'stick';
   group.querySelector('#sensitivity').disabled = steering === 'stick';
   const layout = Object.fromEntries(Object.keys(TOUCH_CONTROL_RANGES).map((key) => [key, group.querySelector(`#${key}`).valueAsNumber]));
   applyControlStyles(preview, layout);
@@ -350,6 +465,7 @@ function settingsView() {
     ${switches}${touchSettings(prefs)}
     <div class="notice" id="pack-status" role="status">${packCopy()}</div>${state.installed ? '' : '<p class="subtle">Install from your browser menu or Add to Home Screen in Safari.</p>'}
     ${googleSignInAvailable ? action('Account', 'view:account') : ''}
+    ${action('Edit call sign', 'view:callSign', 'quiet', 'edit')}
     ${action('Practice', 'help:settings', 'quiet')}${state.support ? `<p class="notice">${state.support}</p>` : ''}`);
 }
 
@@ -444,7 +560,7 @@ function helpView() {
   const rows = [
     ['Steering', state.pilot.settings.steering === 'stick'
       ? 'Touch anywhere on the playfield and hold away from the center of the stick to move. Arrow keys and WASD also steer.'
-      : 'Drag anywhere on the playfield. Lift and touch again to reanchor. Try Floating stick in Settings. Arrow keys and WASD also steer.'],
+      : 'Drag anywhere on the playfield. Lift and touch again to reanchor. Try Floating joystick in Settings. Arrow keys and WASD also steer.'],
     ['Line up your shots', 'Weapons fire automatically. Aim by placing your ship beneath the target.'],
     ['Energy', 'Start each flight with full energy. It recharges over time when you aren’t phasing. Hits and kills charge it faster.'],
     ['Specials', 'Equip a Special in the Hangar. Tap its button or press Space to use it. Ghost Shift phases through physical fire for one second. Ion Burst clears nearby physical shots.'],
@@ -492,7 +608,9 @@ const retryAdvice = {
   rail: 'Leave the striped lane before the rail fires.',
   spectral: 'Dodge hollow rounds while you are in the ghost realm.',
   collision: 'Keep your cockpit clear of enemy hulls.',
-  fire: 'Move across incoming fire and save your Special for tight spots.'
+  fire: 'Move across incoming fire and save your Special for tight spots.',
+  'objective-escaped': 'Your crew survived. Line up the priority ships early, before they reach the far edge.',
+  'objective-transmitted': 'Your crew survived. Silence the transmitter before it completes the call.'
 };
 
 function results() {
@@ -500,56 +618,67 @@ function results() {
   const report = p.receipt ?? p.terminal;
   const clear = report.status === 'clear';
   const isEndless = p.run.mode === 'endless';
-  const stage = stageById(p.run.stage);
-  const finale = clear && stage?.id === 6;
-  const relayCleared = clear && stage?.id === 3;
-  const next = p.receipt && clear && stageById(stage.id + 1);
+  const variant = p.run.variant ?? 'standard';
+  const veteran = variant === 'veteran';
+  const stage = stageById(p.run.stage, variant);
+  const finale = clear && stage?.number === STAGES.length;
+  const relayCleared = clear && stage?.number === FREE_MISSIONS;
+  const side = stage?.side === true;
+  const next = p.receipt && clear && stage && !side && nextStage(stage.id);
   const preview = next && requiresPurchase(next.id);
   const firstUnlockOffer = preview && p.receipt.first && !store.temporary;
-  const title = finale ? 'Fleet defeated' : relayCleared ? 'Relay offline' : clear ? 'Stage clear' : isEndless ? 'Run complete' : 'Flight lost';
-  const repeat = isEndless ? 'Fly again' : clear ? 'Replay stage' : 'Retry stage';
-  const retry = `fly:${isEndless ? 'endless' : stage.id}`;
+  const objectiveMissed = !clear && p.terminal.damageCause?.startsWith('objective-');
+  let title = clear ? 'Mission clear' : 'Flight lost';
+  if (finale) title = veteran ? 'Veteran complete' : 'Fleet defeated';
+  else if (relayCleared) title = 'Relay offline';
+  else if (isEndless) title = 'Run complete';
+  else if (side) title = clear ? 'Operation clear' : objectiveMissed ? 'Objective missed' : 'Operation lost';
+  const repeat = isEndless ? 'Fly again' : clear ? side ? 'Replay operation' : 'Replay mission' : 'Retry';
+  const fly = veteran ? 'fly-veteran' : 'fly';
+  const retry = `${fly}:${isEndless ? 'endless' : stage.id}`;
   const progression = p.receipt?.award ? `<p class="result-reward">${icon('salvage')} <span>+${num(p.receipt.award)} Salvage ${store.temporary ? 'this session' : 'banked'}</span>${p.receipt.first ? '<small>First clear</small>' : ''}</p>` : '';
+  const xp = p.receipt?.xpAward ? `<p class="result-xp">+${num(p.receipt.xpAward)} XP${p.receipt.rankUp ? ` · ${p.receipt.rankUp}` : ''}</p>` : '';
   const unlocked = [
     p.receipt?.newStage && !requiresPurchase(p.receipt.newStage) ? `${stageById(p.receipt.newStage).name} unlocked` : null,
-    p.receipt?.newSpecial === 'ion' ? 'Ion Burst unlocked' : null
+    p.receipt?.newSpecial === 'ion' ? 'Ion Burst unlocked' : null,
+    p.receipt?.campaignWon && !veteran ? 'Veteran Campaign and Endless unlocked' : null,
+    ...((p.receipt?.newOperations ?? []).filter((id) => !requiresPurchase(id)).map((id) => `Side Operation unlocked · ${stageById(id).name}`))
   ].filter(Boolean);
   const ship = p.receipt?.newShip ? action(`${SHIPS[p.receipt.newShip].name} unlocked`, `unlocked:${p.receipt.newShip}`, 'quiet', 'ship') : '';
   const pendingCopy = p.discarded ? '<p class="result-warning" role="status">This flight was temporary. Your existing device save is active.</p>'
     : !p.receipt ? `<p class="result-warning" role="status">${p.error || 'Saving flight…'}</p>` : '';
-  const buyable = p.receipt && clear && Object.entries(UPGRADES).some(([key,item]) =>
-    !state.pilot.equipment.includes(key) && (!item.needs || state.pilot.equipment.includes(item.needs)) && state.pilot.salvage >= item.cost);
-  const primary = p.discarded ? action('Return to stages', 'view:stages', 'primary')
+  const buyable = p.receipt && clear && Object.keys(UPGRADES).some((key) => canInstall(state.pilot, key));
+  const primary = p.discarded ? action('Return to Campaign', 'view:stages', 'primary')
     : !p.receipt ? (p.error ? action('Retry saving', 'settle', 'primary', 'check') : '')
-    : preview ? action('Return to Arcade', 'view:stages', 'primary')
-    : next ? action('Next Flight', `fly:${next.id}`, 'primary', 'next', `aria-label="Next Flight · ${next.name}"`)
-      : finale ? action('Return to stages', 'view:stages', 'primary') : action(repeat, retry, 'primary');
+    : next && !preview ? action('Next Mission', `${fly}:${next.id}`, 'primary', 'next', `aria-label="Next Mission · ${next.name}"`)
+      : finale ? action('Return to Campaign', 'view:stages', 'primary') : action(repeat, retry, 'primary');
   const mastery = p.receipt && clear && stage?.mastery ? `<p class="subtle">${p.receipt.mastery ? `Mastery earned · ${stage.mastery.name}`
     : p.receipt.masteryMet ? `Mastery repeated · ${stage.mastery.name}` : stage.mastery.detail}</p>` : '';
   const comparison = resultComparison(p.receipt);
   const cause = p.terminal.damageCause;
   const advice = !clear && Object.hasOwn(retryAdvice, cause) ? retryAdvice[cause] : '';
   const secondary = [
-    p.receipt && !finale && !preview ? action('Arcade', 'view:stages', 'quiet', '') : '',
+    p.receipt && !finale ? action('Campaign', 'view:stages', 'quiet', '') : '',
     p.receipt || p.discarded ? action('Title Screen', 'view:home', 'quiet', '') : '',
-    p.receipt && (next || finale) ? action(repeat, retry, 'quiet', '') : '',
+    p.receipt && ((next && !preview) || finale) ? action(repeat, retry, 'quiet', '') : '',
     p.receipt ? action(buyable ? 'Upgrades' : 'Hangar', buyable ? 'shop:result' : 'hangar:result', 'quiet', '') : '',
     !p.receipt && p.error ? action('Leave unsaved', 'discard', 'quiet', '') : ''
   ].filter(Boolean);
   return `<article class="screen result-screen" data-outcome="${clear ? 'clear' : 'finished'}">
     <div class="result-card">
       ${saveNotice()}
-      <header class="result-heading"><span class="caption">${finale ? 'Campaign complete' : isEndless ? 'Endless' : stage.name}</span>
+      <header class="result-heading"><span class="caption">${finale ? 'Campaign complete' : isEndless ? 'Endless' : `${veteran ? 'Veteran · ' : ''}${stage.name}`}</span>
         <h1 tabindex="-1">${title}</h1>
+        ${clear && !veteran && stage.resolution ? `<p class="subtle">${escapePolicy(stage.resolution)}</p>` : ''}
       </header>
       <section class="result-facts" aria-label="Flight stats">
         <div class="result-score"><span class="caption">Score</span><strong>${num(report.score)}</strong></div>
         <div><span class="caption">Flight time</span><strong>${time(report.duration)}</strong></div>
         <div><span class="caption">Targets</span><strong>${num(report.kills)}</strong></div>
       </section>
-      ${progression || mastery || comparison || advice || unlocked.length || ship ? `<div class="result-earned">
+      ${progression || xp || mastery || comparison || advice || unlocked.length || ship ? `<div class="result-earned">
         ${comparison ? `<p class="result-comparison"><small class="subtle">This loadout · Current rules</small>${comparison}</p>` : ''}
-        ${mastery}${advice ? `<p class="subtle">${advice}</p>` : ''}${progression}
+        ${mastery}${advice ? `<p class="subtle">${advice}</p>` : ''}${progression}${xp}
         ${unlocked.length ? `<ul class="result-unlocks">${unlocked.map((label) => `<li>${icon('check')}${label}</li>`).join('')}</ul>` : ''}
         ${ship}
       </div>` : ''}
@@ -572,18 +701,18 @@ const purchaseMessages = {
 
 function commerceView() {
   const { stage } = state.commerceScreen;
-  const missions = STAGES.slice(firstPaidStage - 1).map((entry) => `<li class="commerce-mission${entry.id === stage ? ' commerce-destination' : ''}" data-environment="${entry.environment}">
+  const missions = ACTS.filter(({ id }) => id > 1).flatMap(({id}) =>
+    [...STAGES, ...SIDE_OPERATIONS].filter((mission) => mission.act === id)).map((entry) => `<li class="commerce-mission${entry.id === stage ? ' commerce-destination' : ''}" data-environment="${entry.environment}">
     <span class="commerce-thumbnail" aria-hidden="true"></span>
-    <span><small>Stage ${entry.id}</small><strong>${entry.name}</strong></span>
+    <span><small>${entry.side ? `Operation ${entry.code}` : `Mission ${entry.number}`}</small><strong>${entry.name}</strong></span>
   </li>`).join('');
   return `<article class="screen commerce-screen">
     <div class="commerce-hero" aria-hidden="true"></div>
     <div class="commerce-card">
       <header class="commerce-heading">
         <h1 tabindex="-1" id="commerce-heading">${state.commerce.owned ? 'Full Game Unlocked' : 'Unlock the Full Game'}</h1>
-        <p>Fly the final three stages, take on the bosses, and complete Stellar Rebels.</p>
+        <p>Continue into Acts II and III. Fly ten story missions and six optional operations, then face the Emperor.</p>
       </header>
-      <ol class="commerce-missions" aria-label="Full game stages" start="${firstPaidStage}">${missions}</ol>
       <div class="commerce-checkout">
         <p class="commerce-payment" id="commerce-payment">One-time purchase</p>
         <p class="commerce-status" id="commerce-status" role="status"></p>
@@ -598,6 +727,9 @@ function commerceView() {
           ${action('Privacy Policy', 'policy:privacy', 'text-action', '')}${action('Terms of Use', 'policy:terms', 'text-action', '')}
         </nav>
       </div>
+      <details class="commerce-route"><summary>See the missions and operations</summary>
+        <ol class="commerce-missions" aria-label="Full game missions" start="${firstPaidMission}">${missions}</ol>
+      </details>
     </div>
   </article>`;
 }
@@ -617,7 +749,7 @@ function paintCommerce() {
   price.hidden = owned || !commerce.price;
   $('commerce-payment').hidden = owned;
   primary.dataset.action = owned ? launchable ? `fly:${stage.id}` : 'view:stages' : 'commerce:purchase';
-  primary.firstElementChild.textContent = owned ? launchable ? `Launch ${stage.name}` : 'Stage Select' : 'Unlock Full Game';
+  primary.firstElementChild.textContent = owned ? launchable ? `Launch ${stage.name}` : 'Campaign' : 'Unlock Full Game';
   if (owned) {
     primary.removeAttribute('aria-label');
     primary.removeAttribute('aria-describedby');
@@ -656,7 +788,8 @@ function updateCommerce(snapshot) {
     if (state.commerce.owned && previous.pending) state.commerceScreen.message = purchaseMessages.purchased;
     if (!state.commerce.owned && previous.owned) state.commerceScreen.message = '';
     paintCommerce();
-  } else if (state.commerce.owned !== previous.owned && (state.view === 'stages' || state.view === 'result')) {
+  } else if (!state.launch && state.commerce.owned !== previous.owned && ['home', 'stages', 'result'].includes(state.view)) {
+    if (!state.commerce.owned) state.campaignVariant = 'standard';
     const focus = document.activeElement?.dataset.action;
     const scroll = menu.scrollTop;
     show(state.view, false);
@@ -708,6 +841,63 @@ async function runCommerce(command) {
   }
 }
 
+
+function storyAvailable(beat) {
+  const mission = STAGES[beat.mission - 1];
+  return mission && !requiresPurchase(mission.id) && Boolean(state.pilot.storySeen?.[beat.id] || state.pilot.clears[mission.id]);
+}
+
+function storyLog() {
+  const entries = STORY_BEATS.filter(storyAvailable).map((beat) =>
+    action(escapePolicy(beat.title), `story-replay:${beat.id}`, 'quiet', 'book')).join('');
+  return screen('Story log', 'stages', `<div class="story-log">${entries}</div>`);
+}
+
+function storyView() {
+  const { beat, continuation } = state.story;
+  const art = new URL(beat.art, import.meta.url).href;
+  const showCrew = beat.id === 'departure' || beat.id === 'homecoming';
+  return `<article class="story-screen" ${showCrew ? 'data-crew-scene' : ''} data-story="${beat.id}">
+    <div class="story-art"><img src="${art}" alt="${escapePolicy(beat.alt)}" decoding="async"></div>
+    <div class="story-caption">
+      <h1 tabindex="-1">${escapePolicy(beat.title)}</h1>
+      <p>${escapePolicy(beat.text)}</p>
+      ${action(continuation ? 'Continue' : 'Back to story log', 'story-continue', 'primary', continuation ? 'next' : 'back')}
+    </div>
+    ${continuation ? action('Skip', 'story-continue', 'quiet story-skip', '') : ''}
+  </article>`;
+}
+
+function openStory(beat, from, continuation = null) {
+  state.story = { beat, from, continuation };
+  show('story');
+}
+
+async function continueStory() {
+  const story = state.story;
+  if (!story) return;
+  const { pilot } = await store.change((saved) => { (saved.storySeen ??= {})[story.beat.id] = true; });
+  state.pilot = pilot;
+  state.story = null;
+  if (story.beat.timing === 'after' && story.beat.mission === STAGES.length && story.continuation) pacing?.complete();
+  show(story.from, false);
+  if (story.continuation?.which) await start(story.continuation.which, null, 'basics', story.continuation.variant);
+  else menu.querySelector(story.continuation ? 'h1' : `[data-action="story-replay:${story.beat.id}"]`)?.focus({ preventScroll:true });
+}
+
+function showSettledResult(focus = true) {
+  const p = state.pending;
+  const stage = p?.receipt?.status === 'clear' && !p.receipt.side && p.run.variant !== 'veteran' && stageById(p.run.stage);
+  const beat = stage && storyBeatFor(stage.number, 'after');
+  if (beat && p.receipt.first && !p.storyShown && !state.pilot.storySeen[beat.id] && !state.pilot.settings.skipStory) {
+    p.storyShown = true;
+    openStory(beat, 'result', {});
+    return;
+  }
+  if (stage?.number === STAGES.length && p.receipt.campaignWon && !p.storyShown) pacing?.complete();
+  show('result', focus);
+}
+
 function launchView() {
   return `<article class="screen launch-screen"><header class="screen-header"><p class="caption">${state.launch.name}</p>
     <h1 tabindex="-1">Preparing flight</h1></header>
@@ -716,6 +906,7 @@ function launchView() {
 
 const views = {
   home, callSign: callSignView, stages, hangar, upgrade: upgradeView, records, settings: settingsView,
+  storyLog, story: storyView,
   account: accountView, legal: legalHub, privacy: () => policyPage('privacy'), terms: () => policyPage('terms'),
   support: () => policyPage('support'), help: helpView, result: results, launch: launchView, commerce: commerceView
 };
@@ -735,13 +926,22 @@ function showBrowserUpdate() {
 function show(view, focus = true) {
   if (!views[view] || (view === 'account' && !googleSignInAvailable)) return;
   if (view === 'commerce' && (!nativeFlight || !state.commerceScreen)) return;
+  if (view === 'story' && !state.story) return;
+  if (view === 'callSign' && !state.callSign) return;
   $('frame').dataset.reducedMotion = String(motionLimited());
   state.mode = 'menu';
   state.view = view;
+  pacing?.scene(['story', 'launch', 'result'].includes(view) ? view : 'menu');
   field.hidden = true;
   menu.hidden = false;
   menu.innerHTML = views[view]();
   if (view === 'commerce') paintCommerce();
+  if (view === 'story') {
+    const picture = menu.querySelector('.story-art img');
+    const revealFallback = () => { picture.hidden = true; };
+    picture.addEventListener('error', revealFallback, { once:true });
+    if (picture.complete && !picture.naturalWidth) revealFallback();
+  }
   if (view === 'legal' && nativeFlight) {
     paintRating();
     void refreshRating();
@@ -796,20 +996,42 @@ function readId() {
   return Array.from(crypto.getRandomValues(new Uint32Array(4)), (n) => n.toString(16)).join('-');
 }
 
-function needsTraining() {
-  const { pilot } = state;
-  return !pilot.settings.trainingDone && !Object.keys(pilot.clears).length &&
-    !Object.keys(pilot.records.arcade).length && !pilot.records.endless && !pilot.salvage;
+async function requestFlight(which, variant = 'standard') {
+  const endless = which === 'endless';
+  const mission = endless ? null : which === 'next' ? playMission() : stageById(Number(which));
+  if (!endless && !mission) return;
+  if (mission && requiresPurchase(mission.id) && !(which === 'next')) {
+    openCommerce(mission.id, `${variant === 'veteran' ? 'fly-veteran' : 'fly'}:${which}`);
+    return;
+  }
+  if (endless && !hasEndless(state.pilot)) return;
+  if (variant === 'veteran' && !hasVeteran(state.pilot)) return;
+  if (mission && !hasStage(state.pilot, mission.id, variant)) return;
+  if (which === 'next') pacing?.start();
+  if (!normalizeCallSign(state.pilot.callSign)) {
+    openCallSign(state.view, { which, variant });
+    return;
+  }
+  const beat = mission && variant === 'standard' && storyBeatFor(mission.number, 'before');
+  if (beat && !state.pilot.storySeen[beat.id] && !state.pilot.settings.skipStory) {
+    openStory(beat, state.view, { which, variant });
+    return;
+  }
+  await start(which, null, 'basics', variant);
 }
 
-async function start(which, trainingMode = null, drill = 'basics') {
+async function start(which, trainingMode = null, drill = 'basics', variant = 'standard') {
   const endless = which === 'endless';
-  const stage = endless ? null : which === 'next' ? (nextStage(state.pilot) ?? STAGES.at(-1)).id : Number(which);
-  if (!trainingMode && nativeFlight && stageById(stage) && stage >= firstPaidStage) {
-    const decision = await nativeCommerce?.('authorize-stage', stage).catch(() => null);
+  const mission = endless ? null : which === 'next' ? playMission() : stageById(Number(which), variant);
+  const stage = mission?.id ?? null;
+  if (!trainingMode && endless && !hasEndless(state.pilot)) return;
+  if (!trainingMode && variant === 'veteran' && !hasVeteran(state.pilot)) return;
+  const postgame = (endless && !state.pilot.legacy?.endlessQualified) || variant === 'veteran';
+  if (!trainingMode && nativeFlight && (postgame || isPaidMission(mission))) {
+    const decision = await nativeCommerce?.('authorize-stage', postgame ? STAGES.length : mission.number).catch(() => null);
     if (decision?.allowed !== true) {
       if (state.commerce.owned) updateCommerce({ ...state.commerce, owned:false });
-      if (which === 'next') show('stages');
+      if (which === 'next' || postgame) show('stages');
       else if (state.view !== 'commerce') openCommerce(stage, `fly:${which}`);
       else {
         state.commerceScreen.message = 'Access could not be confirmed. Check with the store and try again.';
@@ -818,16 +1040,16 @@ async function start(which, trainingMode = null, drill = 'basics') {
       return;
     }
   }
-  const launch = { controller: new AbortController(), from: state.training?.from ?? state.view, which,
-    control: trainingMode === 'practice' ? `practice:${drill}` : `fly:${which}`,
-    name: trainingMode ? 'Practice' : endless ? 'Endless' : stageById(stage)?.name };
+  const launch = { controller: new AbortController(), from: state.view, which,
+    control: trainingMode === 'practice' ? `practice:${drill}` : `${variant === 'veteran' ? 'fly-veteran' : 'fly'}:${which}`,
+    name: trainingMode ? 'Practice' : endless ? 'Endless' : mission?.name };
   if (!launch.name) return;
   let run;
   let launched = false;
   state.launch = launch;
+  pacing?.scene('launch');
   audio.effect('launch');
   const title = !menu.hidden && menu.querySelector('.title-screen');
-  const fromPractice = !field.hidden && state.flight?.practice;
   if (title) {
     title.classList.add('is-launching');
     title.querySelector('.title-actions').inert = true;
@@ -837,11 +1059,6 @@ async function start(which, trainingMode = null, drill = 'basics') {
     status.innerHTML = '<p role="status">Launching…</p>' + action('Cancel launch', 'cancel-flight', 'quiet', '');
     title.append(status);
     status.querySelector('button').focus({ preventScroll:true });
-  } else if (fromPractice) {
-    state.mode = 'launching';
-    clearInput();
-    field.querySelector('.flight-controls').inert = true;
-    $('training-actions').innerHTML = '<span class="caption" role="status">Joining Arcade…</span>';
   } else show('launch');
   try {
     const seed = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -849,30 +1066,32 @@ async function start(which, trainingMode = null, drill = 'basics') {
       const special = trainingMode === 'practice' && drill === 'special' ? state.pilot.special : 'ghost';
       run = { id:readId(), mode:'arcade', stage:1, ship:'kestrel', equipment:[], special, assistance:{ ...state.pilot.settings }, seed };
     } else {
-      const saved = await store.change((pilot) => beginRun(pilot, readId(), endless ? 'endless' : 'arcade', stage, Date.now(), seed));
+      const saved = await store.change((pilot) => beginRun(pilot, readId(), endless ? 'endless' : 'arcade', stage, Date.now(), seed, variant));
       state.pilot = saved.pilot;
       run = saved.result;
     }
     if (launch.controller.signal.aborted) return;
     if (!run) {
-      restoreLaunch(launch, 'This stage is locked.');
+      restoreLaunch(launch, 'This mission is locked.');
       return;
     }
     const recording = trainingMode ? null : captureReplay(run);
     const flight = new Flight(run, { recordInput: recording?.recordInput });
     const prepared = renderer.prepare(flight, launch.controller.signal);
-    if ((title || fromPractice) && !motionLimited(run.assistance)) {
-      await new Promise((done) => setTimeout(done, title ? 420 : 260));
+    if (title && !motionLimited(run.assistance)) {
+      await new Promise((done) => setTimeout(done, 420));
     }
     if (!await prepared || launch.controller.signal.aborted) return;
     state.titlePatrol?.stop();
     state.titlePatrol = null;
-    state.training = trainingMode ? { ...startTraining(flight, drill), mode:trainingMode, from:launch.from, which } : null;
+    state.training = trainingMode ? { ...startTraining(flight, drill), from:launch.from } : null;
     state.returnView = launch.from === 'home' ? 'home' : 'stages';
+    if (!trainingMode && !endless) state.campaignVariant = variant;
     state.last = run;
     state.recording = recording;
     state.flight = flight;
     state.mode = 'playing';
+    pacing?.scene('flight');
     menu.hidden = true;
     field.hidden = false;
     field.querySelector('.flight-controls').inert = false;
@@ -943,6 +1162,7 @@ function pause(interrupted = false) {
   if (state.mode === 'paused' && interrupted) return;
   clearInput();
   state.mode = 'paused';
+  pacing?.scene('paused');
   $('pause').setAttribute('aria-label', 'Pause');
   audio.quiet();
   const flight = state.flight;
@@ -978,6 +1198,7 @@ async function leave() {
     return;
   }
   await store.change((saved) => abandonRun(saved, state.flight.run.id)).catch(() => {});
+  pacing?.abandon(state.flight.run, state.flight.elapsed);
   clearInput();
   modal.close();
   state.flight = null;
@@ -991,7 +1212,7 @@ function showTrainingAction() {
   container.hidden = !training;
   if (!training) return;
   const done = training.step === 'complete';
-  const label = training.mode === 'intro' ? done ? 'Start arcade' : 'Skip training' : done ? 'Done' : 'End practice';
+  const label = done ? 'Done' : 'End practice';
   const button = container.querySelector('button[data-action="finish-practice"]');
   if (!button) {
     container.innerHTML = action(label, 'finish-practice', done ? 'primary' : 'quiet', done ? 'play' : '');
@@ -1007,15 +1228,14 @@ function showTrainingAction() {
 async function finishPractice() {
   const training = state.training;
   if (!training) return;
-  if (training.mode === 'intro' || (training.drill === 'basics' && training.step === 'complete')) {
+  if (training.drill === 'basics' && training.step === 'complete') {
     const saved = await store.change((pilot) => { pilot.settings.trainingDone = true; }).catch(() => null);
     if (saved) state.pilot = saved.pilot;
   }
+  clearInput();
   state.training = null;
-  if (training.mode === 'intro') {
-    state.view = training.from;
-    await start(training.which);
-  } else show(training.from);
+  state.flight = null;
+  show(training.from);
 }
 
 const lastHud = {};
@@ -1056,6 +1276,14 @@ function refreshGhost(f) {
 function refreshHud(restart = false) {
   const f = state.flight;
   const p = f.player;
+  const operation = f.operationStatus?.();
+  const objective = `${operation?.label ?? ''}/${operation?.value ?? ''}`;
+  if (restart || lastHud.objective !== objective) {
+    $('operation-objective').hidden = !operation;
+    content('operation-label', operation?.label ?? '');
+    content('operation-value', operation?.value ?? '');
+    lastHud.objective = objective;
+  }
   if (restart || lastHud.hopControl !== f.realmHop) {
     const steering = usesFloatingStick() ? 'Touch and hold off-center on the stick' : 'Drag';
     const special = f.realmHop ? 'to Hop between realms' : `for ${SPECIALS[f.special].name}`;
@@ -1154,11 +1382,12 @@ async function settle() {
     state.pilot = pilot;
     if (!result) throw Error('Run unavailable');
     p.receipt = result;
+    pacing?.attempt(result, p.terminal);
   } catch (error) {
     p.error = error.message === 'Run unavailable' ? 'This run is no longer available to save.' : 'Flight save unavailable. Retry saving to bank the result.';
   } finally {
     p.working = false;
-    if (state.pending === p && state.view === 'result' && state.mode === 'menu') show('result', true);
+    if (state.pending === p && state.view === 'result' && state.mode === 'menu') showSettledResult();
   }
 }
 
@@ -1177,10 +1406,6 @@ async function changeSetting(key, value, controls = false) {
 
 async function handle(command) {
   const [type, value] = command.split(':');
-  if (type === 'spin-ship') {
-    state.titlePatrol?.spin();
-    return;
-  }
   if (type === 'update-web') {
     if (state.mode === 'menu' && state.newPack && !state.pending?.working && !state.pending?.error && !store.temporary) {
       location.replace(`/?build=${state.newPack}`);
@@ -1191,7 +1416,8 @@ async function handle(command) {
   audio.effect('ui');
   if (type === 'view') {
     if (value === 'hangar' && state.view === 'upgrade') updateHangar(`upgrade:${state.upgrade}`);
-    else if (value === 'home' && state.view === 'callSign') returnToPilot();
+    else if (value === 'callSign') openCallSign(state.view);
+    else if (state.view === 'callSign' && value === state.callSign?.from) closeCallSign();
     else if (state.view === 'legal' && value === state.legalFrom.view) {
       returnToControl(value, 'legal', state.legalFrom.scroll);
     } else if (Object.hasOwn(helpPages, state.view) && value === state.policyFrom.view) {
@@ -1209,8 +1435,10 @@ async function handle(command) {
     if (value === 'show' && ['settings', 'legal'].includes(state.view)) openCommerce(null, command);
     else if (value === 'preview' && state.view === 'result') {
       const receipt = state.pending?.receipt;
-      if (receipt?.stage === firstPaidStage - 1 && receipt.first && !store.temporary && requiresPurchase(firstPaidStage)) {
-        openCommerce(firstPaidStage, command);
+      const milestone = STAGES[FREE_MISSIONS - 1];
+      const destination = STAGES[FREE_MISSIONS];
+      if (receipt?.stage === milestone.id && receipt.first && !store.temporary && requiresPurchase(destination.id)) {
+        openCommerce(destination.id, command);
       }
     } else if (state.view === 'commerce' && value === 'back') closeCommerce();
     else if (state.view === 'commerce' && (value === 'purchase' || value === 'restore')) void runCommerce(value);
@@ -1237,9 +1465,30 @@ async function handle(command) {
   if (type === 'help') { state.helpBack = value; show('help'); return; }
   if (type === 'practice') { await start('1', 'practice', value); return; }
   if (type === 'finish-practice') { await finishPractice(); return; }
-  if (type === 'fly') {
-    const firstStage = value === 'next' || value === '1';
-    await start(value, firstStage && needsTraining() ? 'intro' : null);
+  if (type === 'reroll-call-sign' && state.view === 'callSign') {
+    const input = $('call-sign');
+    const next = suggestCallSign(input.value);
+    input.value = state.callSign.suggestion = next;
+    input.removeAttribute('aria-invalid');
+    $('call-sign-error').hidden = true;
+    announce(`Suggested call sign ${next}.`);
+    input.focus();
+    return;
+  }
+  if (type === 'campaign') {
+    if (value === 'veteran' && (!hasVeteran(state.pilot) || requiresPurchase(STAGES.at(-1).id))) return;
+    state.campaignVariant = value === 'veteran' ? 'veteran' : 'standard';
+    show('stages');
+    return;
+  }
+  if (type === 'story-replay' && state.view === 'storyLog') {
+    const beat = STORY_BEATS.find(({ id }) => id === value);
+    if (beat && storyAvailable(beat)) openStory(beat, 'storyLog');
+    return;
+  }
+  if (type === 'story-continue' && state.view === 'story') { await continueStory(); return; }
+  if (type === 'fly' || type === 'fly-veteran') {
+    await requestFlight(value, type === 'fly-veteran' ? 'veteran' : 'standard');
     return;
   }
   if (type === 'tab') { state.hangarTab = value; updateHangar(command); return; }
@@ -1261,9 +1510,13 @@ async function handle(command) {
     return;
   }
   if (type === 'install') {
+    const beforeTier = state.pilot.tiers[state.upgrade];
     const { pilot, result } = await store.change((saved) => install(saved, state.upgrade));
     state.pilot = pilot;
-    if (result) audio.chord([490, 620, 742], .14, .079);
+    if (result) {
+      audio.chord([490, 620, 742], .14, .079);
+      pacing?.purchase(state.upgrade, beforeTier, pilot);
+    }
     announce(result ? `${UPGRADES[state.upgrade].name} installed.` : 'Upgrade unavailable.');
     show('upgrade');
     return;
@@ -1301,9 +1554,11 @@ async function handle(command) {
   }
 }
 
-function returnToPilot() {
-  show('home', false);
-  menu.querySelector('[data-action="view:callSign"]').focus({ preventScroll: true });
+function closeCallSign() {
+  const { from, launch } = state.callSign;
+  state.callSign = null;
+  const command = launch ? `${launch.variant === 'veteran' ? 'fly-veteran' : 'fly'}:${launch.which}` : 'view:callSign';
+  returnToControl(from, command, 0);
 }
 
 menu.addEventListener('submit', async (event) => {
@@ -1314,8 +1569,8 @@ menu.addEventListener('submit', async (event) => {
   const input = form.elements.callSign;
   const status = $('call-sign-error');
   const callSign = normalizeCallSign(input.value);
-  if (callSign === null) {
-    status.textContent = 'Enter up to 16 letters, numbers, spaces, or hyphens.';
+  if (!callSign) {
+    status.textContent = callSign === '' ? 'Enter a call sign or reroll for a suggestion.' : 'Enter up to 16 letters, numbers, spaces or hyphens.';
     status.hidden = false;
     input.setAttribute('aria-invalid', 'true');
     input.focus();
@@ -1328,8 +1583,10 @@ menu.addEventListener('submit', async (event) => {
   try {
     const { pilot } = await store.change((saved) => { saved.callSign = callSign; });
     state.pilot = pilot;
-    returnToPilot();
+    const { launch } = state.callSign;
+    closeCallSign();
     announce(store.temporary ? 'Call sign set for this session.' : 'Call sign saved.');
+    if (launch) await requestFlight(launch.which, launch.variant);
   } catch {
     status.textContent = 'Device storage is unavailable. Try again.';
     status.hidden = false;
@@ -1402,6 +1659,15 @@ modal.addEventListener('cancel', (event) => { event.preventDefault(); if (state.
 
 const stickKnob = $('flight-stick-knob');
 
+for (const type of ['gesturestart', 'gesturechange']) {
+  field.addEventListener(type, (event) => {
+    if (state.mode === 'playing' && event.cancelable) event.preventDefault();
+  }, { passive:false });
+}
+field.addEventListener('touchmove', (event) => {
+  if (state.mode === 'playing' && event.touches.length > 1 && event.cancelable) event.preventDefault();
+}, { passive:false });
+
 sky.addEventListener('pointerdown', (event) => {
   if (state.mode !== 'playing' || state.pointer || event.button !== 0 || (!event.isPrimary && event.pointerType !== 'touch')) return;
   event.preventDefault();
@@ -1413,8 +1679,8 @@ sky.addEventListener('pointerdown', (event) => {
   const size = floating ? touchControlLayout(state.pilot.settings).stickSize : 0;
   state.pointer = { id, x, y, stick: floating ? { x:0, y:0, radius:size * (30 / 76) } : null };
   sky.setPointerCapture(event.pointerId);
+  state.flight.reanchor();
   if (floating) {
-    state.flight.reanchor();
     const bounds = sky.getBoundingClientRect();
     const insetX = Math.min(size / 2 + 4, bounds.width / 2);
     const insetY = Math.min(size / 2 + 4, bounds.height / 2);
@@ -1463,7 +1729,7 @@ sky.addEventListener('pointerup', (event) => {
   const dx = flight.xIntent - flight.player.x;
   const dy = flight.yIntent - flight.player.y;
   const distance = Math.hypot(dx, dy);
-  const releaseTravel = flight.ship.speed * .19;
+  const releaseTravel = flight.ship.speed * (flight.stats.speed ?? 1) * .19;
   if (distance > releaseTravel) {
     const trim = releaseTravel / distance - 1;
     flight.drag(dx * trim, dy * trim);
@@ -1476,7 +1742,10 @@ for (const type of ['pointercancel', 'lostpointercapture']) {
 
 window.addEventListener('keydown', (event) => {
   const action = globalThis.gameplayActionForKey(event.key);
-  if (event.key === 'Escape' && state.launch) {
+  if (event.key === 'Escape' && state.mode === 'menu' && state.view === 'story') {
+    event.preventDefault();
+    if (!event.repeat) menu.querySelector('[data-action="story-continue"]')?.click();
+  } else if (event.key === 'Escape' && state.launch) {
     event.preventDefault();
     if (!event.repeat) restoreLaunch(state.launch);
   } else if (event.key === 'Escape' && state.mode === 'menu' && state.view === 'commerce') {
@@ -1539,7 +1808,7 @@ function loop(timestamp) {
     const tick = globalThis.advanceFixedStep(clock, timestamp, (dt) => {
       const steering = state.pointer?.stick;
       if (steering && (steering.x || steering.y)) {
-        const travel = f.ship.speed * FIXED_TICK;
+        const travel = f.ship.speed * (f.stats.speed ?? 1) * FIXED_TICK;
         f.drag(steering.x * travel, steering.y * travel);
       }
       f.step(FIXED_TICK);
@@ -1561,8 +1830,10 @@ function loop(timestamp) {
       clearInput();
       state.mode = 'finishing';
       state.finishingFrame = timestamp;
-      if (end.status === 'defeat') field.dataset.ending = 'defeat';
-      state.finishAt = timestamp + (prefs.reduced ? 450 : end.status === 'defeat' ? 1480 : 1370);
+      const lostShip = end.status === 'defeat' && !end.damageCause?.startsWith('objective-');
+      if (lostShip) field.dataset.ending = 'defeat';
+      const finaleClear = end.status === 'clear' && f.boss?.kind === 'emperor';
+      state.finishAt = timestamp + (prefs.reduced ? 450 : finaleClear ? 2250 : lostShip ? 1480 : 1370);
       state.pending = { terminal: end, run: f.run, replay: state.recording?.finish(f.ticks, end) };
       state.recording = null;
       void settle();
@@ -1573,6 +1844,7 @@ function loop(timestamp) {
       clearInput();
       modal.close();
       state.mode = 'playing';
+      pacing?.scene('flight');
       f.resumeProtection();
       globalThis.resetFixedStepClock(clock, timestamp);
       sky.focus({ preventScroll: true });
@@ -1584,7 +1856,7 @@ function loop(timestamp) {
     renderer.advanceEffects(Math.min(.06, Math.max(0, timestamp - state.finishingFrame) / 1000));
     state.finishingFrame = timestamp;
     renderer.draw(f, appearance(f.run.assistance));
-    if (timestamp >= state.finishAt) show('result');
+    if (timestamp >= state.finishAt) showSettledResult();
   }
   requestAnimationFrame(loop);
 }

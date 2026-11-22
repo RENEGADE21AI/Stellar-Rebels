@@ -51,6 +51,7 @@ export function readBridgeRequest(event, flightUrl, session, platform) {
   if (operationsWithoutData.has(request.op)) return request.data === undefined ? request : null;
   switch (request.op) {
     case 'authorize-stage': return isArcadeStage(request.data) ? request : null;
+    case 'music': return ['hangar', 'flight', 'pause'].includes(request.data) ? request : null;
     case 'save': return event.data.length <= maxProfileBytes && Number.isSafeInteger(request.data?.schema) ? request : null;
     case 'haptic': return typeof request.data === 'string' ? request : null;
     default: return null;

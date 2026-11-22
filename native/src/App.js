@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Asset } from 'expo-asset';
+import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import Constants from 'expo-constants';
 import { randomUUID } from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
@@ -16,6 +17,7 @@ import { WebView } from 'react-native-webview';
 import { openStoreRating, readBridgeRequest, sameFlightDocument, storeRatingAvailable } from './bridge.mjs';
 import { createCommerce } from './commerce.mjs';
 import { installFlightFiles } from './flight-install.mjs';
+import { createGameMusic } from './music.mjs';
 
 const pack = require('../generated/flight.zip');
 const version = require('../generated/version.json');
@@ -77,8 +79,23 @@ function Game() {
   const [reload, setReload] = useState(0);
   const browser = useRef(null);
   const session = useRef(null);
+  const music = useRef(null);
+  const focused = useRef(true);
   const transactions = useRef(Promise.resolve());
   const lastFeedback = useRef(0);
+
+  useEffect(() => {
+    if (!flight) return;
+    music.current = createGameMusic({
+      createPlayer: createAudioPlayer,
+      source: (name) => new File(flight.directory, 'arcade', version.assetVersion, 'audio', name).uri,
+      prepare: () => setAudioModeAsync({
+        allowsRecording:false, shouldPlayInBackground:false, interruptionMode:'mixWithOthers', playsInSilentMode:true
+      }),
+      foreground: () => focused.current && AppState.currentState === 'active'
+    });
+    return () => { music.current?.dispose(); music.current = null; };
+  }, [flight]);
 
   useEffect(() => {
     let active = true;
@@ -96,14 +113,21 @@ function Game() {
     });
     void commerce.refresh();
     const subscription = AppState.addEventListener('change', (next) => {
+      if (next !== 'active') music.current?.pause();
       const event = next === 'active' ? 'stellar-native-foreground' : 'stellar-native-pause';
       sendToFlight(`window.dispatchEvent(new Event('${event}'));`);
       if (next === 'active') void commerce.refresh();
     });
     const shade = Platform.OS === 'android' && AppState.addEventListener('blur', () => {
+      focused.current = false;
+      music.current?.pause();
       sendToFlight("window.dispatchEvent(new Event('stellar-native-pause'));");
     });
-    return () => { unsubscribe(); subscription.remove(); if (shade) shade.remove(); };
+    const focus = Platform.OS === 'android' && AppState.addEventListener('focus', () => {
+      focused.current = true;
+      if (AppState.currentState === 'active') sendToFlight("window.dispatchEvent(new Event('stellar-native-foreground'));");
+    });
+    return () => { unsubscribe(); subscription.remove(); shade && shade.remove(); focus && focus.remove(); };
   }, [flight]);
 
   function sendToFlight(script, token = session.current) {
@@ -140,6 +164,12 @@ function Game() {
       `window.stellarNativeReply?.(${JSON.stringify({ id: request.id, client: request.client, ok, value })});`, token);
     if (request.op === 'rating-status') {
       reply(true, { available: ratingAvailable });
+      return;
+    }
+    if (request.op === 'music') {
+      if (request.data === 'pause') music.current?.pause();
+      else void music.current?.play(request.data).catch(() => {});
+      reply(true);
       return;
     }
     if (request.op === 'rate-app') {
@@ -214,11 +244,12 @@ function Game() {
     mediaPlaybackRequiresUserAction={false}
     automaticallyAdjustContentInsets={false}
     contentInsetAdjustmentBehavior="never"
+    scalesPageToFit={false}
     bounces={false}
     overScrollMode="never"
     setSupportMultipleWindows={false}
     webviewDebuggingEnabled={false}
-    onLoadStart={() => { session.current = null; }}
+    onLoadStart={() => { session.current = null; music.current?.pause(); }}
     onLoad={activateFlight}
     onMessage={receive}
     onContentProcessDidTerminate={() => { session.current = null; setReload((n) => n + 1); }}

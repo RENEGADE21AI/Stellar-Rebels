@@ -2,32 +2,41 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const pilot = import('../arcade/pilot.mjs');
-const clear = { status:'clear', score:3000, duration:175, kills:30, mastery:true };
+const catalog = import('../arcade/catalog.mjs');
+const clear = { status:'clear', score:3000, duration:420, kills:82, mastery:true };
 const defeat = { status:'defeat', score:2100, duration:66, kills:16, movement:650 };
 
-test('a loadout best follows the run snapshot and compares canonical upgrade sets', async () => {
-  const { beginRun, loadoutBest, newPilot, settleRun } = await pilot;
+async function completedPilot() {
+  const [{ newPilot }, { STAGES }] = await Promise.all([pilot, catalog]);
   const saved = newPilot();
-  saved.clears = { 1:1, 2:1, 3:1, 4:1, 5:1, 6:1 };
+  saved.clears = Object.fromEntries(STAGES.map(({ id }) => [id, 1]));
+  return saved;
+}
+
+test('a loadout best follows the run snapshot and compares canonical upgrade tiers', async () => {
+  const { beginRun, loadoutBest, settleRun } = await pilot;
+  const saved = await completedPilot();
   saved.ship = 'needle';
   saved.special = 'ion';
-  saved.equipment = ['hull','cells','chamber','rails'];
+  saved.tiers = { damage:15, rate:12, thrusters:4, energy:3 };
   beginRun(saved, 'maxed', 'arcade', 6);
 
   saved.ship = 'bastion';
+  saved.tiers.damage = 11;
   const receipt = settleRun(saved, 'maxed', clear);
   assert.equal(receipt.ship, 'needle');
+  assert.equal(receipt.tiers.damage, 15);
   assert.deepEqual(receipt.loadout, { improved:true, previous:null });
   assert.equal(loadoutBest(saved, 6), null);
   saved.ship = 'needle';
   saved.special = 'ghost';
   assert.equal(loadoutBest(saved, 6), null);
   saved.special = 'ion';
-  saved.equipment = ['rails','hull','chamber','cells'];
-  assert.deepEqual(loadoutBest(saved, 6), { score:3000, duration:175, status:'clear' });
+  saved.tiers = { energy:3, thrusters:4, rate:12, damage:15 };
+  assert.deepEqual(loadoutBest(saved, 6), { score:3000, duration:clear.duration, status:'clear' });
   assert.equal(loadoutBest(saved, 5), null);
   assert.equal(loadoutBest(saved, null), null);
-  saved.equipment = ['hull','chamber','rails'];
+  saved.tiers.thrusters = 5;
   assert.equal(loadoutBest(saved, 6), null);
 });
 
@@ -64,27 +73,28 @@ test('a clear beats a failed attempt once, and later clears recognize mastery wi
 });
 
 test('earlier career results stay visible without becoming current loadout targets', async () => {
-  const { beginRun, loadoutBest, newPilot, settleRun } = await pilot;
-  const saved = newPilot();
-  saved.clears[1] = 1;
+  const { beginRun, loadoutBest, migratePilot, settleRun } = await pilot;
   const legacy = { ...clear, score:10000, rules:'arcade-1', mode:'arcade', stage:1, ship:'kestrel', equipment:[] };
-  saved.records.arcade[1] = legacy;
+  const legacyLoadout = { score:10000, duration:clear.duration, status:'clear' };
+  const saved = migratePilot({ schema:1, clears:{ 1:1 }, records:{ arcade:{ 1:legacy }, loadouts:{ 'arcade-1/1/kestrel/ghost/stock':legacyLoadout } } });
   assert.equal(loadoutBest(saved, 1), null);
   const old = beginRun(saved, 'old-flight', 'arcade', 1);
   old.rules = 'arcade-1';
-  assert.equal(settleRun(saved, 'old-flight', clear).loadout, null);
+  assert.equal(settleRun(saved, 'old-flight', clear), null);
 
   beginRun(saved, 'new-flight', 'arcade', 1);
   const receipt = settleRun(saved, 'new-flight', clear);
-  assert.equal(receipt.best, false);
+  assert.equal(receipt.best, true);
   assert.equal(receipt.loadout.previous, null);
   assert.equal(loadoutBest(saved, 1).score, 3000);
-  assert.deepEqual(saved.records.arcade[1], legacy);
+  assert.equal(saved.records.arcade[1].score, 3000);
+  assert.deepEqual(saved.records.history['arcade-1/1'], legacy);
+  assert.deepEqual(saved.records.loadouts['arcade-1/1/kestrel/ghost/stock'], legacyLoadout);
 });
 
 test('Endless compares time first and score at equal time without awarding Salvage', async () => {
-  const { beginRun, loadoutBest, newPilot, settleRun } = await pilot;
-  const saved = newPilot();
+  const { beginRun, loadoutBest, settleRun } = await pilot;
+  const saved = await completedPilot();
   beginRun(saved, 'endless-one', 'endless', null);
   const first = settleRun(saved, 'endless-one', defeat);
   beginRun(saved, 'endless-two', 'endless', null);
@@ -103,58 +113,67 @@ test('Endless compares time first and score at equal time without awarding Salva
 });
 
 test('new Outer Orbit highs preserve the original Gravity Platform score and its independent mastery', async () => {
-  const { beginRun, loadoutBest, newPilot, settleRun } = await pilot;
-  const { RULES_VERSION } = await import('../arcade/catalog.mjs');
-  const saved = newPilot();
-  saved.clears = { 1:1, 2:1, 3:1, 4:1, 5:1 };
-  saved.mastery[5] = true;
+  const { beginRun, loadoutBest, migratePilot, settleRun } = await pilot;
+  const { stageById } = await catalog;
+  const stage = stageById(5);
+  const masteryKey = stage.mastery.key ?? stage.id;
   const original = { mode:'arcade', stage:5, ship:'kestrel', rules:'arcade-1', equipment:[],
     status:'clear', score:12340, duration:218, kills:31, breaks:0 };
-  saved.records.arcade[5] = original;
+  const saved = migratePilot({ schema:1, clears:{ 1:1, 2:1, 3:1, 4:1, 5:1 }, mastery:{ 5:true }, records:{ arcade:{ 5:original } } });
   beginRun(saved, 'earlier-flight', 'arcade', 5).rules = 'arcade-1';
   beginRun(saved, 'wraith-clear', 'arcade', 5);
-  const first = settleRun(saved, 'wraith-clear', { ...clear, score:32664, duration:186, mastery:false });
+  const first = settleRun(saved, 'wraith-clear', { ...clear, score:32664, mastery:false });
   assert.equal(first.masteryMet, false);
   assert.equal(saved.records.arcade[5].score, 32664);
   assert.deepEqual(saved.records.history['arcade-1/5'], original);
-  assert.equal(saved.mastery[5], true);
-  assert.equal(saved.mastery.wraith, undefined);
+  assert.equal(saved.legacy.mastery[5], true);
+  assert.equal(saved.mastery[masteryKey], undefined);
 
-  const earlier = settleRun(saved, 'earlier-flight', { ...clear, score:15300 });
-  assert.equal(earlier.best, false);
-  assert.equal(earlier.loadout, null);
-  assert.equal(earlier.mastery, false);
-  assert.equal(saved.records.history['arcade-1/5'].score, 15300);
   const salvage = saved.salvage;
-  assert.deepEqual(settleRun(saved, 'earlier-flight', { ...clear, score:99999 }), earlier);
+  assert.equal(settleRun(saved, 'earlier-flight', { ...clear, score:15300 }), null);
   assert.equal(saved.salvage, salvage);
-  assert.equal(saved.records.history['arcade-1/5'].score, 15300);
+  assert.equal(saved.records.history['arcade-1/5'].score, original.score);
   assert.equal(loadoutBest(saved, 5).score, 32664);
 
-  beginRun(saved, 'earlier-high', 'arcade', 5).rules = 'arcade-1';
-  settleRun(saved, 'earlier-high', { ...clear, score:37000 });
+  beginRun(saved, 'new-high', 'arcade', 5);
+  const newHigh = settleRun(saved, 'new-high', { ...clear, score:37000 });
   assert.equal(saved.records.arcade[5].score, 37000);
-  assert.deepEqual(Object.keys(saved.records.history), [`${RULES_VERSION}/5`]);
-  assert.equal(saved.records.history[`${RULES_VERSION}/5`].score, 32664);
-  assert.equal(loadoutBest(saved, 5).score, 32664);
+  assert.equal(newHigh.mastery, true);
+  assert.equal(saved.mastery[masteryKey], true);
+  assert.deepEqual(saved.records.history['arcade-1/5'], original);
+  assert.equal(loadoutBest(saved, 5).score, 37000);
 });
 
 test('Endless keeps an earlier rules best by duration and fills the current loadout record', async () => {
-  const { beginRun, loadoutBest, newPilot, settleRun } = await pilot;
-  const saved = newPilot();
+  const { beginRun, hasEndless, hasVeteran, loadoutBest, migratePilot, settleRun } = await pilot;
   const original = { mode:'endless', stage:null, ship:'kestrel', rules:'arcade-8', equipment:[],
     status:'defeat', score:9500, duration:150 };
-  saved.records.endless = original;
-  beginRun(saved, 'old-survival', 'endless', null).rules = 'arcade-8';
+  const saved = migratePilot({ schema:1, records:{ endless:original } });
+  assert.equal(hasEndless(saved), true);
+  assert.equal(hasVeteran(saved), false);
+  assert.equal(loadoutBest(saved, null), null);
   beginRun(saved, 'new-survival', 'endless', null);
-  const current = settleRun(saved, 'new-survival', { ...defeat, score:4300, duration:190 });
+  const current = settleRun(saved, 'new-survival', { ...defeat, score:4300, duration:130 });
   assert.equal(current.award, 0);
   assert.deepEqual(saved.records.history['arcade-8/endless'], original);
-  const earlier = settleRun(saved, 'old-survival', { ...defeat, score:6400, duration:170 });
-  assert.equal(earlier.best, false);
-  assert.equal(saved.records.history['arcade-8/endless'].duration, 170);
-  assert.equal(saved.records.endless.duration, 190);
-  assert.equal(loadoutBest(saved, null).duration, 190);
+  assert.equal(current.best, true);
+  assert.equal(saved.records.endless.duration, 130);
+  assert.equal(loadoutBest(saved, null).duration, 130);
   assert.deepEqual(Object.keys(saved.records.history), ['arcade-8/endless']);
   assert.equal(saved.salvage, 0);
+});
+
+test('Veteran and Standard compare tiers and mastery independently on the same mission', async () => {
+  const { beginRun, loadoutBest, settleRun } = await pilot;
+  const saved = await completedPilot();
+  const now = 1_720_000_000_000;
+  beginRun(saved, 'standard', 'arcade', 1, now);
+  beginRun(saved, 'veteran', 'arcade', 1, now, '', 'veteran');
+  const standard = settleRun(saved, 'standard', clear);
+  const veteran = settleRun(saved, 'veteran', { ...clear, score:2500 });
+  assert.equal(standard.mastery, true);
+  assert.equal(veteran.mastery, true);
+  assert.equal(veteran.loadout.previous, null);
+  assert.equal(loadoutBest(saved, 1).score, 3000);
+  assert.equal(loadoutBest(saved, 1, 'veteran').score, 2500);
 });

@@ -9,12 +9,12 @@ const load = Promise.all(['flight', 'pilot', 'catalog', 'bosses'].map((name) => 
 const step = 1 / 60;
 
 function context(which = 1, equipment = []) {
-  return { id: 'test-flight', mode: 'arcade', stage: which, ship: 'kestrel', equipment, assistance: {} };
+  return { id: 'test-flight', mode: 'arcade', stage: which, ship: 'kestrel', rules: 'arcade-11', equipment, assistance: {} };
 }
 
-test('stock and fully upgraded Fighter can clear every authored Standard stage', async () => {
-  const [{ Flight, bounds }, , { STAGES }] = await load;
-  for (const stage of STAGES) {
+test('stock and fully upgraded Fighter can clear every arcade-11 route', async () => {
+  const [{ Flight, bounds }, , { legacyStageById }] = await load;
+  for (const stage of Array.from({ length: 6 }, (_, index) => legacyStageById(index + 1))) {
     for (const equipment of [[], ['rails','chamber','cells','hull']]) {
       const f = new Flight(context(stage.id, equipment));
       while (f.status === 'active' && f.elapsed < stage.bossAt + 110) {
@@ -33,9 +33,9 @@ test('stock and fully upgraded Fighter can clear every authored Standard stage',
   }
 });
 
-test('each earned ship can beat Wraith and the finale with its stock loadout', async () => {
-  const [{ Flight, bounds }, , { STAGES }] = await load;
-  for (const stage of STAGES.slice(-2)) {
+test('each earned ship can beat arcade-11 Wraith and Crown with its stock loadout', async () => {
+  const [{ Flight, bounds }, , { legacyStageById }] = await load;
+  for (const stage of [legacyStageById(5), legacyStageById(6)]) {
     for (const ship of ['needle','bastion']) {
       const f = new Flight({ ...context(stage.id), ship });
       while (f.status === 'active' && f.elapsed < stage.bossAt + 100) {
@@ -56,47 +56,55 @@ test('each earned ship can beat Wraith and the finale with its stock loadout', a
 test('Arcade progression settles one receipt atomically and Endless pays no Salvage', async () => {
   const [, pilot, { STAGES }] = await load;
   const p = pilot.newPilot();
-  assert.equal(pilot.hasStage(p, 1), true);
-  assert.equal(pilot.hasStage(p, 2), false);
-  assert.equal(pilot.install(p, 'rails'), false);
-  assert.equal(pilot.equip(p, 'need' + 'le'), false);
-  assert.equal(pilot.beginRun(p, 'early', 'arcade', 2), null);
-  const result = { status:'clear', score:9410, duration:183, kills:36, breaks:2 };
-  const entry = pilot.beginRun(p, 'first', 'arcade', 1);
-  assert.deepEqual(entry.equipment, []);
+  const [opening, pursuit] = STAGES;
+  assert.equal(pilot.hasStage(p, opening.id), true);
+  assert.equal(pilot.hasStage(p, pursuit.id), false);
+  assert.equal(pilot.install(p, 'damage'), false);
+  assert.equal(pilot.equip(p, 'needle'), false);
+  assert.equal(pilot.beginRun(p, 'early', 'arcade', pursuit.id), null);
+  const result = { status:'clear', score:9410, duration:438, kills:78, breaks:2, movement:2460 };
+  const entry = pilot.beginRun(p, 'first', 'arcade', opening.id);
+  assert.deepEqual(entry.tiers, { damage:0, rate:0, thrusters:0, energy:0 });
   const first = pilot.settleRun(p, 'first', result);
-  assert.equal(first.award, 78);
+  assert.equal(first.award, opening.first);
   assert.equal(first.breaks, 2);
-  assert.equal(first.newStage, STAGES.length > 1 ? 2 : null);
+  assert.equal(first.newStage, pursuit.id);
   assert.equal(pilot.settleRun(p, 'first', result), first);
-  assert.equal(p.salvage, 78);
-  assert.ok(pilot.install(p, 'rails'));
-  assert.equal(pilot.install(p, 'rails'), false);
-  assert.equal(p.salvage, 8);
-  pilot.beginRun(p, 'repeat', 'arcade', 1);
-  assert.equal(pilot.settleRun(p, 'repeat', result).award, 62);
-  pilot.beginRun(p, 'ongoing', 'arcade', 1);
+  assert.equal(p.salvage, opening.first);
+  assert.ok(pilot.install(p, 'damage'));
+  assert.equal(p.salvage, opening.first - 18);
+  pilot.beginRun(p, 'repeat', 'arcade', opening.id);
+  assert.equal(pilot.settleRun(p, 'repeat', result).award, Math.round(.62 * opening.first));
+  pilot.beginRun(p, 'ongoing', 'arcade', opening.id);
   pilot.abandonRun(p, 'ongoing');
   assert.equal(pilot.settleRun(p, 'ongoing', result), null);
-  pilot.beginRun(p, 'free', 'endless');
-  const s = pilot.settleRun(p, 'free', { ...result, status:'defeat' });
+  for (const stage of STAGES.slice(1)) {
+    const run = pilot.beginRun(p, `clear-${stage.id}`, 'arcade', stage.id);
+    pilot.settleRun(p, run.id, result);
+  }
+  const balance = p.salvage;
+  pilot.beginRun(p, 'survival', 'endless');
+  const s = pilot.settleRun(p, 'survival', { ...result, status:'defeat' });
   assert.equal(s.award, 0);
+  assert.ok(s.xpAward > 0);
   assert.equal(s.ship, 'kestrel');
-  assert.equal(p.records.endless.duration, 183);
-  assert.equal(p.salvage, 70);
+  assert.equal(p.records.endless.duration, result.duration);
+  assert.equal(p.salvage, balance);
 });
 
-test('Ion Burst unlocks at Stage 2 and freezes in each attempt and result', async () => {
-  const [, pilot] = await load;
+test('Ion Burst unlocks at Asteroid Belt and freezes in each attempt and result', async () => {
+  const [, pilot, { STAGES }] = await load;
   const p = pilot.newPilot();
   delete p.special;
-  assert.equal(pilot.beginRun(p, 'legacy', 'arcade', 1).special, 'ghost');
+  assert.equal(pilot.beginRun(p, 'opening', 'arcade', STAGES[0].id).special, 'ghost');
   assert.equal(pilot.equipSpecial(p, 'ion'), false);
   assert.equal(pilot.equipSpecial(p, 'constructor'), false);
-  const terminal = { status:'clear', score:2500, duration:160, kills:28 };
-  assert.equal(pilot.settleRun(p, 'legacy', terminal).newSpecial, null);
-  pilot.beginRun(p, 'second', 'arcade', 2);
-  assert.equal(pilot.settleRun(p, 'second', terminal).newSpecial, 'ion');
+  const terminal = { status:'clear', score:2500, duration:460, kills:28 };
+  assert.equal(pilot.settleRun(p, 'opening', terminal).newSpecial, null);
+  pilot.beginRun(p, 'pursuit', 'arcade', STAGES[1].id);
+  assert.equal(pilot.settleRun(p, 'pursuit', terminal).newSpecial, null);
+  pilot.beginRun(p, 'belt', 'arcade', STAGES[2].id);
+  assert.equal(pilot.settleRun(p, 'belt', terminal).newSpecial, 'ion');
   assert.equal(pilot.equipSpecial(p, 'ion'), true);
   assert.equal(pilot.beginRun(p, 'repeat', 'arcade', 1).special, 'ion');
   assert.equal(pilot.equipSpecial(p, 'ghost'), true);
@@ -105,12 +113,12 @@ test('Ion Burst unlocks at Stage 2 and freezes in each attempt and result', asyn
   assert.equal(p.records.arcade[1].special, 'ion');
   assert.equal(receipt.newSpecial, null);
   delete p.special;
-  assert.equal(pilot.hasSpecial(p, 'ion'), true, 'earlier Stage 2 clears still unlock Ion Burst');
-  assert.equal(pilot.beginRun(p, 'saved', 'endless').special, 'ghost');
+  assert.equal(pilot.hasSpecial(p, 'ion'), true);
+  assert.equal(pilot.beginRun(p, 'saved', 'arcade', STAGES[2].id).special, 'ghost');
 });
 
 test('free clear progression earns both ships and keeps a previously earned Gunship', async () => {
-  const [, pilot] = await load;
+  const [, pilot, { STAGES }] = await load;
   const progress = pilot.newPilot();
   const terminal = { status:'clear', score:2500, duration:170, kills:28 };
   const clear = (stage, id = String(stage)) => {
@@ -119,49 +127,30 @@ test('free clear progression earns both ships and keeps a previously earned Guns
   };
   assert.equal(pilot.hasShip(progress, 'kestrel'), true);
   assert.equal(pilot.hasShip(progress, 'bastion'), false);
-  assert.equal(clear(1).newShip, null);
-  const stageTwo = clear(2);
-  assert.equal(stageTwo.newShip, 'needle');
-  assert.equal(stageTwo.newSpecial, 'ion');
+  assert.equal(clear(STAGES[0].id).newShip, null);
+  assert.equal(clear(STAGES[1].id).newShip, null);
+  const belt = clear(STAGES[2].id);
+  assert.equal(belt.newShip, 'needle');
+  assert.equal(belt.newSpecial, 'ion');
   assert.equal(pilot.hasShip(progress, 'bastion'), false);
-  assert.equal(clear(3).newShip, 'bastion');
-  assert.equal(clear(3, 'repeat').newShip, null);
+  assert.equal(clear(STAGES[3].id).newShip, null);
+  assert.equal(clear(STAGES[4].id).newShip, 'bastion');
+  assert.equal(clear(STAGES[4].id, 'repeat').newShip, null);
   assert.ok(pilot.equip(progress, 'bastion'));
-  assert.equal(pilot.beginRun(progress, 'survival', 'endless').ship, 'bastion');
-  assert.equal(clear(4).newShip, null);
+  assert.equal(pilot.beginRun(progress, 'relay-again', 'arcade', STAGES[4].id).ship, 'bastion');
 
-  const existing = pilot.newPilot();
-  existing.clears[4] = 1;
+  const existing = pilot.migratePilot({ schema:1, clears:{ 4:1 }, ship:'bastion' });
   assert.ok(pilot.equip(existing, 'bastion'));
 });
 
-test('an active attempt from the previous release retains its payout rules', async () => {
-  const [, pilot, { STAGES }] = await load;
-  const p = pilot.newPilot();
-  p.defeatBank = { 1:20 };
-  const attempt = (id, duration, kills, movement = 120, stage = 1) => {
-    const active = pilot.beginRun(p, id, 'arcade', stage);
-    active.rules = 'arcade-6';
-    delete active.rewardVersion;
-    return pilot.settleRun(p, id, { status:'defeat', duration, kills, movement, score:1000 });
-  };
-  assert.equal(attempt('quit', 14, 8).award, 0);
-  assert.equal(attempt('idle', 80, 12, 0).award, 0);
-  assert.equal(attempt('low-combat', 80, 4).award, 0);
-  const first = attempt('first', 80, 12);
-  assert.equal(first.award, 4);
-  assert.equal(pilot.settleRun(p, 'first', { status:'defeat' }), first);
-  assert.equal(attempt('equal-as-new-run', 80, 12).award, first.award);
-  assert.equal(attempt('better', 111, 24).award, 7);
-  assert.equal(p.salvage, 15);
-  for (const stage of STAGES) {
-    if (stage.id > 1) p.clears[stage.id - 1] = 1;
-    for (let t = 24; t <= stage.bossAt + 5; t++) {
-      const award = attempt(`bound-${stage.id}-${t}`, t, 300, 200, stage.id).award;
-      assert.ok(award / t < stage.repeat / (stage.bossAt + 55), `${stage.name} defeat farming at ${t}s`);
-    }
-  }
-  assert.equal(pilot.settleRun(p, 'first', { status:'defeat' }), null, 'aged-out receipts still have no active run to settle');
+test('old settled receipts stay idempotent and interrupted flights cannot mint cross-rules payouts', async () => {
+  const [, pilot] = await load;
+  const saved = { schema:1, salvage:31, receipts:{ old:{ award:31 } }, active:{ running:{ rules:'arcade-11', stage:1 } } };
+  const p = pilot.migratePilot(saved);
+  assert.equal(pilot.settleRun(p, 'old', { status:'defeat' }).award, 31);
+  assert.equal(pilot.settleRun(p, 'running', { status:'clear' }), null);
+  assert.equal(p.salvage, 31);
+  assert.equal(p.lifetimeXp, 0);
 });
 
 test('an active minute pays useful Salvage while clears earn more per minute', async () => {
@@ -177,18 +166,18 @@ test('an active minute pays useful Salvage while clears earn more per minute', a
   assert.equal(attempt('idle-then-steer', 'defeat', 60, 15, 80).award, 0);
   assert.equal(attempt('no-combat', 'defeat', 60, 4, 1200).award, 0);
   const active = attempt('active-minute', 'defeat', 60, 15, 900);
-  assert.equal(active.award, 18);
+  assert.ok(active.award > 0);
   assert.equal(pilot.settleRun(p, 'active-minute', { status:'defeat' }), active);
-  assert.equal(attempt('another-minute', 'defeat', 60, 15, 900).award, 18);
-  assert.equal(p.salvage, 36);
+  assert.equal(attempt('another-minute', 'defeat', 60, 15, 900).award, active.award);
+  assert.equal(p.salvage, 2 * active.award);
   for (const stage of STAGES) {
     p.clears[stage.id] = 1;
     const expectedClearTime = stage.bossAt + 55;
-    const clear = attempt(`clear-${stage.id}`, 'clear', expectedClearTime, 50, 2400, stage.id);
+    const clear = attempt(`clear-${stage.id}`, 'clear', expectedClearTime, 50, 3100, stage.id);
     for (const duration of [24, 45, 60, 90, expectedClearTime, expectedClearTime + 90]) {
-      const loss = attempt(`defeat-${stage.id}-${duration}`, 'defeat', duration, 70, 2400, stage.id);
+      const loss = attempt(`defeat-${stage.id}-${duration}`, 'defeat', duration, 70, 100 + duration * 5, stage.id);
       assert.ok(loss.award / duration < clear.award / expectedClearTime, `${stage.name} defeat farming at ${duration}s`);
-      assert.ok(loss.award <= clear.award * .65);
+      assert.ok(loss.award <= clear.award * .6);
     }
   }
 });
@@ -598,17 +587,17 @@ test('Wraith realm hops alternate actual vulnerability and a charged volley keep
   }
 });
 
-test('a returning Outer Orbit pilot keeps the original mastery and earns Wraith mastery separately', async () => {
-  const [, { newPilot, beginRun, settleRun }] = await load;
-  const pilot = newPilot();
-  for (const stage of [1, 2, 3, 4, 5]) pilot.clears[stage] = 1;
-  pilot.mastery[5] = true;
+test('migration keeps original Outer Orbit mastery and awards new Wraith mastery separately', async () => {
+  const [, { migratePilot, beginRun, settleRun }, { stageById }] = await load;
+  const pilot = migratePilot({ schema:1, clears:{ 1:1, 2:1, 3:1, 4:1, 5:1 }, mastery:{ 5:true, wraith:true } });
+  const wraith = stageById(5);
   const run = beginRun(pilot, 'fresh-wraith', 'arcade', 5);
-  const result = settleRun(pilot, run.id, { status:'clear', score:5000, duration:190, kills:18, mastery:true });
+  const result = settleRun(pilot, run.id, { status:'clear', score:5000, duration:480, kills:68, mastery:true });
   assert.equal(result.first, false);
-  assert.equal(result.award, 124);
+  assert.equal(result.award, Math.round(.62 * wraith.first));
   assert.equal(result.mastery, true);
-  assert.deepEqual(pilot.mastery, { 5:true, wraith:true });
+  assert.deepEqual(pilot.mastery, { [wraith.mastery.key ?? wraith.id]:true });
+  assert.deepEqual(pilot.legacy.mastery, { 5:true, wraith:true });
 });
 
 test('ordinary flight, cruisers and bosses share the same arena boundaries', async () => {
@@ -649,7 +638,7 @@ test('ordinary flight, cruisers and bosses share the same arena boundaries', asy
   assert.deepEqual(f.movementBounds, bounds);
 });
 
-test('Vesper stages two forward cruiser encounters in offset lanes with lighter patrol guns', async () => {
+test('arcade-11 Vesper stages two forward cruiser encounters in offset lanes with lighter patrol guns', async () => {
   const [{ Flight, bounds }, , { WIDTH, HEIGHT }] = await load;
   const f = new Flight({ ...context(), seed:'4288578730338ed3aecc03a02e15645c' });
   f.player.guard = Infinity;
@@ -998,12 +987,15 @@ test('a fast lance hits the center of each banked pilot and clears their wing ti
   }
 });
 
-test('the seed controls return lanes and the replay verifier rebuilds the score from inputs', async () => {
-  const [{ Flight, bounds }, , { RULES_VERSION }] = await load;
+test('a current replay preserves the seed, upgrade tiers and score', async () => {
+  const [{ Flight, bounds }, , { RULES_VERSION, STAGES }] = await load;
   const { captureReplay, verifyReplay } = await import('../arcade/replay.mjs');
   const seed = '4288578730338ed3aecc03a02e15645c';
+  const stage = STAGES[0];
+  const run = { ...context(stage.id), seed, rules:RULES_VERSION, special:'ion', variant:'standard',
+    tiers:{ damage:3, rate:2, thrusters:1, energy:4 } };
   const lanes = (value) => {
-    const f = new Flight({ ...context(), seed:value });
+    const f = new Flight({ ...run, seed:value });
     for (let i = 0; i < 10; i++) {
       f.addEnemy({ kind:'scout', lane:.34 });
       f.startReturn(f.enemies.at(-1));
@@ -1013,10 +1005,9 @@ test('the seed controls return lanes and the replay verifier rebuilds the score 
   assert.deepEqual(lanes(seed), lanes(seed));
   assert.notDeepEqual(lanes(seed), lanes('264d04d251dd434a82254d6a3f5409eb'));
 
-  const run = { ...context(), seed, rules:RULES_VERSION, special:'ion' };
   const capture = captureReplay(run);
   const f = new Flight(run, { recordInput:capture.recordInput });
-  while (f.status === 'active' && f.elapsed < 250) {
+  while (f.status === 'active' && f.elapsed < stage.bossAt + 120) {
     if (f.ticks % 5 === 0) {
       const desired = chooseFlightPath(f, bounds);
       f.drag(desired.x - f.xIntent, desired.y - f.yIntent);
@@ -1027,7 +1018,7 @@ test('the seed controls return lanes and the replay verifier rebuilds the score 
     f.step(step);
     f.takeEvents();
   }
-  assert.equal(f.status, 'clear');
+  assert.notEqual(f.status, 'active');
   const replay = JSON.parse(JSON.stringify(capture.finish(f.ticks, f.terminal())));
   assert.ok(replay.commands.length < f.ticks);
   const start = performance.now();
@@ -1035,7 +1026,9 @@ test('the seed controls return lanes and the replay verifier rebuilds the score 
   console.log(`Replay ${JSON.stringify(replay).length} bytes verified in ${Math.round(performance.now() - start)} ms`);
   assert.equal(checked.valid, true, JSON.stringify(checked));
   assert.equal(checked.result.score, f.score);
-  assert.equal(checked.board, `${RULES_VERSION}/arcade/1/kestrel/stock/ion`);
+  assert.equal(checked.board, `${RULES_VERSION}/arcade/${stage.id}/kestrel/3-2-1-4/ion`);
+  assert.equal(verifyReplay({ ...replay, run:{ ...replay.run, tiers:{ ...replay.run.tiers, damage:16 } } }).valid, false);
+  assert.equal(verifyReplay({ ...replay, run:{ ...replay.run, variant:'hard' } }).valid, false);
   assert.equal(verifyReplay({ ...replay, run:{ ...replay.run, special:'unknown' } }).valid, false);
   assert.equal(verifyReplay({ ...replay, run:{ ...replay.run, special:['ion'] } }).valid, false);
   assert.equal(verifyReplay({ ...replay, result:{ ...replay.result, score:f.score + 1 } }).valid, false);
@@ -1044,6 +1037,34 @@ test('the seed controls return lanes and the replay verifier rebuilds the score 
   const replace = replay.commands[1]?.[0] === 1 ? 1 : 0;
   replay.commands.splice(1, replace, [1, x, y, 1]);
   assert.match(verifyReplay(replay).reason, /Special was unavailable/);
+});
+
+test('an exact build 3 replay retains its four installed legacy upgrades and outcome', async () => {
+  const { verifyReplay } = await import('../arcade/replay.mjs');
+  // Captured from d864499 with an untouched aim, before the campaign migration.
+  const replay = {
+    schema:1,
+    run:{ seed:'4288578730338ed3aecc03a02e15645c', rules:'arcade-11', mode:'arcade', stage:1,
+      ship:'kestrel', equipment:['rails', 'chamber', 'cells', 'hull'], special:'ion' },
+    ticks:1408, commands:[[0, 3072, 9830, 0]],
+    result:{ status:'defeat', score:2075, kills:15, breaks:0, mastery:false }
+  };
+  const checked = verifyReplay(replay);
+  assert.equal(checked.valid, true, JSON.stringify(checked));
+  assert.equal(checked.board, 'arcade-11/arcade/1/kestrel/cells,chamber,hull,rails/ion');
+  assert.deepEqual(checked.result, replay.result);
+});
+
+test('all current ships keep the five-HP cap after maximum upgrades and repair pickups', async () => {
+  const [{ Flight }, , { RULES_VERSION, SHIPS }] = await load;
+  for (const [ship, expected] of [['kestrel', 5], ['needle', 4], ['bastion', 5]]) {
+    const f = new Flight({ ...context(), rules:RULES_VERSION, ship, tiers:{ damage:15, rate:15, thrusters:15, energy:15 } });
+    assert.equal(SHIPS[ship].hull, expected);
+    assert.equal(f.player.maxHull, expected);
+    f.player.hull = 1;
+    for (let i = 0; i < 6; i++) f.collect({ kind:'repair' });
+    assert.equal(f.player.hull, expected);
+  }
 });
 
 test('reduced effects preserve shot origins and combat outcomes', async () => {

@@ -3,7 +3,7 @@ import { bossPartPosition } from './bosses.mjs';
 import { commandCharge, vanePosition } from './formations.mjs';
 import { SPECTRAL, WRAITH_EMITTER, otherRealm, realmTint } from './wraith.mjs';
 import { diveWarningAt, shardArmTime } from './enemy-course.mjs';
-import { shieldModules } from './collision.mjs';
+import { moduleSprite, shieldModules } from './collision.mjs';
 import { spriteBodies } from './silhouettes.mjs';
 
 export function spriteUrl(key) {
@@ -45,6 +45,14 @@ const collapseBeats = [
   { at:.16, x:-.23, y:-.04, color:'#ff9e60', count:14, radius:20 },
   { at:.34, x:.27, y:.09, color:'#ffc086', count:19, radius:23 },
   { at:.61, x:.02, y:.03, color:'#ffe4ad', count:39, radius:42 }
+];
+const flagshipCollapse = [
+  { at:.15, x:-.29, y:-.07, color:'#ff9e60', count:22, radius:25 },
+  { at:.36, x:.28, y:-.09, color:'#ffb36d', count:25, radius:29 },
+  { at:.64, x:0, y:.086, color:'#e1b2ff', count:26, radius:30 },
+  { at:.98, x:.18, y:.02, color:'#ffc086', count:28, radius:32 },
+  { at:1.24, x:-.19, y:.09, color:'#ffd196', count:32, radius:36 },
+  { at:1.63, x:0, y:.025, color:'#fff0b3', count:48, radius:60 }
 ];
 
 function seededNoise(i) {
@@ -156,14 +164,15 @@ export class FlightScene {
 
   async prepare(flight, signal) {
     const environment = flight.stage.environment;
-    const illustration = `${playfields[environment]}-playfield`;
+    const illustration = `${flight.stage.backdrop ?? playfields[environment]}-playfield`;
     const fallback = `env-${environment}`;
-    const keyList = new Set([...regular, ...variantKeys, flight.run.ship, flight.stage.boss, illustration]);
+    const bossArt = (kind) => BOSSES[kind]?.art ?? kind;
+    const keyList = new Set([...regular, ...variantKeys, flight.run.ship, bossArt(flight.stage.boss), illustration]);
     if (flight.endless || flight.stage.cruisers?.length) {
       keyList.add('cruiser');
       keyList.add('cruiser-alt');
     }
-    if (flight.endless) for (const boss of ENDLESS_BOSSES) keyList.add(boss);
+    if (flight.endless) for (const boss of ENDLESS_BOSSES) keyList.add(bossArt(boss));
     if (keyList.has('wraith')) keyList.add('wraith-ghost');
     const sprites = new Map([...this.sprites].filter(([key]) => keyList.has(key) || key === fallback));
     const deadline = performance.now() + 3200;
@@ -206,9 +215,9 @@ export class FlightScene {
   accept(events, reduce) {
     for (const e of events) {
       switch (e.type) {
-        case 'hit': this.burst(e.x, e.y, '#adfff1', reduce ? 2 : 5, 84, .18); break;
-        case 'shieldHit': this.burst(e.x, e.y, '#a0bfff', 3, 52, .25); break;
-        case 'rockHit': this.burst(e.x, e.y, '#ffc694', 2, 49, .14); break;
+        case 'hit': this.contact(e, '#adfff1', reduce, 7, 84); break;
+        case 'shieldHit': this.contact(e, '#a0bfff', reduce, 12, 60); break;
+        case 'rockHit': this.contact(e, '#ffc694', reduce, 5, 49); break;
         case 'enemyDown': this.explode(e.x, e.y, '#ff8a5c', 17, 13); break;
         case 'splitterSplit': {
           const { parent, children } = e.detail;
@@ -249,6 +258,13 @@ export class FlightScene {
         default: break;
       }
       if (reduce) this.cameraPulse = 0;
+    }
+  }
+
+  contact(point, color, reduced, radius, speed) {
+    this.burst(point.x, point.y, color, reduced ? 2 : 4, speed, .16);
+    if (!reduced && this.shocks.length < 24) {
+      this.shocks.push({ x:point.x, y:point.y, color, life:0, total:.14, radius, hollow:true });
     }
   }
 
@@ -302,13 +318,14 @@ export class FlightScene {
     if (this.bossWreck) {
       const wreck = this.bossWreck;
       wreck.age += dt;
-      const beat = !wreck.reduced && collapseBeats[wreck.next];
+      const flagship = wreck.kind === 'emperor';
+      const beat = !wreck.reduced && (flagship ? flagshipCollapse : collapseBeats)[wreck.next];
       if (beat && wreck.age >= beat.at) {
         wreck.next++;
         this.explode(wreck.x + beat.x * wreck.size, wreck.y + beat.y * wreck.size + wreck.age * 16,
           beat.color, beat.count, beat.radius);
       }
-      if (wreck.age >= (wreck.reduced ? .42 : 1.32)) this.bossWreck = null;
+      if (wreck.age >= (wreck.reduced ? .42 : flagship ? 2.18 : 1.32)) this.bossWreck = null;
     }
     this.cameraPulse = Math.max(0, this.cameraPulse - dt * 2.2);
     this.hurtPulse = Math.max(0, this.hurtPulse - dt * 1.7);
@@ -617,6 +634,16 @@ export class FlightScene {
       c.restore();
     }
     this.sprite(look, e.x, e.y, e.spec.size, turn, e.retreat ? .66 : 1);
+    if (e.priority && !e.retreat) {
+      const radius = Math.max(13, e.spec.size * .38);
+      for (const side of [-1, 1]) {
+        const x = e.x + side * radius;
+        const y = e.y - radius;
+        line(c, x, y, -side * 6, 0, '#ffdc96', 2);
+        line(c, x, y, 0, 7, '#ffdc96', 2);
+      }
+      filled(c, e.x, e.y - radius - 4, 2, '#fff1bb');
+    }
     if (e.carrying && !e.retreat) {
       const supply = PICKUPS[e.carrying];
       const rack = hardpointAt(e, 0, -e.spec.size * .22, e.turn);
@@ -630,7 +657,7 @@ export class FlightScene {
       const muzzle = enemyMuzzle(e);
       filled(c, muzzle.x, muzzle.y, lerp(1.45, 2.65, progress), '#ffc78f');
     }
-    const canTelegraph = e.kind !== 'splitter' && !(e.kind === 'shard' && (arming || e.volley > 0));
+    const canTelegraph = !e.unarmed && e.kind !== 'splitter' && !(e.kind === 'shard' && (arming || e.volley > 0));
     if (canTelegraph && e.fireTimer < .26 && e.y > 102 && !e.dive && !e.retreat) {
       const points = e.kind === 'lancer' ? GUNNER_MUZZLES.map(([dx, dy]) => hardpointAt(e, dx, dy, e.turn)) : [enemyMuzzle(e)];
       for (const muzzle of points) {
@@ -677,14 +704,14 @@ export class FlightScene {
     const c = this.ctx;
     const ghost = b.realm === SPECTRAL;
     const patrol = b.variant === 'patrol' && this.sprites.has('cruiser-alt');
-    const look = ghost ? 'wraith-ghost' : patrol ? 'cruiser-alt' : b.kind;
+    const look = ghost ? 'wraith-ghost' : patrol ? 'cruiser-alt' : b.spec.art ?? b.kind;
     this.sprite(look, b.x, b.y, b.spec.size, 0, b.hull > 0 ? 1 : .35, ghost ? '#8262e3' : '');
     if (b.kind === 'wraith' && b.hull > 0 && b.age >= b.entryTime - .25) this.wraithCue(b, prefs);
     const hasShields = shieldModules(b);
     for (const part of b.parts) {
       const { x, y, radius } = bossPartPosition(b, part);
       if (part.hull > 0 && hasShields) line(c, b.x, b.y + 3, x - b.x, y - b.y, '#86cfef9d', 2);
-      if (part.hull > 0) this.sprite(hasShields ? 'shield-node' : 'turret', x, y, part.size ?? 43);
+      if (part.hull > 0) this.sprite(moduleSprite(b, part), x, y, part.size ?? 43);
       if (part.hull <= 0) {
         line(c, x - 5, y - 5, 10, 10, '#9eaac5', 1.6);
         line(c, x + 5, y - 5, -10, 10, '#9eaac5', 1.6);
@@ -704,18 +731,26 @@ export class FlightScene {
       }
       if (b.timer < .32 && b.age > b.entryTime) filled(c, x, y + part.muzzle, 2.8, '#fff4d2');
     }
-    if (hasShields && b.parts.some((part) => part.hull > 0)) ring(c, b.x, b.y + 4, b.spec.hit, '#80caec78', 2);
-    if (b.hitFlash > 0) ring(c, b.x, b.y + 4, 9, '#fff6dc88');
+    const shielded = hasShields && b.parts.some((part) => part.hull > 0);
+    const coreY = b.y + (b.spec.coreY ?? 4);
+    if (shielded) ring(c, b.x, coreY, b.spec.hit, '#80caec78', 2);
+    if (b.spec.coreHit && !shielded) {
+      ring(c, b.x, coreY, 20, prefs.contrast ? '#fff1cc' : '#cfb1ff', 2.4);
+      filled(c, b.x, coreY, 4, '#fff1ff');
+    }
+    if (b.hitFlash > 0) ring(c, b.x, coreY, 9, '#fff6dc88');
   }
 
   drawBossWreck() {
     const c = this.ctx;
     const { x, y, kind, age, size, reduced } = this.bossWreck;
-    if (reduced || age < .41) {
-      this.sprite(kind, x, y + (reduced ? 0 : age * 16), size, 0, saturate(.94 - age * .68));
+    const art = BOSSES[kind]?.art ?? kind;
+    const driftStart = kind === 'emperor' ? .84 : .41;
+    if (reduced || age < driftStart) {
+      this.sprite(art, x, y + (reduced ? 0 : age * 16), size, 0, saturate(.94 - age * .53));
       return;
     }
-    const drift = age - .41;
+    const drift = age - driftStart;
     const half = size / 2;
     for (const side of [-1, 1]) {
       c.save();
@@ -724,7 +759,7 @@ export class FlightScene {
       c.beginPath();
       c.rect(side < 0 ? -half : 0, -half, half, size);
       c.clip();
-      this.sprite(kind, 0, 0, size, 0, saturate(.72 - drift * .84));
+      this.sprite(art, 0, 0, size, 0, saturate(.72 - drift * (kind === 'emperor' ? .53 : .84)));
       c.restore();
     }
   }
@@ -775,10 +810,11 @@ export class FlightScene {
       const left = w.x - w.width / 2;
       const start = w.y;
       if (Number.isFinite(w.emitter) && boss) {
+        const muzzleX = boss.x + (w.emitterX ?? 0);
         const muzzleY = boss.y + w.emitter;
         c.save();
         c.setLineDash(solid ? [] : [5,4]);
-        line(c, boss.x, muzzleY, w.x - boss.x, start - muzzleY, solid ? '#eb9d77b8' : '#caa6a278', 1.8);
+        line(c, muzzleX, muzzleY, w.x - muzzleX, start - muzzleY, solid ? '#eb9d77b8' : '#caa6a278', 1.8);
         c.restore();
         ring(c, w.x, start, Math.min(12, w.width * .29), solid ? '#fff2ca' : color, 2);
         if (solid) filled(c, w.x, start, 4.6, '#fff7da');

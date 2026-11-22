@@ -39,6 +39,7 @@ export class FlightAudio {
     this.effects = true;
     this.music = true;
     this.last = {};
+    this.foreground = true;
   }
 
   unlock() {
@@ -53,11 +54,15 @@ export class FlightAudio {
   reflect(prefs) {
     this.music = prefs.music;
     this.effects = prefs.effects;
-    if (!this.music) this.track?.pause();
+    if (!this.music) this.quiet();
   }
 
   play(name) {
-    if (!this.enabled || !this.music || document.hidden) return;
+    if (!this.enabled || !this.music || !this.foreground || document.hidden) return;
+    if (document.documentElement.dataset.nativeFlight === 'true') {
+      this.nativeMusic(name === 'flight' ? 'flight' : 'hangar');
+      return;
+    }
     const file = name === 'flight' ? 'gravitys-edge' : 'hangar-bay-seven';
     if (this.track?.dataset.name !== file) {
       this.track?.pause();
@@ -72,7 +77,24 @@ export class FlightAudio {
     this.track.play().catch(() => {});
   }
 
-  quiet() { this.track?.pause(); }
+  nativeMusic(name) {
+    window.dispatchEvent(new CustomEvent('stellar-native-music', { detail:name }));
+  }
+
+  quiet() {
+    this.track?.pause();
+    if (document.documentElement.dataset.nativeFlight === 'true') this.nativeMusic('pause');
+  }
+
+  setForeground(foreground) {
+    this.foreground = foreground;
+    if (foreground) {
+      if (this.enabled && this.ctx?.state === 'suspended') void this.ctx.resume().catch(() => {});
+    } else {
+      this.quiet();
+      if (this.ctx?.state === 'running') void this.ctx.suspend().catch(() => {});
+    }
+  }
 
   accept(events) {
     for (const e of events) {
@@ -91,14 +113,14 @@ export class FlightAudio {
   }
 
   chord(notes, duration, volume, offset = 0) {
-    if (!this.ctx || !this.effects || document.hidden) return;
+    if (!this.ctx || !this.effects || !this.foreground || document.hidden) return;
     const t = this.ctx.currentTime + offset;
     notes.forEach((pitch, i) => this.tone([pitch, pitch * 1.022, duration, volume, 'sine'], t + i * .07));
   }
 
   effect(kind, power = 1) {
     const recipe = effects[kind];
-    if (!recipe || !this.ctx || !this.effects || document.hidden) return;
+    if (!recipe || !this.ctx || !this.effects || !this.foreground || document.hidden) return;
     const t = this.ctx.currentTime;
     if (t - (this.last[kind] ?? -1) < (kind === 'hit' || kind === 'shieldHit' ? .082 : .044)) return;
     this.last[kind] = t;

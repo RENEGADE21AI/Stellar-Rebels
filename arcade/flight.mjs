@@ -1,4 +1,4 @@
-import { AIM_PRECISION, ENDLESS_BOSSES, ENEMIES, GHOST, GUNNER_MUZZLES, HEIGHT, INPUT_RESUME, INPUT_SHIFT, PICKUPS, SHIPS, SPECIALS, WIDTH, enemyMuzzle, formation, hardpointAt, stageById, weaponStats } from './catalog.mjs';
+import { AIM_PRECISION, ENDLESS_BOSSES, ENEMIES, GHOST, GUNNER_MUZZLES, HEIGHT, INPUT_RESUME, INPUT_SHIFT, LEGACY_ENDLESS_BOSSES, PICKUPS, RULES_VERSION, SHIPS, SPECIALS, WIDTH, enemyMuzzle, formation, hardpointAt, legacyStageById, stageById, weaponStats } from './catalog.mjs';
 import { advanceBoss, bossPartPosition, launchBoss, operatorWarnings } from './bosses.mjs';
 import { markPull, markRail, markWall } from './boss-patterns.mjs';
 import { VANE_HULL, breakFormation, commandCharge, linkedVolley, vanePosition } from './formations.mjs';
@@ -6,7 +6,7 @@ import { PHYSICAL, SPECTRAL, otherRealm, realmLabel } from './wraith.mjs';
 import { flightRandom } from './seed.mjs';
 import { advanceCruiser, launchCruiser } from './cruiser.mjs';
 import { edgeReturnCourse, fliesBack, flyEnemy, flyReturning, inFiringRange, separateWing, shardArmTime } from './enemy-course.mjs';
-import { bodiesMeet, bossBody, contactTime, coreBody, enemyBody, friendlyBody, hostileBody, moduleBody,
+import { bodiesMeet, bossBody, contactTime, coreBody, enemyBody, exposedCoreBody, friendlyBody, hostileBody, moduleBody,
   pickupBody, pilotBody, pilotReceiver, rememberPosition, shieldModules, vaneBody, wraithWingBody } from './collision.mjs';
 
 export const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -29,6 +29,7 @@ function impactAt(shot, time) {
 export class Flight {
   constructor(run, options = {}) {
     this.run = run;
+    this.legacy = run.rules === 'arcade-11';
     this.random = flightRandom(run.seed);
     this.flankRandom = flightRandom(run.seed, routeStream);
     this.recordInput = options.recordInput;
@@ -37,8 +38,12 @@ export class Flight {
     this.nextResumeGuard = 0;
     this.ship = SHIPS[run.ship] ?? SHIPS.kestrel;
     this.special = run.special === 'ion' ? 'ion' : 'ghost';
-    this.stats = weaponStats(run.equipment);
-    this.stage = stageById(run.stage) ?? stageById(1);
+    this.stats = weaponStats(this.legacy ? run.equipment : run.tiers ?? run.equipment);
+    const getStage = this.legacy ? legacyStageById : stageById;
+    this.stage = getStage(run.stage, run.variant ?? run.mode) ?? getStage(1);
+    this.mission = this.legacy ? this.stage.id : this.stage.number;
+    this.difficultyMission = this.stage.side ? this.stage.requires + 1 : this.mission;
+    this.veteran = !this.legacy && (run.variant === 'veteran' || run.mode === 'veteran');
     this.endless = run.mode === 'endless';
     this.status = 'active';
     this.elapsed = 0;
@@ -48,6 +53,13 @@ export class Flight {
     this.combo = 0;
     this.breaks = 0;
     this.bossDamage = 0;
+    this.hullHits = 0;
+    this.suppliesCollected = 0;
+    this.cruiserTurrets = 0;
+    this.operation = this.stage.operation ?? null;
+    this.intercepts = 0;
+    this.escapes = 0;
+    this.transmissionStoppedAt = null;
     this.linkedCombat = options.linkedCombat ?? true;
     this.comboTime = 0;
     this.waveIndex = 0;
@@ -74,8 +86,9 @@ export class Flight {
     this.nextEndlessBoss = 79;
     this.xIntent = WIDTH / 2;
     this.yIntent = HEIGHT * .80;
+    const maxHull = this.legacy ? (run.ship === 'bastion' ? 6 : this.ship.hull) + this.stats.hull : Math.min(5, this.ship.hull);
     this.player = {
-      x: this.xIntent, y: this.yIntent, hull: this.ship.hull + this.stats.hull, maxHull: this.ship.hull + this.stats.hull,
+      x: this.xIntent, y: this.yIntent, hull: maxHull, maxHull,
       guard: 1.6, barrier: 0, barrierTime: 0, power: 0, overdrive: 0, bank: 0,
       realm: PHYSICAL, ghostEnergy: GHOST.start, ghostTime: 0, ghostRecovery: 0, ghostEarnAt: 0
     };
@@ -175,6 +188,7 @@ export class Flight {
       return true;
     }
     p.hull--;
+    this.hullHits++;
     if (this.boss) this.bossDamage++;
     p.guard = 1.04;
     this.combo = 0;
@@ -238,6 +252,7 @@ export class Flight {
     } else p[drop.kind] = type.duration;
     if (drop.kind !== 'repair') this.message(type.hint, 2.2, 'pickup', type.name);
     this.signal('pickup', p.x, p.y, drop.kind);
+    this.suppliesCollected++;
   }
 
   angleToPilot(x, y) {
@@ -279,8 +294,30 @@ export class Flight {
       this.message('Shoot the bracketed relay to scatter the wing.', 2.5, 'tactic', 'Break their link');
     }
     const wing = formation(name, flip);
-    const supplyWing = reward ? { remaining: wing.length } : null;
-    for (const e of wing) this.spawns.push({ ...e, group, supplyWing, at: this.elapsed + e.after });
+    const priorityWave = reward === 'priority' && this.operation?.type === 'priority';
+    const supplyWing = reward && !priorityWave ? { remaining: wing.length } : null;
+    for (const e of wing) {
+      const priority = priorityWave && e.kind === this.operation.kind;
+      this.spawns.push({ ...e, group, supplyWing, priority, at: this.elapsed + e.after });
+    }
+  }
+
+  operationStatus() {
+    const operation = this.operation;
+    if (operation?.type === 'priority' && !this.boss) {
+      return { label:operation.targetName, value:`${Math.min(this.intercepts, operation.required)} / ${operation.required}` };
+    }
+    if (operation?.type === 'transmission' && this.boss && this.transmissionStoppedAt === null) {
+      const charge = Math.max(0, this.boss.age - this.boss.entryTime);
+      const left = Math.max(0, Math.ceil(operation.seconds - charge));
+      return { label:'Transmission', value:`${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` };
+    }
+    return null;
+  }
+
+  failObjective(reason) {
+    this.status = 'defeat';
+    this.damageCause = reason;
   }
 
   get nextEndlessBridge() {
@@ -291,7 +328,8 @@ export class Flight {
     this.pressure = 1.08 + Math.min(.45, this.elapsed / 485);
     if (this.boss) return;
     if (this.elapsed >= this.nextEndlessBoss && !this.cruiser) {
-      const boss = ENDLESS_BOSSES[this.endlessBossCount % ENDLESS_BOSSES.length];
+      const roster = this.legacy ? LEGACY_ENDLESS_BOSSES : ENDLESS_BOSSES;
+      const boss = roster[this.endlessBossCount % roster.length];
       this.endlessBossCount++;
       this.nextEndlessBoss = this.elapsed + 82;
       this.endlessBridgeStarted = false;
@@ -332,7 +370,8 @@ export class Flight {
     if (this.endless) {
       this.updateEndlessSchedule();
     } else {
-      this.pressure = 1.08 + .035 * (this.stage.id - 1) + Math.min(.075, this.elapsed / 1400);
+      this.pressure = 1.08 + (this.legacy ? .035 : .013) * (this.difficultyMission - 1) +
+        Math.min(.075, this.elapsed / 1400) + (this.veteran ? .055 : 0);
       const beat = this.stage.waves[this.waveIndex];
       if (beat && this.elapsed >= beat[0]) {
         const [, wing, flank, reward] = beat;
@@ -364,6 +403,10 @@ export class Flight {
         if (this.elapsed < this.stage.bossAt - 15) launchCruiser(this, encounter.variant);
       }
       if (!this.boss && this.elapsed >= this.stage.bossAt) {
+        if (this.operation?.type === 'priority' && this.intercepts < this.operation.required) {
+          this.failObjective('objective-escaped');
+          return;
+        }
         launchBoss(this, this.stage.boss);
       }
     }
@@ -373,7 +416,8 @@ export class Flight {
     if (this.enemies.length >= 35 && this.enemies.filter((enemy) => enemy.hull > 0).length >= 35) return;
     const spec = ENEMIES[data.kind];
     const x = WIDTH * data.lane;
-    const tier = this.endless ? Math.min(3, this.endlessBossCount) : Math.max(0, this.stage.id - 3);
+    const tier = this.endless ? Math.min(3, this.endlessBossCount) :
+      this.legacy ? Math.max(0, this.mission - 3) : Math.max(0, (this.difficultyMission - 4) / 3);
     const hull = spec.hull + tier * (armorPerTier[data.kind] ?? 0);
     const enemy = {
       kind: data.kind, spec, x, home: x, courseX: x, laneOffset: 0, y: -32, age: 0, hull,
@@ -382,7 +426,8 @@ export class Flight {
       group: data.group, vane: data.group && data.kind === 'relay' ? VANE_HULL : 0, jam: 0,
       supplyWing: data.supplyWing,
       pace: .94 + this.random() * .12,
-      loop: null, returnCount: 0, returned: false, returns: data.returns ?? fliesBack(data.kind)
+      loop: null, returnCount: 0, returned: false, priority: Boolean(data.priority), unarmed:Boolean(data.priority && this.operation.unarmed),
+      returns: !data.priority && (data.returns ?? fliesBack(data.kind))
     };
     this.enemies.push(enemy);
     return enemy;
@@ -398,12 +443,11 @@ export class Flight {
         this.signal('ghostEnd', p.x, p.y);
       }
     } else if (!this.practice && p.ghostEnergy < GHOST.capacity) {
-      this.earnGhost(GHOST.recharge * dt);
+      this.earnGhost(GHOST.recharge * (this.stats.recharge ?? 1) * dt);
     }
     p.ghostRecovery = duration(p.ghostRecovery - dt);
-    if (this.keys) {
-      this.drag(this.keys.x * this.ship.speed * dt, this.keys.y * this.ship.speed * dt);
-    }
+    const speed = this.ship.speed * (this.stats.speed ?? 1);
+    if (this.keys) this.drag(this.keys.x * speed * dt, this.keys.y * speed * dt);
     const area = this.movementBounds;
     const aimX = recordedAim ? recordedAim[0] : Math.round(this.xIntent * AIM_PRECISION);
     const aimY = recordedAim ? recordedAim[1] : Math.round(this.yIntent * AIM_PRECISION);
@@ -412,7 +456,7 @@ export class Flight {
     const dx = clamp(aimX / AIM_PRECISION, area.left, area.right) - p.x;
     const dy = clamp(aimY / AIM_PRECISION, area.top, area.bottom) - p.y;
     const distance = Math.hypot(dx, dy);
-    const amount = Math.min(1, this.ship.speed * dt / Math.max(.01, distance));
+    const amount = Math.min(1, speed * dt / Math.max(.01, distance));
     p.x += dx * amount;
     p.y += dy * amount;
     this.movement += distance * amount;
@@ -489,7 +533,7 @@ export class Flight {
     e.jam = 0;
     e.dive = false;
     this.signal('returnFlyby', edge, e.y);
-    if (!this.taughtReturn && !this.endless && this.stage.id === 1 && !(this.notice?.time > 0)) {
+    if (!this.taughtReturn && !this.endless && this.mission === 1 && !(this.notice?.time > 0)) {
       this.taughtReturn = true;
       this.message('Escaping fighters can loop back along the sides.', 2.35, 'tactic', 'Watch the edges');
     }
@@ -541,6 +585,7 @@ export class Flight {
         returning++;
         continue;
       }
+      if (e.unarmed) continue;
       const linked = wingCommand.get(e.group);
       const canFire = inFiringRange(e, this.player);
       e.fireTimer -= dt;
@@ -596,6 +641,7 @@ export class Flight {
     this.earnGhost(1.5, true);
     this.signal(protectedEscort ? 'shieldHit' : 'hit', s.x, s.y);
     if (e.hull <= 0) {
+      if (e.priority) this.intercepts++;
       this.scoreKill(e.spec.value + (e.jam > 0 ? 125 : 0));
       this.signal('enemyDown', e.x, e.y, e.kind);
       this.dropEnemySupply(e);
@@ -631,9 +677,17 @@ export class Flight {
       this.earnGhost(2.5, true);
       this.signal('hit', impact.x, impact.y);
       if (part.hull <= 0) {
+        if (b.kind === 'cruiser') this.cruiserTurrets++;
         this.scoreKill(b.kind === 'cruiser' ? 280 : 460);
         this.signal('moduleDown', x, y, b.kind);
-        this.message(['cruiser','gatekeeper'].includes(b.kind) ? 'Turret offline' : 'Shield node severed', 1.8, 'pickup');
+        const partName = { turret:'Turret', rail:'Rail battery', shield:'Shield node', stabilizer:'Stabilizer', transmitter:'Transmitter' }[part.role] ??
+          (['cruiser','gatekeeper'].includes(b.kind) ? 'Turret' : 'Shield node');
+        if (b === this.boss && this.operation?.type === 'transmission' && part.role === this.operation.role &&
+            b.parts.every((module) => module.role !== part.role || module.hull <= 0)) {
+          this.transmissionStoppedAt = Math.max(0, b.age - b.entryTime);
+        }
+        const exposed = b.spec.coreHit && b.parts.every((module) => module.hull <= 0);
+        this.message(exposed ? 'Core exposed' : `${partName} offline`, 1.8, 'pickup');
       }
       return true;
     }
@@ -655,7 +709,7 @@ export class Flight {
     const b = this.boss;
     if (!b || b.age < b.entryTime - .25 || b.hull <= 0) return false;
     if (this.hitModules(b, s, beam, before)) return true;
-    const time = contactTime(beam, b.kind === 'wraith' ? coreBody(b) : bossBody(b));
+    const time = contactTime(beam, b.kind === 'wraith' ? coreBody(b) : b.spec.coreHit ? exposedCoreBody(b) : bossBody(b));
     const hitsCore = time < before;
     const impact = hitsCore ? impactAt(s, time) : null;
     if (b.kind === 'wraith') {
@@ -673,7 +727,17 @@ export class Flight {
         }
       }
     }
-    if (!hitsCore) return false;
+    if (!hitsCore) {
+      if (b.spec.coreHit) {
+        const armorTime = contactTime(beam, bossBody(b));
+        if (armorTime < before) {
+          const armor = impactAt(s, armorTime);
+          this.signal('shieldHit', armor.x, armor.y);
+          return true;
+        }
+      }
+      return false;
+    }
     const shielding = b.parts.some((p) => p.hull > 0);
     const protectedCore = shieldModules(b) && shielding;
     const factor = protectedCore ? 0 : b.kind === 'gatekeeper' && shielding ? .69 : 1;
@@ -683,7 +747,7 @@ export class Flight {
     this.signal(protectedCore ? 'shieldHit' : 'hit', impact.x, impact.y);
     if (b.hull <= 0) {
       if (b.kind === 'wraith') this.player.realm = PHYSICAL;
-      this.scoreKill(2400 + 750 * this.stage.id);
+      this.scoreKill(2400 + 750 * this.mission);
       this.signal('bossDown', b.x, b.y, b.kind);
       this.hazards = [];
       this.hostile = [];
@@ -786,10 +850,16 @@ export class Flight {
     this.movePilot(dt, recordedAim);
     this.ticks++;
     this.updateSchedule();
+    if (this.status !== 'active') return;
     this.moveEnemies(dt);
     if (this.supplies.length) this.assignSupplies();
     advanceCruiser(this, dt);
     advanceBoss(this, dt);
+    if (this.operation?.type === 'transmission' && this.boss && this.transmissionStoppedAt === null &&
+        this.boss.age - this.boss.entryTime >= this.operation.seconds) {
+      this.failObjective('objective-transmitted');
+      return;
+    }
     this.shoot(dt);
     this.moveProjectiles(dt);
     if (this.status !== 'active') return;
@@ -810,8 +880,16 @@ export class Flight {
       }
     }
     if (this.status !== 'active') return;
-    this.enemies = this.enemies.filter((e) => e.hull > 0 && (e.loop && !e.retreat ||
-      e.y < HEIGHT + 40 && e.y > -55 && e.x > -38 && e.x < WIDTH + 38));
+    this.enemies = this.enemies.filter((e) => {
+      if (e.hull <= 0) return false;
+      const onCourse = e.loop && !e.retreat || e.y < HEIGHT + 40 && e.y > -55 && e.x > -38 && e.x < WIDTH + 38;
+      if (!onCourse && e.priority) this.escapes++;
+      return onCourse;
+    });
+    if (this.operation?.type === 'priority' && this.escapes > this.operation.maxEscapes) {
+      this.failObjective('objective-escaped');
+      return;
+    }
     const receiver = pilotReceiver(this);
     this.pickups = this.pickups.filter((drop) => {
       rememberPosition(drop);
@@ -828,9 +906,20 @@ export class Flight {
 
   terminal() {
     if (this.status === 'active') return null;
-    const condition = this.stage.mastery?.condition;
-    const met = condition === 'parts' ? this.boss?.parts.every((p) => p.hull <= 0) : condition === 'cleanBoss' && this.bossDamage === 0;
+    const { condition, target } = this.stage.mastery ?? {};
+    const met = {
+      parts: () => this.boss?.parts.every((part) => part.hull <= 0),
+      bossParts: () => this.boss?.parts.every((part) => part.hull <= 0),
+      cleanBoss: () => this.bossDamage === 0,
+      integrity: () => this.hullHits <= target,
+      links: () => this.breaks >= target,
+      turrets: () => this.cruiserTurrets >= target,
+      supply: () => this.suppliesCollected >= target,
+      priorityFlawless: () => this.escapes === 0,
+      transmissionFast: () => this.transmissionStoppedAt !== null && this.transmissionStoppedAt <= target
+    }[condition]?.();
     return { status: this.status, score: this.score, duration: this.elapsed, kills: this.kills, breaks: this.breaks, movement: this.movement,
-      mastery: Boolean(!this.endless && this.status === 'clear' && met), damageCause: this.damageCause };
+      mastery: Boolean(!this.endless && this.status === 'clear' && met), damageCause: this.damageCause,
+      ...(this.run.rules === RULES_VERSION && { bossesDefeated: this.endless ? this.endlessBossCount - Number(Boolean(this.boss)) : Number(this.status === 'clear') }) };
   }
 }

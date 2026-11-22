@@ -1,5 +1,7 @@
 import { BOSSES, WIDTH, HEIGHT } from './catalog.mjs';
-import { flagship, gravityPlatform, harrow, railShip, relayCarrier, startWallWarning } from './boss-patterns.mjs';
+import { ambushLeader, arrayStabilizer, borderBastion, communicationPost, defenseCitadel, flagship, fleetVanguard,
+  gravityPlatform, gridControl, harrow, hunterLeader, imperialFlagship, railShip, rearGuard, relayCarrier,
+  salvagePlatform, siegeCruiser, spectralBeacon, startWallWarning, supplyTender } from './boss-patterns.mjs';
 import { advanceWraith, enterWraith } from './wraith.mjs';
 import { bodiesMeet, pilotBody, railBody, rememberPosition } from './collision.mjs';
 
@@ -11,8 +13,11 @@ export function launchBoss(flight, kind) {
   flight.spawns.length = 0;
   flight.boss = {
     kind, spec, artScale, x: WIDTH / 2, y:entryY, entryY, hull: spec.hull, age: 0, timer: 2.9, attack: 0,
-    entryTime: 1.55, hitFlash: 0, parts: spec.parts.map(([dx, dy]) => ({ dx: dx * artScale, dy: dy * artScale, size: 43 * artScale,
-      radius: 12.5 * artScale, muzzle: 14 * artScale, hull: spec.partHull, flash: 0 }))
+    entryTime: 1.55, hitFlash: 0, parts: spec.parts.map(([dx, dy, role, hull]) => ({
+      dx:dx * artScale, dy:dy * artScale, size:43 * artScale,
+      radius:12.5 * artScale, muzzle:14 * artScale, hull:hull ?? spec.partHull, flash:0,
+      ...(role ? { role } : {})
+    }))
   };
   if (kind === 'wraith') enterWraith(flight, flight.boss);
   flight.signal('boss', flight.boss.x, 125, spec.name);
@@ -38,7 +43,10 @@ function gatekeeperAttack(flight, boss, phase) {
 }
 
 const attacks = {
-  gatekeeper: gatekeeperAttack, warden: harrow, matron: relayCarrier, tyrant: railShip, siphon: gravityPlatform, crown: flagship
+  gatekeeper:gatekeeperAttack, warden:harrow, matron:relayCarrier, tyrant:railShip, siphon:gravityPlatform, crown:flagship,
+  interdictor:rearGuard, convoy:supplyTender, bulwark:borderBastion, scavenger:salvagePlatform, beacon:spectralBeacon,
+  vanguard:fleetVanguard, citadel:defenseCitadel, stabilizer:arrayStabilizer, emperor:imperialFlagship,
+  gridControl, ambushLead:ambushLeader, hunterLead:hunterLeader, signalPost:communicationPost, siegeShip:siegeCruiser
 };
 
 export function advanceBoss(flight, dt) {
@@ -60,6 +68,13 @@ export function advanceBoss(flight, dt) {
   if (b.age < b.entryTime || b.timer > 0) return;
   b.attack++;
   attacks[b.kind](flight, b, Number(b.hull <= b.spec.hull * .47));
+  if (flight.veteran) {
+    b.timer *= .91;
+    if (b.attack % 3 === 0) {
+      const x = WIDTH * (b.attack % 2 ? .18 : .82);
+      flight.fan(x, b.y + 60, Math.PI / 2, 3, .15, 133, 'seed');
+    }
+  }
   flight.signal('bossFire', b.x, b.y + 23);
 }
 

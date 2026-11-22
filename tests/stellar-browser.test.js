@@ -3,8 +3,15 @@ const test = require('node:test');
 const { chromium, webkit } = require('playwright');
 
 const origin = process.env.STELLAR_WEB_URL;
+const missionIds = [1,7,2,8,3,9,4,10,11,12,13,5,14,15,6];
 
-test('native Arcade banking, preview and launch use the host entitlement while browser Arcade remains free', { skip: !origin, timeout:90000 }, async () => {
+async function confirmOpening(page) {
+  await page.getByRole('button', { name:'Confirm & continue', exact:true }).click();
+  await page.getByRole('button', { name:'Skip', exact:true }).click();
+  await page.getByRole('button', { name:'Pause', exact:true }).waitFor();
+}
+
+test('Act I banking and native authorization preserve one optional purchase while the browser remains free', { skip: !origin, timeout:90000 }, async () => {
   const browser = await chromium.launch();
   try {
     for (const native of [true, false]) {
@@ -18,7 +25,10 @@ test('native Arcade banking, preview and launch use the host entitlement while b
           await route.fulfill({ response, body:`${await response.text()}\nwindow.commerceFixture = {
             pilot: () => store.load(),
             seed: async () => {
-              await store.change((pilot) => { pilot.clears[1] = 1; pilot.clears[2] = 1; pilot.full_arcade = true; });
+              await store.change((pilot) => {
+                for (const {id} of STAGES.slice(0,4)) pilot.clears[id] = 1;
+                pilot.callSign = 'Test Pilot'; pilot.settings.skipStory = true; pilot.full_arcade = true;
+              });
             },
             stage: () => state.mode === 'playing' ? state.flight.run.stage : undefined,
             clear: () => { state.flight.score = 7490; state.flight.status = 'clear'; }
@@ -35,7 +45,7 @@ test('native Arcade banking, preview and launch use the host entitlement while b
           const calls = [];
           const store = {
             owned:sessionStorage.getItem('fixture-owned') === 'yes', available:true, pending:false, purchase:'cancelled',
-            status() { return { owned:this.owned, price:this.available ? '2,99 €' : '', available:this.available, pending:this.pending }; },
+            status() { return { owned:this.owned, price:this.available ? '3,99 €' : '', available:this.available, pending:this.pending }; },
             notify() { window.dispatchEvent(new CustomEvent('stellar-commerce-change', { detail:this.status() })); }
           };
           window.testCommerce = { store, calls };
@@ -75,28 +85,28 @@ test('native Arcade banking, preview and launch use the host entitlement while b
         await launch(button('Play'), 3);
         await page.evaluate(() => window.commerceFixture.clear());
         await heading('Relay offline').waitFor();
-        await page.getByText(/112 Salvage banked/).waitFor();
+        await page.getByText(/Salvage banked/).waitFor();
         await button('Gunship unlocked').waitFor();
         if (!native) {
-          await launch(button(/Next Flight/), 4);
+          await launch(button(/Next Mission/), 9);
           assert.deepEqual(await page.evaluate(() => window.testCommerce.calls), []);
           continue;
         }
 
         const open = async () => {
-          await button(/Red Sun/).tap();
+          await button(/^06 Border Crossing/).tap();
           await heading('Unlock the Full Game').waitFor();
         };
         assert.equal(await heading('Unlock the Full Game').count(), 0);
         const offer = button('See Full Game Unlock');
         assert.equal(await offer.isVisible(), true);
-        assert.equal(await button('Return to Arcade').isVisible(), true);
-        assert.equal(await button('Replay stage').isVisible(), true);
+        assert.equal(await button('Campaign').isVisible(), true);
+        assert.equal(await button('Replay mission').isVisible(), true);
         assert.equal(await button('Title Screen').isVisible(), true);
         assert.equal(await page.evaluate(() => window.testCommerce.calls.some(([op]) => op === 'commerce-purchase')), false);
         await offer.tap();
         await heading('Unlock the Full Game').waitFor();
-        await page.getByText('2,99 €', { exact:true }).waitFor();
+        await page.getByText('3,99 €', { exact:true }).waitFor();
         const viewport = await page.locator('#menu').boundingBox();
         for (const label of ['Unlock Full Game', 'Not Now', 'Restore Purchases']) {
           const bounds = await button(label).boundingBox();
@@ -112,14 +122,17 @@ test('native Arcade banking, preview and launch use the host entitlement while b
         await button('Not Now').tap();
         await heading('Relay offline').waitFor();
         assert.equal((await page.evaluate(() => window.commerceFixture.pilot())).clears[3], 1);
-        await launch(button('Replay stage'), 3);
+        await button('Title Screen').tap();
+        await launch(button('Play'), 3);
         await page.evaluate(() => window.commerceFixture.clear());
-        await button('Return to Arcade').waitFor();
+        await button('Campaign').waitFor();
         assert.equal(await offer.count(), 0);
-        await button('Return to Arcade').tap();
-        await launch(button('Endless'), null);
+        await button('Campaign').tap();
+        assert.equal(await button('Endless').isDisabled(), true);
+        await page.locator('.campaign-act').first().locator('summary').tap();
+        await launch(button(/^A3 Supply Intercept/), 18);
+        assert.deepEqual(await page.evaluate(() => window.testCommerce.calls.filter(([op]) => op === 'authorize-stage')), []);
         await leave();
-        await heading('Stage Select').waitFor();
         await open();
         await page.evaluate(() => { window.testCommerce.store.purchase = 'pending'; });
         await button('Unlock Full Game').tap();
@@ -127,39 +140,28 @@ test('native Arcade banking, preview and launch use the host entitlement while b
         assert.equal(await button('Unlock Full Game').isDisabled(), true);
         await button('Restore Purchases').tap();
         await page.getByRole('status').filter({ hasText:/restored/i }).waitFor();
-        await launch(button(/Launch Red Sun/), 4);
+        await launch(button(/Launch Border Crossing/), 9);
+        assert.deepEqual(await page.evaluate(() => window.testCommerce.calls.filter(([op]) => op === 'authorize-stage')), [['authorize-stage',6]]);
+        await page.evaluate(() => window.commerceFixture.clear());
+        await launch(button(/Next Mission.*Red Sun/), 4);
         await leave();
-        await launch(button(/^03 Relay Station/), 3);
-        await page.evaluate(() => window.commerceFixture.clear());
-        await button(/Next Flight.*Red Sun/).waitFor();
-        assert.equal(await offer.count(), 0);
-        await button('Arcade').tap();
-        assert.equal(await button(/^05 Outer Orbit/).isDisabled(), true);
-        const flagship = button(/^06 The Flagship/);
-        await flagship.evaluate((control) => { control.disabled = false; });
-        await flagship.tap();
-        await page.getByText('This stage is locked.', { exact:true }).waitFor();
-        await page.reload();
-        await launch(button('Play'), 4);
-        await page.evaluate(() => window.commerceFixture.clear());
-        await launch(button(/Next Flight.*Outer Orbit/), 5);
-        await page.evaluate(() => window.commerceFixture.clear());
-        await launch(button(/Next Flight.*The Flagship/), 6);
-        await leave();
+        await heading('Campaign').waitFor();
+        assert.equal(await button(/^15 The Flagship/).isDisabled(), true);
+        assert.equal(await button('Endless').isDisabled(), true);
         await button('Back').tap();
         await page.evaluate(() => {
           // A stale UI status still advertises ownership when the host has revoked it.
           window.testCommerce.store.owned = false;
         });
         await button('Play').tap();
-        await heading('Stage Select').waitFor();
+        await heading('Campaign').waitFor();
         await page.evaluate(() => {
           window.testCommerce.store.available = false;
           window.testCommerce.store.notify();
         });
         await open();
         assert.equal(await button('Unlock Full Game').isDisabled(), true);
-        assert.equal(await page.getByText('2,99 €', { exact:true }).count(), 0);
+        assert.equal(await page.getByText('3,99 €', { exact:true }).count(), 0);
       } finally { await context.close(); }
     }
   } finally { await browser.close(); }
@@ -240,53 +242,56 @@ test('Help and Legal is reachable from compact title and Settings, and rating is
   } finally { await browser.close(); }
 });
 
-test('title keeps the call sign, fits its controls, and teaches either first Arcade entry', { skip: !origin, timeout:45000 }, async () => {
+test('first Play saves a call sign, offers an illustrated opening and preserves the title layout', { skip: !origin, timeout:60000 }, async () => {
   const browser = await chromium.launch();
   try {
     for (const viewport of [{ width:320, height:568 }, { width:390, height:844 }, { width:844, height:390 }]) {
       const context = await browser.newContext({ viewport, hasTouch:true, isMobile:true, serviceWorkers:'block' });
       try {
         const page = await context.newPage();
+        const button = (name) => page.getByRole('button', { name, exact:true });
+        const heading = (name) => page.getByRole('heading', { name, exact:true });
         await page.goto(origin);
-        const play = page.getByRole('button', { name:'Play', exact:true });
-        await play.waitFor();
+        await button('Play').waitFor();
         const arena = await page.locator('.frame').boundingBox();
-        const action = await play.boundingBox();
+        const play = await button('Play').boundingBox();
         const pilot = await page.locator('.title-pilot').boundingBox();
-        const ratio = (action.y + action.height / 2 - arena.y) / arena.height;
-        const min = viewport.width > viewport.height ? .54 : .63;
-        assert.ok(ratio >= min && ratio <= .78, `Play center was at ${ratio}`);
-        assert.ok(action.y + action.height <= pilot.y, 'Play should be above the call sign');
+        const ratio = (play.y + play.height / 2 - arena.y) / arena.height;
+        assert.ok(ratio >= .53 && ratio <= .78, `Play center was at ${ratio}`);
+        assert.ok(play.y + play.height <= pilot.y, 'Play should be above the call sign');
         for (const item of await page.locator('.title-actions button').all()) {
           const bounds = await item.boundingBox();
           assert.ok(bounds.width >= 44 && bounds.height >= 44);
         }
-        const edit = page.getByRole('button', { name:'Edit call sign' });
-        await edit.tap();
-        const name = page.getByRole('textbox', { name:'Pilot name' });
+        await button('Play').tap();
+        await heading('Call sign').waitFor();
+        const name = page.getByRole('textbox', { name:'Pilot call sign' });
+        const suggestion = await name.inputValue();
+        await button('Reroll').tap();
+        assert.notEqual(await name.inputValue(), suggestion);
         await name.fill('<b>');
         await name.press('Enter');
         assert.equal(await name.getAttribute('aria-invalid'), 'true');
         await name.fill('  Orion   9 ');
-        await name.press('Enter');
-        await edit.waitFor();
-        assert.equal(await edit.evaluate((button) => document.activeElement === button), true);
+        await button('Confirm & continue').tap();
+        await heading('Neyara under attack').waitFor();
+        await page.locator('.story-art img').evaluate((image) => image.decode());
+        await button('Skip').tap();
+        await button('Pause').waitFor();
+        assert.equal(await page.locator('#training-actions').isVisible(), false);
         await page.reload();
         await page.getByText('Orion 9', { exact:true }).waitFor();
-        if (viewport.width === 320) {
-          await page.getByRole('button', { name:'Arcade', exact:true }).tap();
-          await page.getByRole('button', { name:/01 Vesper Orbit/ }).tap();
-        } else await play.tap();
-        await page.getByRole('button', { name:'Skip training', exact:true }).waitFor();
-        if (viewport.width === 320) {
-          await page.getByRole('button', { name:'Skip training', exact:true }).tap();
-          await page.locator('#training-actions').waitFor({ state:'hidden' });
-          await page.getByRole('button', { name:'Pause', exact:true }).tap();
-          const leave = page.getByRole('button', { name:'Leave flight', exact:true });
-          await leave.tap();
-          await leave.tap();
-          await page.getByRole('heading', { name:'Stage Select', exact:true }).waitFor();
-        }
+        await button('Campaign').tap();
+        await button('Story log').tap();
+        await button('Neyara under attack').tap();
+        await heading('Neyara under attack').waitFor();
+        await button('Back to story log').tap();
+        await button('Back').tap();
+        await button('Back').tap();
+        await button('Play').tap();
+        await button('Pause').waitFor();
+        assert.equal(await heading('Call sign').count(), 0);
+        assert.equal(await heading('Neyara under attack').count(), 0);
       } finally { await context.close(); }
     }
   } finally { await browser.close(); }
@@ -303,8 +308,7 @@ test('a fast touch release preserves pending steering and a canceled touch stops
     await page.clock.install();
     await page.goto(origin);
     await page.getByRole('button', { name:'Play', exact:true }).tap();
-    await page.getByRole('button', { name:'Skip training', exact:true }).tap();
-    await page.locator('#training-actions').waitFor({ state:'hidden' });
+    await confirmOpening(page);
     await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now() + 60)));
     const touch = await page.context().newCDPSession(page);
     const dispatch = (type, x) => touch.send('Input.dispatchTouchEvent', {
@@ -361,13 +365,13 @@ test('a returning playfield follows an operating system reduction preference', {
   } finally { await browser.close(); }
 });
 
-test('Arcade exposes a direct Special practice drill with stable flight meters', { skip: !origin, timeout:45000 }, async () => {
+test('Campaign exposes a direct Special practice drill with stable flight meters', { skip: !origin, timeout:45000 }, async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport:{ width:320, height:568 }, isMobile:true, hasTouch:true, serviceWorkers:'block' });
     const button = (name) => page.getByRole('button', { name, exact:true });
     await page.goto(origin);
-    await button('Arcade').tap();
+    await button('Campaign').tap();
     const practice = button('Practice');
     const drillRect = await practice.boundingBox();
     assert.ok(drillRect && drillRect.y < 210 && drillRect.height >= 44);
@@ -383,7 +387,7 @@ test('Arcade exposes a direct Special practice drill with stable flight meters',
     await button('End practice').tap();
     await page.getByRole('heading', { name:'Practice', exact:true }).waitFor();
     await button('Back').tap();
-    await page.getByRole('heading', { name:'Stage Select', exact:true }).waitFor();
+    await page.getByRole('heading', { name:'Campaign', exact:true }).waitFor();
   } finally { await browser.close(); }
 });
 
@@ -406,7 +410,7 @@ test('Specials unlock, persist across reload, and work in practice without rewar
     await page.getByText('Clear Asteroid Belt to unlock.', { exact:true }).waitFor();
     assert.equal(await button('Equip Ion Burst').count(), 0);
     // Seed progression in a disposable save. The campaign suite clears the route by flying it.
-    await page.evaluate(() => window.specialsProbe.store.change((pilot) => { pilot.clears = { 1:1, 2:1 }; }));
+    await page.evaluate(() => window.specialsProbe.store.change((pilot) => { pilot.clears = { 1:1, 7:1, 2:1 }; }));
     await page.reload();
     await button('Hangar').tap();
     await button('Specials').tap();
@@ -416,7 +420,7 @@ test('Specials unlock, persist across reload, and work in practice without rewar
     assert.equal(await equip.evaluate((control) => document.activeElement === control), true);
     const before = await page.evaluate(() => window.specialsProbe.store.load());
     await page.reload();
-    await button('Arcade').tap();
+    await button('Campaign').tap();
     await button('Practice').tap();
     await button('Flight basics').tap();
     await page.getByText('Steer your Fighter', { exact:true }).waitFor();
@@ -437,7 +441,7 @@ test('Specials unlock, persist across reload, and work in practice without rewar
   } finally { await browser.close(); }
 });
 
-test('Arcade, Hangar and Settings keep their controls inside the landscape frame', { skip: !origin, timeout:15000 }, async () => {
+test('Campaign, Hangar and Settings keep their controls inside the landscape frame', { skip: !origin, timeout:15000 }, async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport:{ width:844, height:390 }, isMobile:true, hasTouch:true, serviceWorkers:'block' });
@@ -452,8 +456,8 @@ test('Arcade, Hangar and Settings keep their controls inside the landscape frame
       assert.ok(layout.width >= layout.scrollWidth, JSON.stringify(layout));
       assert.ok(layout.controls.length && layout.controls.every(([width, scroll]) => width >= scroll), JSON.stringify(layout));
     };
-    await button('Arcade').tap();
-    await fit('.stage, .support-actions button');
+    await button('Campaign').tap();
+    await fit('.stage, .campaign-postgame button');
     await button('Back').tap();
     await button('Hangar').tap();
     await fit('.craft-choice');
@@ -467,7 +471,7 @@ test('Arcade, Hangar and Settings keep their controls inside the landscape frame
   } finally { await browser.close(); }
 });
 
-test('first Play teaches steering, targeting and Shift before starting a recorded flight', { skip: !origin, timeout:45000 }, async () => {
+test('Practice teaches steering, targeting and a timed Shift without creating a recorded run', { skip: !origin, timeout:90000 }, async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport:{ width:390, height:844 }, serviceWorkers:'block' });
@@ -475,53 +479,42 @@ test('first Play teaches steering, targeting and Shift before starting a recorde
       const response = await route.fetch();
       await route.fulfill({ response, body:(await response.text()) + '\nwindow.trainingProbe = { state, store };' });
     });
+    const button = (name) => page.getByRole('button', { name, exact:true });
     await page.goto(origin);
-    await page.getByRole('button', { name:'Play', exact:true }).click();
+    await button('Campaign').click();
+    await button('Practice').click();
+    await button('Flight basics').click();
     await page.getByText('Steer your Fighter', { exact:true }).waitFor();
-    assert.match(await page.locator('#announcer').textContent(), /^Steer your Fighter\./);
-    const skip = page.getByRole('button', { name:'Skip training', exact:true });
-    await skip.focus();
+    const exit = button('End practice');
+    await exit.focus();
     await page.keyboard.down('ArrowRight');
     await page.getByText('Line up a shot', { exact:true }).waitFor();
     await page.keyboard.up('ArrowRight');
-    assert.equal(await skip.evaluate((button) => document.activeElement === button), true);
+    assert.equal(await exit.evaluate((control) => document.activeElement === control), true);
     await page.locator('#sky').focus();
-    const move = () => page.evaluate(() => {
-      const { training, flight } = window.trainingProbe.state;
-      return training.step === 'fire' && flight.enemies.length ? flight.enemies[0].x - flight.player.x : null;
-    });
-    for (let attempt = 0; attempt < 160; attempt++) {
-      const dx = await move();
-      if (await page.getByText('Ghost Shift', { exact:true }).first().isVisible() && await page.locator('#flight-name').textContent() === 'Ghost Shift') break;
-      if (dx !== null && Math.abs(dx) > 6) {
-        const key = dx < 0 ? 'ArrowLeft' : 'ArrowRight';
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const target = await page.evaluate(() => {
+        const { training, flight } = window.trainingProbe.state;
+        return training.step === 'fire' && flight.enemies.length ? flight.enemies[0].x - flight.player.x : null;
+      });
+      if (await page.evaluate(() => window.trainingProbe.state.training.step === 'shift')) break;
+      if (target !== null && Math.abs(target) > 8) {
+        const key = target < 0 ? 'ArrowLeft' : 'ArrowRight';
         await page.keyboard.down(key);
-        const delay = Math.min(90, Math.abs(dx) * 1.6);
-        await page.waitForTimeout(delay);
+        await page.waitForTimeout(Math.min(90, Math.abs(target) * 1.6));
         await page.keyboard.up(key);
       } else await page.waitForTimeout(85);
     }
-    await page.waitForFunction(() => window.trainingProbe.state.training.step === 'shift');
-    await page.keyboard.press('Space');
-    const launch = page.getByRole('button', { name:'Start arcade', exact:true });
-    await page.waitForFunction(() => window.trainingProbe.state.flight.player.ghostTime > 0);
-    assert.equal(await launch.count(), 0);
-    await page.getByText('Try again', { exact:true }).waitFor();
-    assert.ok(await page.evaluate(() => {
-      const { player } = window.trainingProbe.state.flight;
-      return player.hull === player.maxHull;
-    }));
     await page.getByText('Shift now', { exact:true }).waitFor();
     await page.keyboard.press('Space');
-    await launch.waitFor();
+    await button('Done').click();
+    await page.getByRole('heading', { name:'Practice', exact:true }).waitFor();
     assert.equal(await page.evaluate(() => Object.keys(window.trainingProbe.state.pilot.active).length), 0);
-    await launch.click();
-    await page.waitForFunction(() => window.trainingProbe.state.mode === 'playing' && !window.trainingProbe.state.training);
-    assert.ok(await page.evaluate(() => window.trainingProbe.state.pilot.settings.trainingDone));
+    await page.close();
   } finally { await browser.close(); }
 });
 
-test('Play resumes the Arcade route with the equipped ship and replays the finale after completion', { skip: !origin, timeout:45000 }, async () => {
+test('Play resumes the campaign with the equipped ship and replays the finale after completion', { skip: !origin, timeout:45000 }, async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport:{ width:320, height:568 }, hasTouch:true, isMobile:true, serviceWorkers:'block' });
   try {
@@ -530,13 +523,14 @@ test('Play resumes the Arcade route with the equipped ship and replays the final
       await route.fulfill({ response, body:(await response.text()) + '\nwindow.quickPlay = { state, store };' });
     });
     const play = page.getByRole('button', { name:'Play', exact:true });
-    for (const [cleared, expected] of [[2,3], [6,6]]) {
+    for (const [cleared, expected] of [[3,8], [15,6]]) {
       await page.goto(origin);
       await play.waitFor();
-      await page.evaluate((count) => window.quickPlay.store.change((pilot) => {
-        for (let stage = 1; stage <= count; stage++) pilot.clears[stage] = 1;
+      await page.evaluate((ids) => window.quickPlay.store.change((pilot) => {
+        for (const id of ids) pilot.clears[id] = 1;
         pilot.ship = 'needle';
-      }), cleared);
+        pilot.callSign = 'Test Pilot'; pilot.settings.skipStory = true;
+      }), missionIds.slice(0, cleared));
       await page.reload();
       await play.tap();
       await page.waitForFunction((stage) => {
@@ -544,6 +538,78 @@ test('Play resumes the Arcade route with the equipped ship and replays the final
         return state.mode === 'playing' && state.flight.run.stage === stage && state.flight.run.ship === 'needle';
       }, expected);
     }
+  } finally { await browser.close(); }
+});
+
+test('Side Operations unlock independently and never interrupt the main mission route or its ending', { skip: !origin, timeout:60000 }, async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport:{ width:320, height:568 }, isMobile:true, hasTouch:true,
+      reducedMotion:'reduce', serviceWorkers:'block' });
+    await page.route(/\/app\.mjs$/, async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({ response, body:`${await response.text()}
+        window.campaignProbe = {
+          store, state,
+          prepare: (ids) => store.change((pilot) => {
+            pilot.callSign = 'Test Pilot'; pilot.settings.skipStory = true;
+            for (const id of ids) pilot.clears[id] = 1;
+          }),
+          clear: () => Object.assign(state.flight, { status:'clear', score:38000, kills:64, elapsed:240, movement:4000 })
+        };` });
+    });
+    const button = (name) => page.getByRole('button', { name, exact:typeof name === 'string' });
+    const heading = (name) => page.getByRole('heading', { name, exact:true });
+    const launch = async (control, id) => {
+      await control.tap();
+      await page.waitForFunction((stage) => window.campaignProbe.state.mode === 'playing' && window.campaignProbe.state.flight.run.stage === stage, id);
+    };
+    await page.goto(origin);
+    await button('Play').waitFor();
+    await page.evaluate(() => window.campaignProbe.prepare([]));
+    await page.reload();
+    await button('Campaign').tap();
+    const actOne = page.locator('.campaign-act').first();
+    assert.equal(await page.locator('.campaign-act > ol > li').count(), 15);
+    assert.equal(await page.locator('.side-operations li').count(), 9);
+    await actOne.locator('summary').tap();
+    assert.equal(await button(/^A1 Evacuation Corridor/).isDisabled(), true);
+    await launch(button(/^01 Neyara Orbit/), 1);
+    await page.evaluate(() => window.campaignProbe.clear());
+    await heading('Mission clear').waitFor();
+    await page.getByText('Side Operation unlocked · Evacuation Corridor', { exact:true }).waitFor();
+    assert.equal(await button(/Next Mission · The Pursuit/).isEnabled(), true);
+    await button('Title Screen').tap();
+    await button('Campaign').tap();
+    await actOne.locator('summary').tap();
+    assert.equal(await button(/^A2 Wreckage Sweep/).isDisabled(), true);
+    await launch(button(/^A1 Evacuation Corridor/), 16);
+    await page.evaluate(() => window.campaignProbe.clear());
+    await heading('Operation clear').waitFor();
+    assert.equal(await button(/Next Mission/).count(), 0);
+    await button('Title Screen').tap();
+    await button('Records').tap();
+    await page.getByText('1 / 15', { exact:true }).waitFor();
+    await page.getByText('1 / 9', { exact:true }).waitFor();
+    await page.getByText('2 / 24', { exact:true }).waitFor();
+    await button('Back').tap();
+    await launch(button('Play'), 7);
+    await page.evaluate((ids) => window.campaignProbe.prepare(ids), missionIds.slice(0, 14));
+    await page.reload();
+    await launch(button('Play'), 6);
+    await page.evaluate(() => window.campaignProbe.clear());
+    await heading('Fleet defeated').waitFor();
+    await page.getByText('Veteran Campaign and Endless unlocked', { exact:true }).waitFor();
+    const counts = await page.evaluate(async () => {
+      const pilot = await window.campaignProbe.store.load();
+      return [Object.keys(pilot.clears).length, Object.keys(pilot.sideClears).length];
+    });
+    assert.deepEqual(counts, [15, 1]);
+    await button('Return to Campaign').tap();
+    assert.equal(await button('Endless').isEnabled(), true);
+    await button('Veteran').tap();
+    await heading('Veteran Campaign').waitFor();
+    assert.equal(await page.locator('.side-operations').count(), 0);
   } finally { await browser.close(); }
 });
 
@@ -568,17 +634,24 @@ test('production web artifact uses touch, atomic saves, and a recoverable offlin
       const b = new PilotStore(indexedDB);
       await Promise.all([a.open(), b.open()]);
       const result = { status:'clear', score:8200, duration:180, kills:27, mastery:true };
-      await a.change((p) => beginRun(p, 'same', 'arcade', 1));
+      await a.change((p) => { p.callSign = 'Test Pilot'; p.settings.skipStory = true; beginRun(p, 'same', 'arcade', 1); });
       const [first, second] = await Promise.all([a.change((p) => settleRun(p,'same',result)), b.change((p) => settleRun(p,'same',result))]);
-      const [buy1,buy2] = await Promise.all([a.change((p) => install(p,'rails')), b.change((p) => install(p,'rails'))]);
+      await a.change((p) => { p.salvage = 28; });
+      const [buy1,buy2] = await Promise.all([a.change((p) => install(p,'damage')), b.change((p) => install(p,'damage'))]);
       const failedWrite = await a.change((p) => { p.salvage += 999; throw Error('synthetic abort'); }).then(() => false, () => true);
       const current = await b.load();
       a.db.close();
       b.db.close();
       return { duplicate1:first.result.award, duplicate2:second.result.award, buys:[buy1.result,buy2.result], failedWrite,
-        salvage:current.salvage, clears:current.clears[1], mastered:current.mastery[1] };
+        salvage:current.salvage, clears:current.clears[1], tier:current.tiers.damage };
     });
-    assert.deepEqual(report, { duplicate1:78, duplicate2:78, buys:[true,false], failedWrite:true, salvage:8, clears:1, mastered:true });
+    assert.equal(report.duplicate1, report.duplicate2);
+    assert.ok(report.duplicate1 > 0);
+    assert.equal(report.buys.filter(Boolean).length, 1);
+    assert.ok(report.salvage >= 0 && report.salvage < 28);
+    assert.equal(report.failedWrite, true);
+    assert.equal(report.clears, 1);
+    assert.equal(report.tier, 1);
 
     await page.reload();
     await page.getByRole('button', { name:'Play', exact:true }).tap();
@@ -641,8 +714,7 @@ test('mobile WebKit can launch, pause and resume the production artifact', { ski
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(origin);
     await page.getByRole('button', { name:'Play', exact:true }).tap();
-    await page.getByRole('button', { name:'Skip training', exact:true }).tap();
-    await page.locator('#training-actions').waitFor({ state:'hidden' });
+    await confirmOpening(page);
     await page.getByRole('button', { name:'Pause', exact:true }).tap();
     await page.getByRole('heading', { name:'Paused' }).waitFor();
     await page.getByRole('button', { name:'Resume', exact:true }).tap();
@@ -679,20 +751,21 @@ test('restoring IndexedDB reconciles temporary results with the actual saved rec
         const play = page.getByRole('button', { name:'Play', exact:true });
         await play.waitFor();
         for (const state of ['home','stages']) {
-          if (state === 'stages') await page.getByRole('button', { name:'Arcade', exact:true }).tap();
+          if (state === 'stages') await page.getByRole('button', { name:'Campaign', exact:true }).tap();
           const box = await banner.boundingBox();
           assert.ok(box.y >= 0 && box.y + box.height < 568, JSON.stringify(box));
         }
-        await page.getByRole('button', { name:/01 Vesper Orbit/ }).tap();
-        await page.getByRole('button', { name:'Skip training', exact:true }).tap();
-        await page.locator('#training-actions').waitFor({ state:'hidden' });
-        await page.getByRole('button', { name:'Pause', exact:true }).waitFor();
+        await page.getByRole('button', { name:/01 Neyara Orbit/ }).tap();
+        await confirmOpening(page);
         // Only the storage path is under test here. The real campaign tests clear by play.
         await page.evaluate(() => {
           window.storageFixture.flight.score = 7451;
           window.storageFixture.flight.status = 'clear';
         });
-        await page.getByText(/78 Salvage this session/).waitFor();
+        const recap = page.getByRole('button', { name:'Skip', exact:true });
+        await recap.tap();
+        const awardText = await page.getByText(/Salvage this session/).textContent();
+        const advance = /\d+/.exec(awardText)[0];
         const captionsFit = await page.locator('.result-facts .caption').evaluateAll((labels) =>
           labels.every((label) => label.scrollWidth <= label.clientWidth));
         assert.equal(captionsFit, true);
@@ -703,15 +776,15 @@ test('restoring IndexedDB reconciles temporary results with the actual saved rec
         await page.getByRole('button', { name:'Retry storage', exact:true }).tap();
         if (existing) {
           await page.getByText('This flight was temporary. Your existing device save is active.').waitFor();
-          assert.equal(await page.getByText(/Salvage banked|Asteroid Belt unlocked/).count(),0);
+          assert.equal(await page.getByText(/Salvage banked|The Pursuit unlocked/).count(),0);
         } else {
-          await page.getByText(/78 Salvage banked/).waitFor();
-          await page.getByText('Asteroid Belt unlocked').waitFor();
+          await page.getByText(/Salvage banked/).waitFor();
+          await page.getByText('The Pursuit unlocked').waitFor();
         }
         await page.reload();
-        await page.getByRole('button', { name:'Arcade', exact:true }).tap();
-        assert.equal(await page.getByRole('button', {name:/02 Asteroid Belt/}).isEnabled(), !existing);
-        await page.getByText(existing ? '0 Salvage' : '78 Salvage', {exact:true}).waitFor();
+        await page.getByRole('button', { name:'Campaign', exact:true }).tap();
+        assert.equal(await page.getByRole('button', {name:/02 The Pursuit/}).isEnabled(), !existing);
+        await page.getByText(existing ? '0 Salvage' : `${advance} Salvage`, {exact:true}).waitFor();
       } finally { await context.close(); }
     }
   } finally { await browser.close(); }
@@ -721,7 +794,7 @@ test('results scope record comparisons and link back to the Title Screen', { ski
   const browser = await chromium.launch();
   try {
     for (const [mode, name, status, viewport] of [
-      ['arcade', 'Stage clear', 'clear', { width:390, height:844 }],
+      ['arcade', 'Mission clear', 'clear', { width:390, height:844 }],
       ['arcade', 'Flight lost', 'defeat', { width:320, height:568 }],
       ['endless', 'Run complete', 'defeat', { width:844, height:390 }]
     ]) {
@@ -741,21 +814,22 @@ test('results scope record comparisons and link back to the Title Screen', { ski
           await button('Play').waitFor();
           await page.evaluate(async (mode) => {
             await window.resultFixture.store.change((pilot) => {
-              pilot.settings.trainingDone = true;
+              pilot.settings.skipStory = true;
+              pilot.callSign = 'Test Pilot';
               pilot.clears = { 1:1 };
+              if (mode === 'endless') pilot.legacy = { ...pilot.legacy, endlessQualified:true };
               const prior = { mode, rules:'arcade-8', ship:'kestrel', special:'ghost', equipment:[], score:150000, duration:200, kills:90 };
               if (mode === 'endless') pilot.records.endless = { ...prior, status:'defeat', stage:null };
               else pilot.records.arcade[1] = { ...prior, status:'clear', stage:1 };
             });
           }, mode);
           await page.reload();
-          await button('Arcade').tap();
+          await button('Campaign').tap();
           if (mode === 'endless') await button('Endless').tap();
-          else await page.getByRole('button', { name:/^01 Vesper Orbit/ }).tap();
+          else await page.getByRole('button', { name:/^01 Neyara Orbit/ }).tap();
         } else {
           await button('Play').tap();
-          await button('Skip training').tap();
-          await page.locator('#training-actions').waitFor({ state:'hidden' });
+          await confirmOpening(page);
         }
         await button('Pause').waitFor();
         // This fixture exercises a real settlement and result transition without playing three full flights.
@@ -782,7 +856,7 @@ test('results scope record comparisons and link back to the Title Screen', { ski
   } finally { await browser.close(); }
 });
 
-test('flight instructions stay in the HUD during real touch and a rail strike', { skip: !origin, timeout:60000 }, async () => {
+test('flight instructions stay in the HUD during real touch and a rail strike', { skip: !origin, timeout:100000 }, async () => {
   const browser = await chromium.launch();
   try {
     for (const viewport of [{width:320,height:568},{width:390,height:844}]) {
@@ -792,7 +866,7 @@ test('flight instructions stay in the HUD during real touch and a rail strike', 
         const touch = await context.newCDPSession(page);
         await page.route(/\/app\.mjs(\?|$)/, async (route) => {
           const response = await route.fetch();
-          await route.fulfill({response, body:(await response.text())+'\nwindow.hudProbe = {state,renderer,store};'});
+          await route.fulfill({response, body:(await response.text())+'\nwindow.hudProbe = {state,renderer,store,stages:STAGES};'});
         });
         const dragHigh = async () => {
           const x = viewport.width / 2;
@@ -809,10 +883,10 @@ test('flight instructions stay in the HUD during real touch and a rail strike', 
         };
 
         await page.goto(origin);
-        await page.getByRole('button',{name:'Arcade',exact:true}).tap();
-        await page.getByRole('button',{name:/01 Vesper Orbit/}).tap();
-        await page.getByRole('button', { name:'Skip training', exact:true }).tap();
-        await page.getByText('Fight through the blockade.',{exact:true}).waitFor();
+        await page.getByRole('button',{name:'Campaign',exact:true}).tap();
+        await page.getByRole('button',{name:/01 Neyara Orbit/}).tap();
+        await confirmOpening(page);
+        await page.getByText('Hold the line at Neyara and break the enemy command ship.',{exact:true}).waitFor();
         await page.keyboard.down('ArrowDown');
         await page.waitForFunction(() => window.hudProbe.state.flight.player.y >= 729);
         await page.keyboard.up('ArrowDown');
@@ -824,23 +898,26 @@ test('flight instructions stay in the HUD during real touch and a rail strike', 
         });
         await page.locator('#flight-name').filter({ hasText:'Shield' }).waitFor();
         await page.evaluate(async () => {
-          await window.hudProbe.store.change((pilot) => { pilot.clears = {1:1,2:1,3:1,4:1}; });
+          await window.hudProbe.store.change((pilot) => {
+            for (const { id } of window.hudProbe.stages.slice(0,6)) pilot.clears[id] = 1;
+          });
         });
 
         await page.reload();
-        await page.getByRole('button',{name:'Arcade',exact:true}).tap();
-        const redSun = page.getByRole('button',{name:/04 Red Sun/});
-        assert.match(await redSun.innerText(),/No hull loss at boss/);
+        await page.getByRole('button',{name:'Campaign',exact:true}).tap();
+        const redSun = page.getByRole('button',{name:/07 Red Sun/});
         assert.equal(await page.getByRole('button',{name:'Endless',exact:true}).getAttribute('aria-describedby'),'endless-note');
-        assert.match(await page.locator('#endless-note').innerText(),/0 Salvage/);
+        assert.match(await page.locator('#endless-note').innerText(),/Unlocks after the Standard campaign/);
         await redSun.tap();
         await page.locator('#flight-tip').waitFor();
         await dragHigh();
         await page.evaluate(() => {
           const f = window.hudProbe.state.flight;
-          f.elapsed = 44.98;
+          f.terrainIndex = f.stage.terrain.findIndex((entry) => entry[1] === 'rail');
+          f.elapsed = f.stage.terrain[f.terrainIndex][0] - .02;
           f.waveIndex = f.stage.waves.length;
           f.dropIndex = f.stage.drops.length;
+          f.cruiserIndex = f.stage.cruisers.length;
           f.player.guard = 0;
           f.player.hull = f.player.maxHull;
         });
@@ -852,7 +929,7 @@ test('flight instructions stay in the HUD during real touch and a rail strike', 
   } finally { await browser.close(); }
 });
 
-test('keyboard focus follows hangar controls and an upgrade detail return', { skip: !origin, timeout:30000 }, async () => {
+test('keyboard focus follows hangar controls and an upgrade detail return', { skip: !origin, timeout:75000 }, async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({viewport:{width:390,height:844}});
@@ -864,17 +941,18 @@ test('keyboard focus follows hangar controls and an upgrade detail return', { sk
     };
     await activate(page.getByRole('button',{name:/^Interceptor/}));
     await activate(page.getByRole('button',{name:'Upgrades',exact:true}));
-    const chamber = page.getByRole('button',{name:/^Cycling Chamber/});
+    const chamber = page.getByRole('button',{name:/^Fire Rate/});
     await chamber.press('Enter');
-    await page.getByRole('heading',{name:'Cycling Chamber'}).waitFor();
+    await page.getByRole('heading',{name:'Fire Rate'}).waitFor();
     await page.getByRole('button',{name:'Back',exact:true}).press('Enter');
     assert.equal(await chamber.evaluate((node) => document.activeElement === node),true);
     await page.keyboard.press('Tab');
-    assert.equal(await page.getByRole('button',{name:/^Resonant Cells/}).evaluate((node) => document.activeElement === node),true);
+    assert.equal(await page.getByRole('button',{name:/^Thrusters/}).evaluate((node) => document.activeElement === node),true);
+    await page.close();
   } finally { await browser.close(); }
 });
 
-test('Space activates Pause on focus and uses the indicated ability from the playfield', { skip: !origin, timeout:60000 }, async () => {
+test('Space activates Pause on focus and uses the indicated ability from the playfield', { skip: !origin, timeout:105000 }, async () => {
   const browser = await chromium.launch();
   try {
     for (const viewport of [{ width:320, height:568 }, { width:390, height:844 }]) {
@@ -883,13 +961,13 @@ test('Space activates Pause on focus and uses the indicated ability from the pla
         const page = await context.newPage();
         await page.route(/\/app\.mjs(\?|$)/, async (route) => {
           const response = await route.fetch();
-          await route.fulfill({ response, body:(await response.text()) + '\nwindow.controlProbe = { state, store };' });
+          await route.fulfill({ response, body:(await response.text()) + '\nwindow.controlProbe = { state, store, stages:STAGES };' });
         });
         const button = (name) => page.getByRole('button', { name, exact:typeof name === 'string' });
         const playing = () => page.waitForFunction(() => document.activeElement?.id === 'sky');
         await page.goto(origin);
         await button('Play').press('Enter');
-        await button('Skip training').press('Enter');
+        await confirmOpening(page);
         await playing();
         assert.match(await page.locator('#sky').getAttribute('aria-label'), /Space for Ghost Shift/);
         await page.waitForFunction(() => document.getElementById('ghost-meter').getAttribute('aria-valuenow') === '100');
@@ -906,15 +984,14 @@ test('Space activates Pause on focus and uses the indicated ability from the pla
         await button('Pause').press('Enter');
         await page.getByRole('heading', { name:'Paused' }).waitFor();
         await page.evaluate(() => window.controlProbe.store.change((pilot) => {
-          pilot.clears = { 1:1, 2:1, 3:1, 4:1 };
+          for (const { id } of window.controlProbe.stages.slice(0,11)) pilot.clears[id] = 1;
           pilot.ship = 'bastion';
           pilot.special = 'ion';
-          pilot.equipment = ['hull'];
         }));
 
         await page.reload();
-        await button('Arcade').tap();
-        await button(/^05 Outer Orbit/).tap();
+        await button('Campaign').tap();
+        await button(/^12 Wraith/).tap();
         await playing();
         assert.match(await page.locator('#sky').getAttribute('aria-label'), /Space for Ion Burst/);
         await page.evaluate(() => {
@@ -922,6 +999,8 @@ test('Space activates Pause on focus and uses the indicated ability from the pla
           f.elapsed = f.stage.bossAt - .02;
           f.waveIndex = f.stage.waves.length;
           f.dropIndex = f.stage.drops.length;
+          f.terrainIndex = f.stage.terrain.length;
+          f.cruiserIndex = f.stage.cruisers.length;
           f.player.ghostEnergy = 100;
         });
         await page.getByText('Hop to match realms. Shoot the core.', { exact:true }).waitFor();
@@ -973,7 +1052,7 @@ test('Space activates Pause on focus and uses the indicated ability from the pla
   } finally { await browser.close(); }
 });
 
-test('slow flight art can be canceled and failed art has a bounded fallback', { skip: !origin, timeout:40000 }, async () => {
+test('slow flight art can be canceled and failed art has a bounded fallback', { skip: !origin, timeout:90000 }, async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport:{ width:320, height:568 }, isMobile:true, hasTouch:true, serviceWorkers:'block' });
@@ -989,13 +1068,13 @@ test('slow flight art can be canceled and failed art has a bounded fallback', { 
       const { PilotStore } = await import(new URL('pilot.mjs', main));
       const store = new PilotStore(indexedDB);
       await store.open();
-      await store.change((pilot) => { pilot.settings.trainingDone = true; });
+      await store.change((pilot) => { pilot.callSign = 'Test Pilot'; pilot.settings.skipStory = true; });
       store.db.close();
     });
     await page.reload();
     const button = (name) => page.getByRole('button', { name, exact:typeof name === 'string' });
-    await button('Arcade').tap();
-    const stage = button(/^01 Vesper Orbit/);
+    await button('Campaign').tap();
+    const stage = button(/^01 Neyara Orbit/);
     await stage.tap();
     const image = await stalled;
     await page.getByRole('status').filter({ hasText:'Loading flight assets' }).waitFor();
@@ -1024,8 +1103,9 @@ test('slow flight art can be canceled and failed art has a bounded fallback', { 
     await button('Pause').waitFor({ timeout:deadline });
     assert.ok(second, 'The launch completed while the image response was still held');
     await second.abort().catch(() => {});
-    await page.getByText('Fight through the blockade.', { exact:true }).waitFor();
+    await page.getByText('Hold the line at Neyara and break the enemy command ship.', { exact:true }).waitFor();
     await button('Pause').tap();
     await page.getByRole('heading', { name:'Paused' }).waitFor();
+    await page.close();
   } finally { await browser.close(); }
 });

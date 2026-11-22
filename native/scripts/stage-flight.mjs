@@ -44,8 +44,9 @@ const built = await build({
       let body = `import { NativePilotStore, nativeRequest } from ${JSON.stringify(bridgeModule)};\n` + read(args.path);
       body = replaceRequired(body, 'new PilotStore(globalThis.indexedDB)', 'new NativePilotStore()');
       body += `\nfor (const type of ['contextmenu', 'selectstart']) {\n  document.addEventListener(type, (event) => {\n    if (event.target instanceof Element && !event.target.closest('input:not([type=range]), textarea, .policy-section')) event.preventDefault();\n  });\n}\n`;
-      body += `\nwindow.addEventListener('stellar-native-pause', () => { pause(true); audio.quiet(); });\n`;
-      body += `window.addEventListener('stellar-native-foreground', () => { if (state.mode === 'menu') audio.play('hangar'); });\n`;
+      body += `\nwindow.addEventListener('stellar-native-pause', () => { pause(true); audio.setForeground(false); });\n`;
+      body += `window.addEventListener('stellar-native-foreground', () => { audio.setForeground(true); if (state.mode === 'menu') audio.play('hangar'); });\n`;
+      body += `window.addEventListener('stellar-native-music', (event) => { void nativeRequest('music', event.detail).catch(() => {}); });\n`;
       body += `window.addEventListener('stellar-native-haptic', (event) => { void nativeRequest('haptic', event.detail).catch(() => {}); });\n`;
       return { contents: body, loader: 'js', resolveDir: source };
     });

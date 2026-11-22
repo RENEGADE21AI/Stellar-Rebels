@@ -1,9 +1,10 @@
-import { AIM_PRECISION, FIXED_TICK, HEIGHT, INPUT_RESUME, INPUT_SHIFT, RULES_VERSION, SHIPS, SPECIALS, UPGRADES, WIDTH, stageById } from './catalog.mjs';
+import { AIM_PRECISION, FIXED_TICK, HEIGHT, INPUT_RESUME, INPUT_SHIFT, RULES_VERSION, SHIPS, SPECIALS, WIDTH, legacyStageById, stageById } from './catalog.mjs';
 import { Flight } from './flight.mjs';
+import { LEGACY_UPGRADES, tierKey, validTiers } from './progression.mjs';
 import { validFlightSeed } from './seed.mjs';
 
-const schema = 1;
-const tickLimit = (mode) => (mode === 'endless' ? 30 : 7) * 60 * 60;
+const legacyRules = 'arcade-11';
+const tickLimit = (run) => (run.mode === 'endless' ? 30 : run.rules === legacyRules ? 7 : 16) * 60 * 60;
 const flags = INPUT_SHIFT | INPUT_RESUME;
 const movementLimit = AIM_PRECISION * HEIGHT;
 
@@ -15,9 +16,11 @@ function outcome(terminal) {
 export function captureReplay(run) {
   const commands = [];
   let x, y;
+  const legacy = run.rules === legacyRules;
   const context = { seed: run.seed, rules: run.rules, mode: run.mode, stage: run.stage, ship: run.ship,
-    equipment: [...run.equipment], special: run.special ?? 'ghost' };
-  const limit = tickLimit(run.mode);
+    special: run.special ?? 'ghost', ...(legacy ? { equipment:[...run.equipment] } :
+      { tiers:{ ...run.tiers }, variant:run.variant ?? 'standard' }) };
+  const limit = tickLimit(run);
   return {
     recordInput(tick, nextX, nextY, actions) {
       if (tick >= limit || (!actions && x === nextX && y === nextY)) return;
@@ -26,26 +29,31 @@ export function captureReplay(run) {
       commands.push([tick, x, y, actions]);
     },
     finish(ticks, terminal) {
-      if (!validFlightSeed(context.seed) || context.rules !== RULES_VERSION || !commands.length || ticks > limit) return null;
+      const schema = legacy ? 1 : 2;
+      if (!validContext(context, schema) || !commands.length || ticks > limit) return null;
       return { schema, run: context, ticks, commands, result: outcome(terminal) };
     }
   };
 }
 
-function validContext(run) {
-  if (!run || !validFlightSeed(run.seed) || run.rules !== RULES_VERSION || !Object.hasOwn(SHIPS, run.ship)) return false;
+function validContext(run, schema) {
+  const legacy = schema === 1 && run?.rules === legacyRules;
+  if (!run || !validFlightSeed(run.seed) || !(legacy || schema === 2 && run.rules === RULES_VERSION) ||
+      !Object.hasOwn(SHIPS, run.ship)) return false;
   if (typeof run.special !== 'string' || !Object.hasOwn(SPECIALS, run.special)) return false;
-  if (!(run.mode === 'arcade' && Number.isInteger(run.stage) && stageById(run.stage) || run.mode === 'endless' && run.stage === null)) return false;
-  if (!Array.isArray(run.equipment) || run.equipment.length > Object.keys(UPGRADES).length || new Set(run.equipment).size !== run.equipment.length) return false;
-  return run.equipment.every((key) => typeof key === 'string' && Object.hasOwn(UPGRADES, key) &&
-    (!UPGRADES[key].needs || run.equipment.includes(UPGRADES[key].needs)));
+  const stage = legacy ? legacyStageById : stageById;
+  if (!(run.mode === 'arcade' && Number.isInteger(run.stage) && stage(run.stage) || run.mode === 'endless' && run.stage === null)) return false;
+  if (!legacy) return (run.variant === 'standard' || run.variant === 'veteran' && run.mode === 'arcade') && validTiers(run.tiers);
+  if (!Array.isArray(run.equipment) || run.equipment.length > Object.keys(LEGACY_UPGRADES).length || new Set(run.equipment).size !== run.equipment.length) return false;
+  return run.equipment.every((key) => typeof key === 'string' && Object.hasOwn(LEGACY_UPGRADES, key) &&
+    (!LEGACY_UPGRADES[key].needs || run.equipment.includes(LEGACY_UPGRADES[key].needs)));
 }
 
 export function verifyReplay(replay) {
   const fail = (reason) => ({ valid: false, reason });
-  if (replay?.schema !== schema || !validContext(replay.run)) return fail('Unknown flight rules or loadout');
+  if (!validContext(replay?.run, replay?.schema)) return fail('Unknown flight rules or loadout');
   const { run, commands, ticks, result } = replay;
-  if (!Number.isSafeInteger(ticks) || ticks < 1 || ticks > tickLimit(run.mode) || !Array.isArray(commands) ||
+  if (!Number.isSafeInteger(ticks) || ticks < 1 || ticks > tickLimit(run) || !Array.isArray(commands) ||
       !commands.length || commands.length > ticks || !result) return fail('Malformed replay or duration limit exceeded');
 
   let lastTick = -1;
@@ -74,7 +82,9 @@ export function verifyReplay(replay) {
   }
   const terminal = flight.terminal();
   if (!terminal || !Object.entries(outcome(terminal)).every(([key, value]) => result[key] === value)) return fail('Claimed result differs from the replay');
-  const loadout = run.equipment.slice().sort().join(',') || 'stock';
-  return { valid: true, board: `${run.rules}/${run.mode}/${run.stage ?? 'survival'}/${run.ship}/${loadout}/${run.special}`, seed: run.seed, ticks,
+  const legacy = replay.schema === 1;
+  const loadout = legacy ? run.equipment.slice().sort().join(',') || 'stock' : tierKey(run.tiers);
+  const mode = !legacy && run.variant === 'veteran' ? 'veteran' : run.mode;
+  return { valid: true, board: `${run.rules}/${mode}/${run.stage ?? 'survival'}/${run.ship}/${loadout}/${run.special}`, seed: run.seed, ticks,
     duration: ticks * FIXED_TICK, result: outcome(terminal) };
 }

@@ -8,7 +8,7 @@
     "icon": "./generated/icon.png",
     "ios": {
       "bundleIdentifier": "com.renegade21ai.stellarrebels",
-      "buildNumber": "3",
+      "buildNumber": "4",
       "supportsTablet": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -63,7 +63,7 @@
     },
     "android": {
       "package": "com.renegade21ai.stellarrebels",
-      "versionCode": 4,
+      "versionCode": 5,
       "adaptiveIcon": {
         "foregroundImage": "./generated/adaptive.png",
         "backgroundColor": "#080f19"
@@ -89,6 +89,15 @@
           "backgroundColor": "#080f19",
           "image": "./generated/launch.png",
           "imageWidth": 114
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": false,
+          "enableBackgroundRecording": false,
+          "microphonePermission": false,
+          "recordAudioAndroid": false
         }
       ]
     ],

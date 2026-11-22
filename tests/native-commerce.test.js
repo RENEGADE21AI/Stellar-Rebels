@@ -119,7 +119,7 @@ test('only app-specific public platform keys or the isolated Android test key ca
   await commerce.refresh();
   assert.equal(sdk.options, undefined);
   assert.deepEqual(await commerce.authorize(1), { allowed: true });
-  for (const stage of [4, 5, 6, 0, 7, '3', 3.5]) assert.deepEqual(await commerce.authorize(stage), { allowed: false });
+  for (const stage of [6, 7, 15, 19, 21, 24, 0, 25, '3', 3.5]) assert.deepEqual(await commerce.authorize(stage), { allowed: false });
 });
 
 test('initial offering provides only the matching non-subscription store price', async () => {
@@ -154,22 +154,22 @@ test('RevenueCat Android maps every one-time SDK product to CONSUMABLE, even on 
     await commerce.refresh();
     assert.equal(commerce.status().price, '2,99 €');
     assert.equal((await commerce.purchase()).result, 'purchased');
-    assert.equal((await commerce.authorize(4)).allowed, true);
+    assert.equal((await commerce.authorize(6)).allowed, true);
   }
 });
 
 test('purchase, restart offline, and confirmed revocation use verified SDK CustomerInfo', async () => {
   const { commerce, changes, emit, sdk } = await setup();
   await commerce.refresh();
-  for (const stage of [1, 2, 3]) assert.deepEqual(await commerce.authorize(stage), { allowed: true });
-  assert.deepEqual(await commerce.authorize(4), { allowed: false });
+  for (const stage of [1, 2, 3, 4, 5, 16, 17, 18]) assert.deepEqual(await commerce.authorize(stage), { allowed: true });
+  assert.deepEqual(await commerce.authorize(6), { allowed: false });
   assert.equal((await commerce.purchase()).result, 'purchased');
   assert.equal(commerce.status().owned, true);
   assert.ok(changes.some((status) => status.busy));
   assert.equal((await commerce.authorize(6)).allowed, true);
   sdk.getCustomerInfo = async () => { throw Error('offline'); };
   await commerce.refresh();
-  assert.equal((await commerce.authorize(5)).allowed, true);
+  assert.equal((await commerce.authorize(24)).allowed, true);
   const restarted = await setup({
     getCustomerInfo: async () => customerInfo(),
     getOfferings: async () => { throw Error('offline'); }
@@ -179,7 +179,7 @@ test('purchase, restart offline, and confirmed revocation use verified SDK Custo
   assert.equal(restarted.commerce.status().available, false);
   emit(customerInfo({ isActive: false }, '2026-11-03T12:00:00Z'));
   emit(customerInfo());
-  assert.equal((await commerce.authorize(4)).allowed, false);
+  assert.equal((await commerce.authorize(6)).allowed, false);
   assert.ok(changes.every((status, index) => index === 0 || status.revision > changes[index - 1].revision));
 });
 
@@ -190,7 +190,7 @@ test('wrong store, wrong product, non-permanent and failed verification never un
   ]) {
     const { commerce } = await setup({ getCustomerInfo: async () => customerInfo(changes) });
     await commerce.refresh();
-    assert.equal((await commerce.authorize(4)).allowed, false);
+    assert.equal((await commerce.authorize(6)).allowed, false);
   }
 });
 
@@ -203,13 +203,13 @@ test('cancel, failure, outage, pending and later confirmation have distinct resu
   ]) {
     sdk.purchasePackage = async () => { throw { code }; };
     assert.equal((await commerce.purchase()).result, result);
-    assert.equal((await commerce.authorize(4)).allowed, false);
+    assert.equal((await commerce.authorize(6)).allowed, false);
   }
   assert.equal(commerce.status().pending, true);
   assert.equal((await commerce.purchase()).result, 'pending');
   emit(customerInfo({}, '2026-11-03T12:00:00Z'));
   assert.equal(commerce.status().pending, false);
-  assert.equal((await commerce.authorize(4)).allowed, true);
+  assert.equal((await commerce.authorize(6)).allowed, true);
 });
 
 test('restore is independent of offerings and uses store confirmation on a fresh install', async () => {
@@ -237,7 +237,7 @@ test('a fresh store restore without the purchase releases a pending checkout for
   sdk.restorePurchases = async () => customerInfo({ isActive: false }, '2026-11-03T12:00:00Z');
   assert.equal((await commerce.restore()).result, 'nothing');
   assert.equal(commerce.status().pending, false);
-  assert.equal((await commerce.authorize(4)).allowed, false);
+  assert.equal((await commerce.authorize(6)).allowed, false);
   sdk.purchasePackage = async () => ({ customerInfo: customerInfo({}, '2026-11-04T12:00:00Z'), productIdentifier: productId });
   assert.equal((await commerce.purchase()).result, 'purchased');
 });

@@ -27,6 +27,8 @@ assert.deepEqual(
 assert.equal(version.dirty, false);
 assert.equal(version.googleSignIn, false);
 assert.equal(version.files.some((file) => /google-sign-in|google-auth-vendor/.test(file)), false);
+assert.equal(version.files.filter((file) => /\/media\/story\/.+\.webp$/.test(file)).length, 8);
+assert.equal(version.files.filter((file) => /\/audio\/.+\.mp3$/.test(file)).length, 2);
 assert.ok(zip.length < 12 * 1024 * 1024);
 
 async function check(engine, viewport) {
@@ -38,6 +40,7 @@ async function check(engine, viewport) {
   let saved;
   const clients = new Set();
   const haptics = [];
+  const music = [];
   page.on('request', (request) => {
     if (/^https?:/.test(request.url())) diagnostics.webRequests.push(request.url());
   });
@@ -56,8 +59,9 @@ async function check(engine, viewport) {
     if (request.op === 'load') reply.value = saved;
     else if (request.op === 'save') saved = structuredClone(request.data);
     else if (request.op === 'haptic') haptics.push(request.data);
+    else if (request.op === 'music') music.push(request.data);
     else if (request.op === 'commerce-status') reply.value = { owned: false, price: null, available: false };
-    else if (request.op === 'authorize-stage') reply.value = { allowed: request.data <= 3 };
+    else if (request.op === 'authorize-stage') reply.value = { allowed: request.data <= 5 || request.data >= 16 && request.data <= 18 };
     else if (request.op === 'rating-status') reply.value = { available: false };
     else throw Error(`Unexpected native request: ${request.op}`);
     return reply;
@@ -76,10 +80,8 @@ async function check(engine, viewport) {
         });
       }
     };
-    const play = HTMLMediaElement.prototype.play;
     HTMLMediaElement.prototype.play = function () {
-      if (this.src) window.lastStellarTrack = this;
-      return play.call(this);
+      throw Error('Packaged music must use the native bridge');
     };
   });
 
@@ -100,7 +102,7 @@ async function check(engine, viewport) {
     assert.equal(await page.getByRole('button', { name: 'Rate the App' }).isDisabled(), true);
     await page.getByRole('button', { name: 'Privacy Policy', exact: true }).tap();
     await page.getByRole('heading', { name: 'Privacy Policy', exact: true }).waitFor();
-    await page.getByText('Replay sharing', { exact: true }).waitFor();
+    await page.getByText('Flight records', { exact: true }).waitFor();
     await back.tap();
     await page.getByRole('button', { name: 'Terms of Use', exact: true }).tap();
     await page.getByRole('heading', { name: 'Terms of Use', exact: true }).waitFor();
@@ -123,25 +125,25 @@ async function check(engine, viewport) {
     assert.equal(clients.size, 2);
     await page.getByRole('button', { name: 'Back', exact: true }).tap();
     await page.getByRole('button', { name: 'Play', exact: true }).tap();
-    await page.getByRole('button', { name: 'Skip training', exact: true }).tap();
-    await page.locator('#training-actions').waitFor({ state: 'hidden' });
+    await page.getByRole('textbox', { name: 'Pilot call sign' }).fill('NOVA-7');
+    await page.getByRole('button', { name: 'Confirm & continue' }).tap();
+    await page.getByRole('heading', { name: 'Neyara under attack' }).waitFor();
+    await page.locator('.story-art img').evaluate((img) => img.decode());
+    await page.getByRole('button', { name: 'Skip', exact: true }).tap();
     await page.locator('#sky').waitFor();
     await page.waitForFunction(() => document.querySelector('#clock').textContent === '00:02', null, { timeout: 9000 });
     const special = page.getByRole('button', { name:'Ghost Shift', exact:true });
     await special.tap();
     await page.waitForFunction(() => window.lastNativePulse === 'light');
     assert.ok(haptics.includes('light'), 'A touch-activated Shift reaches the native haptic bridge');
-    await page.waitForFunction(() => window.lastStellarTrack?.src.endsWith('/audio/gravitys-edge.mp3'), null, { timeout: 9000 });
-    await page.waitForFunction(() => window.lastStellarTrack?.currentTime > .1 && !window.lastStellarTrack.paused);
-    const track = await page.evaluate(() => ({ source: new URL(window.lastStellarTrack.src).protocol, ready: window.lastStellarTrack.readyState,
-      audiblePlaybackStarted: window.lastStellarTrack.currentTime > .1 && !window.lastStellarTrack.paused }));
-    assert.equal(track.source, 'file:');
+    assert.ok(music.includes('flight'), 'Flight soundtrack is requested through the native bridge');
     await page.keyboard.down('ArrowLeft');
     await page.waitForTimeout(450);
     await page.keyboard.up('ArrowLeft');
     await page.evaluate(() => window.dispatchEvent(new Event('stellar-native-pause')));
     await page.getByText('Flight paused while you were away.').waitFor();
-    assert.equal(await page.evaluate(() => window.lastStellarTrack.paused), true);
+    assert.equal(music.at(-1), 'pause');
+    await page.evaluate(() => window.dispatchEvent(new Event('stellar-native-foreground')));
     await page.getByRole('button', { name: 'Resume' }).tap();
     await page.getByRole('dialog').waitFor({ state: 'hidden' });
     assert.equal(await page.title(), 'Stellar Rebels');
@@ -150,9 +152,9 @@ async function check(engine, viewport) {
     assert.deepEqual(diagnostics.webRequests, []);
     assert.deepEqual(diagnostics.failedFiles, []);
     assert.deepEqual(diagnostics.scriptErrors, []);
-    assert.deepEqual([...diagnostics.bridge].sort(), ['commerce-status', 'haptic', 'load', 'rating-status', 'save']);
+    assert.deepEqual([...diagnostics.bridge].sort(), ['commerce-status', 'haptic', 'load', 'music', 'rating-status', 'save']);
     await page.screenshot({ path: path.join(output, `${engine.name()}.png`) });
-    return { engine: engine.name(), viewport, audio: track, helpPagesOpen: true, unpublishedRatingDisabled: true, settingsPersisted: true, interruptionPaused: true, hapticBridge: haptics, offlineRequests: 0 };
+    return { engine: engine.name(), viewport, musicBridge: music, helpPagesOpen: true, unpublishedRatingDisabled: true, settingsPersisted: true, interruptionPaused: true, hapticBridge: haptics, offlineRequests: 0 };
   } finally {
     await browser.close();
   }

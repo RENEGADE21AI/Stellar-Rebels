@@ -15,6 +15,7 @@
 !/native/src/bridge.mjs
 !/native/src/commerce.mjs
 !/native/src/flight-install.mjs
+!/native/src/music.mjs
 !/native/src/pilot-store.mjs
 !/native/generated
 /native/generated/*

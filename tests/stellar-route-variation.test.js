@@ -8,17 +8,18 @@ require('../src/00-asset-manifest.js');
 const load = Promise.all(['flight', 'catalog'].map((name) => import(`../arcade/${name}.mjs`)));
 const seeds = Array.from({ length: 12 }, (_, index) =>
   createHash('sha256').update(`route-test-${index}`).digest('hex').slice(0, 32));
+const legacyRules = 'arcade-11';
 
-function makeFlight(Flight, stage, seed, mode = 'arcade') {
-  return new Flight({ mode, stage, seed, ship:'kestrel', equipment:[], assistance:{} });
+function makeFlight(Flight, stage, seed, mode = 'arcade', rules) {
+  return new Flight({ mode, stage, seed, rules, ship:'kestrel', equipment:[], assistance:{} });
 }
 
 function lineup(flight) {
   return flight.spawns.splice(0).map(({ kind, lane, at }) => [kind, lane, at - flight.elapsed]);
 }
 
-function route(Flight, stage, seed, consumeCombatRandomness = false) {
-  const flight = makeFlight(Flight, stage.id, seed);
+function route(Flight, stage, seed, rules, consumeCombatRandomness = false) {
+  const flight = makeFlight(Flight, stage.id, seed, 'arcade', rules);
   return stage.waves.map(([at], index) => {
     if (consumeCombatRandomness) {
       for (let i = 0; i <= index; i++) flight.random();
@@ -30,38 +31,42 @@ function route(Flight, stage, seed, consumeCombatRandomness = false) {
 }
 
 test('selected Arcade wings can attack from either flank without changing their roster, timing, or scripted neighbors', async () => {
-  const [{ Flight }, { STAGES }] = await load;
-  for (const stage of STAGES) {
-    const reference = route(Flight, stage, seeds[0]);
-    assert.deepEqual(route(Flight, stage, seeds[0], true), reference, `${stage.name} uses an independent route seed`);
-    const distinct = seeds.map((seed) => route(Flight, stage, seed));
-    const adaptive = stage.waves.filter((beat) => beat[2] === 'flank').length;
-    assert.ok(adaptive >= 2 && adaptive <= 4, `${stage.name} keeps a bounded set of variable beats`);
-    stage.waves.forEach((beat, index) => {
-      const lineups = distinct.map((result) => result[index]);
-      if (beat[2] !== 'flank') {
-        assert.ok(lineups.every((wing) => JSON.stringify(wing) === JSON.stringify(reference[index])));
-        return;
-      }
-      assert.equal(new Set(lineups.map(JSON.stringify)).size, 2, `${stage.name} varies the ${beat[1]} at ${beat[0]}s`);
-      for (const wing of lineups) {
-        assert.deepEqual(wing.map(([kind, , after]) => [kind, after]), reference[index].map(([kind, , after]) => [kind, after]));
-        assert.ok(wing.every(([, lane]) => lane >= .10 && lane <= .90));
-      }
-    });
+  const [{ Flight }, { RULES_VERSION, SIDE_OPERATIONS, STAGES, legacyStageById }] = await load;
+  const historical = Array.from({ length:6 }, (_, index) => legacyStageById(index + 1));
+  for (const [stages, rules] of [[historical, legacyRules], [[...STAGES, ...SIDE_OPERATIONS], RULES_VERSION]]) {
+    for (const stage of stages) {
+      const reference = route(Flight, stage, seeds[0], rules);
+      assert.deepEqual(route(Flight, stage, seeds[0], rules, true), reference, `${stage.name} uses an independent route seed`);
+      const distinct = seeds.map((seed) => route(Flight, stage, seed, rules));
+      const adaptive = stage.waves.filter((beat) => beat[2] === 'flank').length;
+      const variableLimit = rules === legacyRules ? 4 : Math.floor(stage.waves.length / 3);
+      assert.ok(adaptive >= 2 && adaptive <= variableLimit, `${stage.name} keeps a bounded set of variable beats`);
+      stage.waves.forEach((beat, index) => {
+        const lineups = distinct.map((result) => result[index]);
+        if (beat[2] !== 'flank') {
+          assert.ok(lineups.every((wing) => JSON.stringify(wing) === JSON.stringify(reference[index])));
+          return;
+        }
+        assert.equal(new Set(lineups.map(JSON.stringify)).size, 2, `${stage.name} varies the ${beat[1]} at ${beat[0]}s`);
+        for (const wing of lineups) {
+          assert.deepEqual(wing.map(([kind, , after]) => [kind, after]), reference[index].map(([kind, , after]) => [kind, after]));
+          assert.ok(wing.every(([, lane]) => lane >= .10 && lane <= .90));
+        }
+      });
+    }
   }
 });
 
-test('Vesper tightens measured quiet swaths while preserving the opening power, cruisers, and boss', async () => {
-  const [{ Flight }, { STAGES }] = await load;
-  const [vesper] = STAGES;
+test('arcade-11 Vesper keeps its exact opening beats, cruiser approaches, and Warden start', async () => {
+  const [{ Flight }, { legacyStageById }] = await load;
+  const vesper = legacyStageById(1);
   assert.deepEqual(vesper.waves[0], [.6, 'arrow', 0, 'opening']);
   assert.deepEqual(vesper.waves[1], [6.4, 'column', 1]);
   assert.equal(vesper.waves.find((beat) => beat[1] === 'spear')[0], 12.5);
   assert.equal(vesper.waves.find((beat) => beat[1] === 'break')[0], 71);
   assert.deepEqual(vesper.cruisers, [{ at:46, variant:'patrol' }, { at:82, variant:'heavy' }]);
   assert.equal(vesper.bossAt, 126);
-  const flight = makeFlight(Flight, 1, seeds[0]);
+  const flight = makeFlight(Flight, 1, seeds[0], 'arcade', legacyRules);
   flight.elapsed = vesper.bossAt;
   flight.updateSchedule();
   assert.equal(flight.boss.kind, 'gatekeeper');
@@ -150,11 +155,11 @@ test('Endless repeats wings, cruiser bridge, and boss with time for each handoff
   assert.deepEqual(flight.pickups, []);
 });
 
-test('later heavy fighters gain hull by route tier independently of the player loadout', async () => {
+test('arcade-11 heavy fighters retain their historical armor and shot counts', async () => {
   const [{ Flight }, { ENEMIES }] = await load;
   const upgrades = ['rails', 'chamber', 'cells', 'hull'];
   const fighter = (stage, equipment = []) => new Flight({
-    mode:'arcade', stage, seed:seeds[0], ship:'kestrel', equipment, assistance:{}
+    mode:'arcade', rules:legacyRules, stage, seed:seeds[0], ship:'kestrel', equipment, assistance:{}
   });
   const intro = fighter(3);
   const midRoute = fighter(4);
@@ -187,4 +192,27 @@ test('later heavy fighters gain hull by route tier independently of the player l
   assert.equal(shotsToDestroy(lateUpgraded, 'sweeper'), 8);
   assert.equal(shotsToDestroy(lateStock, 'sweeper'), 9);
   assert.equal(shotsToDestroy(lateUpgraded, 'scout'), 3);
+});
+
+test('current heavy fighter armor follows mission order and stays independent of pilot tiers', async () => {
+  const [{ Flight }, { ENEMIES, RULES_VERSION, STAGES }] = await load;
+  const fighter = (number, tiers) => new Flight({ mode:'arcade', rules:RULES_VERSION, variant:'standard',
+    stage:STAGES[number - 1].id, seed:seeds[0], ship:'kestrel', tiers });
+  const opening = fighter(4);
+  const middle = fighter(7);
+  const finale = fighter(15);
+  const improved = fighter(15, { damage:15, rate:15, thrusters:15, energy:15 });
+  const spawn = (flight, kind) => flight.addEnemy({ kind, lane:.5 });
+  for (const kind of ['lancer', 'sweeper', 'escort', 'relay']) {
+    const base = spawn(opening, kind).hull;
+    const mid = spawn(middle, kind).hull;
+    const later = spawn(finale, kind).hull;
+    assert.equal(base, ENEMIES[kind].hull);
+    assert.ok(mid > base && later > mid && later <= base * 1.13, `${kind} gains modest route-based armor`);
+    assert.equal(later, spawn(improved, kind).hull);
+  }
+  for (const kind of ['scout', 'diver', 'splitter', 'shard', 'phantom']) {
+    assert.equal(spawn(improved, kind).hull, ENEMIES[kind].hull);
+  }
+  assert.ok(improved.stats.damage > finale.stats.damage);
 });

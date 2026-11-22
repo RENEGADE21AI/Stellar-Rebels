@@ -81,7 +81,6 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
   let time = 0;
   let lastFrame = 0;
   let started = null;
-  let spinStarted = null;
   let patrolCraft = [];
   let shot = null;
   let spark = null;
@@ -180,10 +179,7 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
     const heroY = height * (heroOrigin - (heroOrigin + .25) * launchProgress) + hover * (1 - launchPhase) * 3.2;
     const heroSize = width * (heroScale + (.26 - heroScale) * launchProgress);
     const bank = (.12 + hover * .027) * (1 - launchPhase);
-    const spin = spinStarted === null ? 0 : clamp((time - spinStarted) / .68);
-    if (spin === 1) spinStarted = null;
-    const roll = 2 * Math.PI * (1 - (1 - spin) ** 2.4);
-    if (images.has(ship)) drawCraft(c, images.get(ship), width * .5, heroY, heroSize, bank + roll,
+    if (images.has(ship)) drawCraft(c, images.get(ship), width * .5, heroY, heroSize, bank,
       1, ship, .13 + hover * .021 + launchPhase * .91);
   }
 
@@ -226,7 +222,6 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
 
   if (!reduce) handle = requestAnimationFrame(frame);
   return {
-    spin() { if (!reduce && started === null && spinStarted === null && images.has(ship)) spinStarted = time; },
     shootAt(clientX, clientY) {
       if (reduce || started !== null || shot || time - shotAt < .75) return;
       const bounds = canvas.getBoundingClientRect();
@@ -244,7 +239,6 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
     },
     launch() {
       if (reduce || started !== null) return;
-      spinStarted = null;
       shot = spark = null;
       started = time;
     },

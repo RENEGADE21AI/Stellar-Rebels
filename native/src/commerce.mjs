@@ -17,7 +17,7 @@ export function resolveCommerceConfig(platform, config) {
 }
 
 export function isArcadeStage(stage) {
-  return Number.isInteger(stage) && stage >= 1 && stage <= 6;
+  return Number.isInteger(stage) && stage >= 1 && stage <= 24;
 }
 
 export function createCommerce(sdk, { platform, config, nativeAvailable }) {
@@ -99,7 +99,7 @@ export function createCommerce(sdk, { platform, config, nativeAvailable }) {
 
   async function authorize(stage) {
     if (!isArcadeStage(stage)) return { allowed: false };
-    if (stage <= 3) return { allowed: true };
+    if (stage <= 5 || stage >= 16 && stage <= 18) return { allowed: true };
     let timer;
     await Promise.race([
       refreshCustomer(),

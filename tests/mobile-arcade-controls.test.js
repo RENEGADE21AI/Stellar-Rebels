@@ -14,7 +14,7 @@ test('pause touch settings update the same flight and persist on the device', { 
       const response = await route.fetch();
       await route.fulfill({ response, body: `${await response.text()}
         window.controlsProbe = {
-          finishTraining: () => store.change((pilot) => { pilot.settings.trainingDone = true; }),
+          seedIdentity: () => store.change((pilot) => { pilot.callSign = 'Test Pilot'; pilot.settings.skipStory = true; }),
           flight: () => ({ id: state.flight?.run.id, ticks: state.flight?.ticks, mode: state.mode }),
           saved: async () => (await store.load()).settings,
           usesStick: () => Boolean(state.pointer?.stick)
@@ -24,7 +24,7 @@ test('pause touch settings update the same flight and persist on the device', { 
     await page.goto(origin);
     const button = (name) => page.getByRole('button', { name, exact: true });
     await button('Play').waitFor();
-    await page.evaluate(() => window.controlsProbe.finishTraining());
+    await page.evaluate(() => window.controlsProbe.seedIdentity());
     await page.reload();
     await button('Play').tap();
     const ghost = page.locator('#ghost-control');
@@ -37,7 +37,10 @@ test('pause touch settings update the same flight and persist on the device', { 
     assert.equal(await page.getByRole('dialog').getByRole('button', { name: 'Settings', exact: true }).count(), 1);
     await button('Settings').tap();
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'pause-title');
+    await page.getByLabel('Drag sensitivity').selectOption('direct');
+    await page.waitForFunction(async () => (await window.controlsProbe.saved()).sensitivity === 'direct');
     await page.getByLabel('Touch steering').selectOption('stick');
+    assert.equal(await page.getByLabel('Drag sensitivity').isVisible(), false);
     await page.getByLabel('Joystick size').press('End');
     await page.getByLabel('Ability button size').press('End');
     await page.getByLabel('Ability button horizontal position').press('Home');
@@ -80,7 +83,7 @@ test('the equipped title ship opens Hangar and its upgrade badge reflects what c
     await page.route(/\/app\.mjs$/, async (route) => {
       const response = await route.fetch();
       await route.fulfill({ response, body: `${await response.text()}
-        window.grantUpgradeSalvage = () => store.change((pilot) => { pilot.salvage = 70; });
+        window.grantUpgradeSalvage = () => store.change((pilot) => { pilot.salvage = 18; });
       ` });
     });
     await page.goto(origin);
@@ -92,13 +95,13 @@ test('the equipped title ship opens Hangar and its upgrade badge reflects what c
     await page.reload();
     await badge.waitFor();
     assert.equal(await button('Hangar').getAttribute('aria-describedby'), 'hangar-upgrade-notice');
-    await page.getByRole('button', { name: /Change ship.*equipped/ }).tap();
+    await page.getByRole('button', { name: /Open Hangar for Fighter/ }).tap();
     await page.getByRole('heading', { name: 'Hangar', exact: true }).waitFor();
     assert.equal(await button('Ship bay').getAttribute('aria-pressed'), 'true');
     await button('Upgrades').tap();
-    await page.getByRole('button', { name: /^Calibrated Rails/ }).tap();
-    await button('Install for 70 Salvage').tap();
-    await button('Installed').waitFor();
+    await page.getByRole('button', { name: /^Weapon Damage/ }).tap();
+    await button('Install Tier 1 · 18 Salvage').tap();
+    await page.getByText('Tier 1/15', { exact:true }).waitFor();
     await button('Back').tap();
     await button('Back').tap();
     await button('Play').waitFor();
@@ -106,4 +109,47 @@ test('the equipped title ship opens Hangar and its upgrade badge reflects what c
   } finally {
     await browser.close();
   }
+});
+
+test('a steering thumb and a second Special touch do not zoom or cancel steering', { skip: !origin, timeout: 30000 }, async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({
+      viewport: { width:390, height:844 }, isMobile:true, hasTouch:true, reducedMotion:'reduce', serviceWorkers:'block'
+    });
+    await page.route(/\/app\.mjs$/, async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({ response, body: `${await response.text()}
+        window.touchProbe = {
+          seed: () => store.change((pilot) => { pilot.callSign = 'Test Pilot'; pilot.settings.skipStory = true; }),
+          sample: () => ({ x:state.flight.player.x, realm:state.flight.player.realm, steering:Boolean(state.pointer),
+            scale:visualViewport.scale, scrollX:window.scrollX, scrollY:window.scrollY })
+        };
+      ` });
+    });
+    await page.goto(origin);
+    const button = (name) => page.getByRole('button', { name, exact:true });
+    await button('Play').waitFor();
+    await page.evaluate(() => window.touchProbe.seed());
+    await page.reload();
+    await button('Play').tap();
+    const special = button('Ghost Shift');
+    await special.waitFor();
+    const control = await special.boundingBox();
+    const touch = await page.context().newCDPSession(page);
+    const dispatch = (type, touchPoints) => touch.send('Input.dispatchTouchEvent', { type, touchPoints });
+    const thumb = { id:1, x:150, y:639 };
+    const ability = { id:2, x:control.x + control.width / 2, y:control.y + control.height / 2 };
+    const initial = await page.evaluate(() => window.touchProbe.sample());
+    await dispatch('touchStart', [thumb]);
+    await dispatch('touchStart', [thumb, ability]);
+    await page.waitForFunction(() => window.touchProbe.sample().realm === 'ghost');
+    await dispatch('touchMove', [{ ...thumb, x:218, y:628 }, { ...ability, x:ability.x + 9 }]);
+    await page.waitForFunction((x) => window.touchProbe.sample().x > x + 15, initial.x);
+    const moved = await page.evaluate(() => window.touchProbe.sample());
+    assert.equal(moved.steering, true);
+    assert.deepEqual([moved.scale, moved.scrollX, moved.scrollY], [initial.scale, 0, 0]);
+    await dispatch('touchEnd', []);
+    assert.equal(await page.evaluate(() => window.touchProbe.sample().steering), false);
+  } finally { await browser.close(); }
 });

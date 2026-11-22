@@ -1,4 +1,4 @@
-import { newPilot, PilotStore } from '../../arcade/pilot.mjs';
+import { migratePilot, PilotStore } from '../../arcade/pilot.mjs';
 
 let sequence = 0;
 const pending = new Map();
@@ -65,9 +65,8 @@ export class NativePilotStore extends PilotStore {
   transact(operation, newSave = null) {
     if (this.temporary) return super.transact(operation, newSave);
     const task = this.queue.then(async () => {
-      const initial = newPilot(this.preferences);
-      const pilot = await nativeRequest('load') ?? newSave ?? initial;
-      if (pilot.schema !== initial.schema) throw Error('This device save requires a different game version');
+      const saved = await nativeRequest('load');
+      const pilot = migratePilot(saved ?? newSave, this.preferences);
       const result = operation?.(pilot);
       if (operation) await nativeRequest('save', pilot);
       this.session = pilot;

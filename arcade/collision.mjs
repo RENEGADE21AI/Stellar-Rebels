@@ -135,8 +135,10 @@ export function vaneBody(e) {
 }
 
 export function bossBody(b) {
-  return spriteBody(b.kind, b, b.spec.size);
+  return spriteBody(b.spec.body ?? b.kind, b, b.spec.size);
 }
+
+export const exposedCoreBody = (b) => bodyAt(b.spec.coreHit, b);
 
 export function coreBody(b) {
   return bodyAt(wraithCore, b);
@@ -146,10 +148,13 @@ export function wraithWingBody(b) {
   return bodyAt(wraithWings, b, 0, b.spec.size * .001);
 }
 
-export const shieldModules = (b) => b.kind === 'matron' || b.kind === 'crown';
+export const shieldModules = (b) => b.spec.shielded ?? (b.kind === 'matron' || b.kind === 'crown');
+
+export const moduleSprite = (b, part) => ['turret', 'rail'].includes(part.role) ||
+  (!part.role && !shieldModules(b)) ? 'turret' : 'shield-node';
 
 export function moduleBody(b, part) {
-  return spriteBody(shieldModules(b) ? 'shield-node' : 'turret', bossPartPosition(b, part), part.size ?? 43, 0, b);
+  return spriteBody(moduleSprite(b, part), bossPartPosition(b, part), part.size ?? 43, 0, b);
 }
 
 const gunProfiles = new Map();
