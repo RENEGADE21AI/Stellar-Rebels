@@ -276,7 +276,7 @@ function experienceAward(stage, record, terminal, first, mastery, played) {
     const progress = Math.min(1, record.duration / stage.bossAt);
     combat = Math.floor(combat * (.45 + .35 * progress));
   }
-  if (!stage) return combat + Math.min(240, Math.floor(record.duration / 90) * 14 + number(terminal.bosses) * 24);
+  if (!stage) return combat + Math.min(240, Math.floor(record.duration / 90) * 14 + number(terminal.bossesDefeated) * 24);
   if (stage.side) {
     const finish = record.status === 'clear' ? 45 + 3 * stage.requires : 0;
     return combat + finish + (first ? 70 + 4 * stage.requires : 0) + (mastery ? 95 : 0);

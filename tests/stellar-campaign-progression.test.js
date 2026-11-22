@@ -145,6 +145,20 @@ test('XP reflects played performance, respects receipts and has no purchase or l
   assert.equal(api.pilotRank(40_000).level > api.pilotRank(0).level, true);
 });
 
+test('Endless grants XP for a confirmed boss defeat and never pays Salvage', async () => {
+  const [api, { STAGES }] = await load;
+  const pilot = api.newPilot();
+  for (const stage of STAGES) clearMission(api, pilot, stage.id);
+  const performance = { status:'defeat', duration:180, movement:1200, kills:40, breaks:3 };
+  const first = api.beginRun(pilot, 'without-boss', 'endless', null);
+  const second = api.beginRun(pilot, 'with-one-boss', 'endless', null);
+  const score = api.settleRun(pilot, first.id, { ...performance, bossesDefeated:0 });
+  const bossScore = api.settleRun(pilot, second.id, { ...performance, bossesDefeated:1 });
+  assert.equal(score.award, 0);
+  assert.equal(bossScore.award, 0);
+  assert.equal(bossScore.xpAward - score.xpAward, 24);
+});
+
 test('nine Side Operations follow their main clearance and settle optional progress only once', async () => {
   const [api, { STAGES, SIDE_OPERATIONS }] = await load;
   const pilot = api.newPilot();
