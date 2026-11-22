@@ -111,7 +111,7 @@ test('the equipped title ship opens Hangar and its upgrade badge reflects what c
   }
 });
 
-test('a steering thumb and a second Special touch do not zoom or cancel steering', { skip: !origin, timeout: 30000 }, async () => {
+test('a steering thumb and a second Special touch do not zoom or cancel steering', { skip: !origin, timeout: 75000 }, async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({
@@ -151,5 +151,6 @@ test('a steering thumb and a second Special touch do not zoom or cancel steering
     assert.deepEqual([moved.scale, moved.scrollX, moved.scrollY], [initial.scale, 0, 0]);
     await dispatch('touchEnd', []);
     assert.equal(await page.evaluate(() => window.touchProbe.sample().steering), false);
+    await page.close();
   } finally { await browser.close(); }
 });

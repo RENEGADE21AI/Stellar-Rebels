@@ -222,7 +222,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,summary:focus-visible{
 .flight{overflow:hidden;background:#070a13}
 .flight:not(:has(dialog[open])),#sky{touch-action:none}
 #sky{display:block;width:100%;height:100%;user-select:none;-webkit-user-select:none;background:#070a13}
-.operation-objective{position:absolute;z-index:2;top:max(56px,calc(var(--safe-top) + 49px));left:50%;transform:translateX(-50%);max-width:87%;display:flex;align-items:center;gap:6px;padding:3px 8px;border:1px solid #70849470;border-radius:3px;background:#0b1724d9;color:#d6e2e9;white-space:nowrap;pointer-events:none;font:600 clamp(.58rem,2.5cqw,.71rem) var(--mono)}
+.operation-objective{position:absolute;z-index:2;top:max(8px,var(--safe-top));left:50%;transform:translateX(-50%);max-width:32%;display:grid;justify-items:center;gap:1px;padding:2px 5px;border:1px solid #70849455;border-radius:3px;background:#0b1724bf;color:#d6e2e9;white-space:nowrap;pointer-events:none;font:600 clamp(.58rem,2.5cqw,.71rem) var(--mono)}
 .operation-objective strong{color:#ffca97}
 #sky:focus{outline:none}
 .flight-stick{position:absolute;width:var(--stick-size,76px);height:var(--stick-size,76px);display:grid;place-items:center;transform:translate(-50%,-50%);border:1px solid #a0ecde85;border-radius:50%;background:#09162286;box-shadow:0 0 0 1px #071019b3;pointer-events:none}

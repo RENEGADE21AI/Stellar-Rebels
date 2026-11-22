@@ -136,8 +136,18 @@ async function main() {
     assert.ok(unavailable > 0, 'Replacement install must encounter the withheld app module');
     await page.screenshot({ path:path.join(output,'installed-menu.png') });
     await button('Play').tap();
-    const firstStage = button(/^01 Vesper Orbit/);
-    if (await firstStage.or(page.locator("#flight:not([hidden])")).first().waitFor().then(() => firstStage.isVisible())) await firstStage.tap();
+    const firstStage = button(/^01 (Vesper|Neyara) Orbit/);
+    const callSign = page.getByRole('textbox', { name:'Pilot call sign' });
+    const firstActivity = firstStage.or(callSign).or(page.locator('#flight:not([hidden])'));
+    await firstActivity.first().waitFor();
+    if (await firstStage.isVisible()) await firstStage.tap();
+    if (await callSign.isVisible()) {
+      await callSign.fill('ROLLOUT-7');
+      await button('Confirm & continue').tap();
+      await button('Skip').tap();
+    }
+    const skipTraining = button('Skip training');
+    if (await skipTraining.isVisible()) await skipTraining.tap();
     await page.waitForFunction(() => document.querySelector('#clock')?.textContent === '00:02');
     await button('Pause').tap();
     await page.getByRole('heading', { name:'Paused' }).waitFor();
@@ -158,7 +168,7 @@ async function main() {
     await button('Pause').tap();
     await button('Leave flight').tap();
     await button('Leave flight').tap();
-    await page.getByRole('heading', { name:'Stage Select' }).waitFor();
+    await page.getByRole('heading', { name:/^(Stage Select|Campaign)$/ }).waitFor();
     const update = button('Update browser build');
     const menuUpdateOffered = await update.waitFor({ timeout:3500 }).then(() => true, () => false);
     if (menuUpdateOffered) await update.tap();

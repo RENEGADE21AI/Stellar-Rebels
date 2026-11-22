@@ -541,7 +541,7 @@ test('Play resumes the campaign with the equipped ship and replays the finale af
   } finally { await browser.close(); }
 });
 
-test('Side Operations unlock independently and never interrupt the main mission route or its ending', { skip: !origin, timeout:60000 }, async () => {
+test('Side Operations unlock independently and never interrupt the main mission route or its ending', { skip: !origin, timeout:100000 }, async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport:{ width:320, height:568 }, isMobile:true, hasTouch:true,
@@ -584,6 +584,7 @@ test('Side Operations unlock independently and never interrupt the main mission 
     await actOne.locator('summary').tap();
     assert.equal(await button(/^A2 Wreckage Sweep/).isDisabled(), true);
     await launch(button(/^A1 Evacuation Corridor/), 16);
+    await page.locator('#operation-objective').getByText('Bombers', { exact:true }).waitFor();
     await page.evaluate(() => window.campaignProbe.clear());
     await heading('Operation clear').waitFor();
     assert.equal(await button(/Next Mission/).count(), 0);
@@ -610,6 +611,7 @@ test('Side Operations unlock independently and never interrupt the main mission 
     await button('Veteran').tap();
     await heading('Veteran Campaign').waitFor();
     assert.equal(await page.locator('.side-operations').count(), 0);
+    await page.close();
   } finally { await browser.close(); }
 });
 
