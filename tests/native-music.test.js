@@ -1,6 +1,27 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
+test('Android soundtrack uses the local playback module and honors foreground and pause', async () => {
+  const { createAndroidGameMusic } = await import('../native/src/music.mjs');
+  const calls = [];
+  let active = true;
+  const music = createAndroidGameMusic({
+    playback: {
+      play: async (source, volume) => calls.push([source, volume]),
+      pause: async () => calls.push('pause'),
+      dispose: async () => calls.push('dispose')
+    },
+    source: (file) => `file:///offline/${file}`,
+    foreground: () => active
+  });
+  await music.play('flight');
+  active = false;
+  await music.play('hangar');
+  music.pause();
+  music.dispose();
+  assert.deepEqual(calls, [['file:///offline/gravitys-edge.mp3', .29], 'pause', 'dispose']);
+});
+
 test('game music follows foreground commands and never registers lock-screen controls', async () => {
   const { createGameMusic } = await import('../native/src/music.mjs');
   const actions = [];

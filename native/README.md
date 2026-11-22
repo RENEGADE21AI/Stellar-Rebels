@@ -1,5 +1,7 @@
 # Stellar Rebels mobile validation
 
+The local `StellarGameAudio` Expo module plays the two bundled tracks on Android without registering an OS media session. iOS uses Expo Audio with background playback and lock-screen controls disabled.
+
 `native/` is the Expo source for `@renegade21ai/stellar-rebels`. Its WebView boots from packaged game files, including offline on first launch. The shell handles safe-area insets, foreground music, app interruptions, haptics, and a pilot profile in AsyncStorage outside the flight cache. The browser keeps its own IndexedDB profile. Android backups and transfers depend on device settings. [Android Auto Backup](https://developer.android.com/identity/data/autobackup)
 
 Act I's five main missions and three optional operations, the three earnable ships, both Specials, Practice and the opening upgrade tiers are free. A permanent Full Game Unlock opens the remainder of the campaign and the ending, followed by Veteran and Endless after Standard completion. The native host authorizes launches through RevenueCat. It displays the localized product price and supports restoring through **Settings → Full Game Unlock → Restore Purchases**. Purchases use a guest RevenueCat identity and the device's store account. The browser remains free and has a separate pilot profile.

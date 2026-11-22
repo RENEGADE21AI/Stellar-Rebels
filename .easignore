@@ -17,6 +17,9 @@
 !/native/src/flight-install.mjs
 !/native/src/music.mjs
 !/native/src/pilot-store.mjs
+!/native/modules
+!/native/modules/stellar-game-audio
+!/native/modules/stellar-game-audio/**
 !/native/generated
 /native/generated/*
 !/native/generated/flight.zip

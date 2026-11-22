@@ -4,6 +4,7 @@ import {
   useWindowDimensions, View
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { requireOptionalNativeModule } from 'expo';
 import { Asset } from 'expo-asset';
 import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import Constants from 'expo-constants';
@@ -17,13 +18,14 @@ import { WebView } from 'react-native-webview';
 import { openStoreRating, readBridgeRequest, sameFlightDocument, storeRatingAvailable } from './bridge.mjs';
 import { createCommerce } from './commerce.mjs';
 import { installFlightFiles } from './flight-install.mjs';
-import { createGameMusic } from './music.mjs';
+import { createAndroidGameMusic, createGameMusic } from './music.mjs';
 
 const pack = require('../generated/flight.zip');
 const version = require('../generated/version.json');
 const loadingArtwork = require('../generated/loading.jpg');
 const loadingWordmark = require('../generated/loading-wordmark.png');
 const profileKey = 'stellar-rebels.profile.v1';
+const androidPlayback = Platform.OS === 'android' ? requireOptionalNativeModule('StellarGameAudio') : null;
 const ratingAvailable = storeRatingAvailable(Platform.OS, Constants.expoConfig?.extra?.storeRatings);
 const commerce = createCommerce(Purchases, {
   platform: Platform.OS,
@@ -86,13 +88,16 @@ function Game() {
 
   useEffect(() => {
     if (!flight) return;
-    music.current = createGameMusic({
-      createPlayer: createAudioPlayer,
+    const audioOptions = {
       source: (name) => new File(flight.directory, 'arcade', version.assetVersion, 'audio', name).uri,
+      foreground: () => focused.current && AppState.currentState === 'active'
+    };
+    music.current = Platform.OS === 'android' ? createAndroidGameMusic({ ...audioOptions, playback:androidPlayback }) : createGameMusic({
+      ...audioOptions,
+      createPlayer: createAudioPlayer,
       prepare: () => setAudioModeAsync({
         allowsRecording:false, shouldPlayInBackground:false, interruptionMode:'mixWithOthers', playsInSilentMode:true
-      }),
-      foreground: () => focused.current && AppState.currentState === 'active'
+      })
     });
     return () => { music.current?.dispose(); music.current = null; };
   }, [flight]);
