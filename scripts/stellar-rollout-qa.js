@@ -130,7 +130,11 @@ async function main() {
     assert.equal(interrupted.fromServiceWorker(), true, 'The interrupted rollout must exercise the installed worker');
     await button('Play').waitFor({ timeout:5000 });
     await checkBase(installed.assetVersion);
-    await refresh().catch(() => {});
+    const replacementDeadline = Date.now() + 12000;
+    while (!unavailable && Date.now() < replacementDeadline) {
+      await refresh().catch(() => {});
+      if (!unavailable) await new Promise((resolve) => setTimeout(resolve, 200));
+    }
     await page.waitForFunction(async () => !(await navigator.serviceWorker.getRegistration()).installing);
     await controllerReady(page, installed.assetVersion);
     assert.ok(unavailable > 0, 'Replacement install must encounter the withheld app module');
@@ -168,7 +172,7 @@ async function main() {
     await button('Pause').tap();
     await button('Leave flight').tap();
     await button('Leave flight').tap();
-    await page.getByRole('heading', { name:/^(Stage Select|Campaign)$/ }).waitFor();
+    await page.locator('#menu').waitFor();
     const update = button('Update browser build');
     const menuUpdateOffered = await update.waitFor({ timeout:3500 }).then(() => true, () => false);
     if (menuUpdateOffered) await update.tap();

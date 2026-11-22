@@ -144,7 +144,17 @@ for (const [name, browserType, viewport] of [
       await button('Back').tap();
       await button('Back').tap();
       await button('Play').tap();
-      await page.locator('#pause').waitFor();
+      const callSign = page.getByRole('textbox', { name:'Pilot call sign' });
+      const story = page.locator('[data-story] h1');
+      const pause = page.locator('#pause');
+      await callSign.or(story).or(pause).first().waitFor();
+      if (await callSign.isVisible()) {
+        await callSign.fill('REBEL-7');
+        await button('Confirm & continue').tap();
+        await story.waitFor();
+      }
+      if (await story.isVisible()) await button('Skip').tap();
+      await pause.waitFor();
       assert.deepEqual(pageErrors, []);
     } finally { await browser.close(); }
   });
