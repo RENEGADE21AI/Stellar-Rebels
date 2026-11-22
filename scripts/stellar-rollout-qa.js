@@ -17,9 +17,8 @@ async function manifest(dir) {
   return JSON.parse(await fs.readFile(path.join(dir, 'version.json'), 'utf8'));
 }
 
-async function controllerReady(page, pack, refresh = null) {
+async function controllerReady(page, pack) {
   const deadline = Date.now() + 30000;
-  let lastUpdate = 0;
   while (Date.now() < deadline) {
     const ready = await page.evaluate(async (expected) => {
       const worker = navigator.serviceWorker.controller;
@@ -36,10 +35,6 @@ async function controllerReady(page, pack, refresh = null) {
       return Boolean(await cache.match('/index.html'));
     }, pack);
     if (ready) return;
-    if (refresh && Date.now() - lastUpdate > 1800) {
-      lastUpdate = Date.now();
-      await refresh().catch(() => {});
-    }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw Error(`Flight pack ${pack} did not become ready`);
@@ -157,7 +152,19 @@ async function main() {
     await page.getByRole('heading', { name:'Paused' }).waitFor();
 
     withholdModule = false;
-    await controllerReady(page, incoming.assetVersion, refresh);
+    // Probing the old controller during activation can keep it busy and delay the handoff.
+    await page.evaluate(async () => {
+      const serviceWorkers = navigator.serviceWorker;
+      const registration = await serviceWorkers.getRegistration();
+      if (!registration) throw Error('Flight worker registration is missing');
+      const timeout = AbortSignal.timeout(30000);
+      const changed = new Promise((resolve, reject) => {
+        serviceWorkers.addEventListener('controllerchange', resolve, { once:true, signal:timeout });
+        timeout.addEventListener('abort', () => reject(Error('Replacement worker did not take control')), { once:true });
+      });
+      await Promise.all([registration.update(), changed]);
+    });
+    await controllerReady(page, incoming.assetVersion);
     await checkBase(installed.assetVersion);
     assert.equal(await button('Update browser build').isVisible(), false);
     await context.setOffline(true);
