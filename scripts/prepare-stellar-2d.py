@@ -139,6 +139,14 @@ def main():
         write(name, frame(sprite, side, world, center, scale))
     with Image.open(SOURCE / 'cruiser.png') as cruiser:
         write('cruiser', frame(isolated_foreground(cruiser.convert('RGBA')), 410, 214, (1065, 316), .098))
+    with Image.open(SOURCE / 'cruiser-pursuit.png') as source:
+        cruiser = source.convert('RGBA')
+        bounds = cruiser.getchannel('A').point(lambda value: 255 if value >= 128 else 0).getbbox()
+        cruiser = cruiser.crop(bounds)
+        cruiser.thumbnail((544, 544), Image.Resampling.LANCZOS)
+        cell = Image.new('RGBA', (600, 600))
+        cell.paste(cruiser, ((cell.width - cruiser.width) // 2, (cell.height - cruiser.height) // 2))
+        write('cruiser-long', cell)
     with Image.open(SOURCE / 'wraith-refined.png') as wraith:
         physical = frame(isolated_foreground(wraith.convert('RGBA')), 430, 215, (929, 332), .102)
         ghost = build_variant(physical, 'ghost')

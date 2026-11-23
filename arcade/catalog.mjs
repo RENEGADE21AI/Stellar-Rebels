@@ -9,7 +9,8 @@ export { SIDE_OPERATIONS } from './side-operations.mjs';
 export const WIDTH = 384;
 export const HEIGHT = 768;
 export const PREVIOUS_RULES = 'arcade-12';
-export const RULES_VERSION = 'arcade-13';
+export const BALANCE_RULES = 'arcade-13';
+export const RULES_VERSION = 'arcade-14';
 export const FIXED_TICK = 1 / 60;
 export const AIM_PRECISION = 16;
 export const INPUT_SHIFT = 1;
@@ -22,10 +23,10 @@ export const SPECIALS = {
     description: 'Briefly phase through physical fire.' },
   ion: { name: 'Ion Burst', short: 'Ion', label: 'Burst', clearance: 2, cost: 50, radius: 96, recovery: 1.65,
     description: 'Clear nearby physical shots. Beams and debris keep moving.' },
-  afterburner: { name: 'Afterburner', short: 'Thrust', label: 'Boost', clearance: 8, cost: 42, duration: 2.5, recovery: 1.2, speed: 1.42,
+  afterburner: { name: 'Speed Boost', short: 'Speed', label: 'Boost', clearance: 8, cost: 42, duration: 2.5, recovery: 1.2, speed: 1.42,
     description: 'Move 42% faster for 2.5 seconds. You still steer and can take damage.' },
-  overcharge: { name: 'Overcharge', short: 'Power', label: 'Charge', clearance: 3, cost: 55, duration: 4, recovery: 1.5, damage: 1.40,
-    description: 'Deal 40% more damage for four seconds.' }
+  overcharge: { name: 'Damage Boost', short: 'Damage', label: 'Boost', clearance: 3, cost: 55, duration: 3, previousDuration:4, recovery: 1.5, damage: 1.40,
+    description: 'Deal 40% more damage for three seconds.' }
 };
 
 export const SHIPS = {

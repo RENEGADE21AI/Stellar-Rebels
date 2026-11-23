@@ -139,7 +139,7 @@ export function vaneBody(e) {
 }
 
 export function bossBody(b) {
-  return spriteBody(b.spec.body ?? b.kind, b, b.spec.size);
+  return spriteBody(b.spec.body ?? b.kind, b, b.spec.size, b.turn ?? 0);
 }
 
 export const exposedCoreBody = (b) => bodyAt(b.spec.coreHit, b);
@@ -149,7 +149,7 @@ export function coreBody(b) {
 }
 
 export function wraithWingBody(b) {
-  return bodyAt(wraithWings, b, 0, b.spec.size * .001);
+  return bodyAt(wraithWings, b, b.turn ?? 0, b.spec.size * .001);
 }
 
 export const shieldModules = (b) => b.spec.shielded ?? (b.kind === 'matron' || b.kind === 'crown');
@@ -189,7 +189,7 @@ function shotProfile(kind, radius) {
 }
 
 export function hostileBody(s) {
-  if (s.kind === 'rock') return spriteBody('rock', s, s.size ?? 42, s.age * .7);
+  if (s.kind === 'rock') return spriteBody(s.art ?? 'rock', s, s.size ?? 42, s.age * .7);
   const turn = Math.atan2(s.vy, s.vx);
   return bodyAt(shotProfile(s.kind, s.radius ?? 4), s, Number.isFinite(turn) ? turn : 0);
 }

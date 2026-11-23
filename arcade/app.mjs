@@ -36,7 +36,7 @@ const pacing = createPacingRecorder(location);
 if (pacing) window.stellarPacing = () => pacing.snapshot();
 const state = {
   pilot: null, view: 'home', mode: 'menu', hangarTab: 'ships', inspected: 'kestrel', hangarBack: 'home',
-  helpBack: 'home', campaignVariant: 'standard', story: null, callSign: null, upgrade: null, flight: null, pending: null, last: null, busy: null, launch: null,
+  helpBack: 'home', campaignVariant: 'standard', story: null, callSign: null, flight: null, pending: null, last: null, busy: null, launch: null,
   legalFrom: null, policyFrom: null, rating: { available:null, message:'' },
   commerce: { owned:false, price:'', ready:false }, commerceWork: null, commerceScreen: null,
   pointer: null, keys: new Set(), input: 'touch', support: '', pack: 'waiting', packCheck: 0, installed: false, resumeAt: 0, finishAt: 0
@@ -65,6 +65,10 @@ const icons = {
   salvage: '<path d="M5.5 4h13l4 8-4 8h-13l-4-8zM5.5 4 9 12l-3.5 8m13-16L15 12l3.5 8M9 12h6"/>',
   barrier: '<path d="M12 3 20 6v5c0 4-3 8-8 10-5-2-8-6-8-10V6zM12 7v9"/>',
   overdrive: '<path d="m13 3-8 11h6l-1 7 9-12h-6z"/>',
+  tools: '<path d="M14.7 6.7a4 4 0 0 1 4.9-4.2l-2.2 2.2.6 1.4 1.4.6 2.2-2.2a4 4 0 0 1-5.1 5.1L6 20.1a1.6 1.6 0 0 1-2.3-2.3l6.4-6.4M3 4l2-2 2.7 2.7-.3 1.1 4 4m2.5 2.5 1.3-1.3 1.2 1.2-.2 1.1 4.5 4.5a1.8 1.8 0 0 1-2.5 2.5l-4.5-4.5-1.1.2-1.2-1.2"/>',
+  fist: '<path d="M7 10V5.5a1.5 1.5 0 0 1 3 0V8m0-2.5v-1a1.5 1.5 0 0 1 3 0V8m0-2.5a1.5 1.5 0 0 1 3 0V9m0-1a1.5 1.5 0 0 1 3 0v5l-2 4v4H9v-3l-3-3.5-1.7-3.4a1.6 1.6 0 0 1 2.6-1.8L9 11h4a2 2 0 0 1-2 2H9"/>',
+  fireRate: '<path d="M12 22c-3.9 0-7-2.7-7-6.4 0-2.5 1.1-4.1 2.6-5.9.3 1 .7 1.6 1.4 2.1C10.8 8.3 12 5.8 11.8 2c4 2.4 5.5 5.5 4.6 8.7.7-.4 1.2-1.2 1.5-2.1 1.2 1.8 2.1 4 2.1 6.7 0 3.8-3.4 6.7-8 6.7Z"/><path d="M10 19h4v-5.5l-2-2.8-2 2.8zM10 17h4"/>',
+  thrust: '<path d="m5 12 7-6 7 6M5 18l7-6 7 6"/>',
   repair: '<path d="M12 4v16M4 12h16" stroke-width="3"/>',
   power: '<path d="m3 16 4-8 4 8m2 0 4-8 4 8"/>',
   check: '<path d="m4 12 5 5L20 6"/>',
@@ -134,11 +138,11 @@ function home() {
       <nav class="home-links" aria-label="Game options">
         <button class="home-link" data-action="campaign:standard">${icon('stages')} Campaign</button>
         <button class="home-link" data-action="hangar:home">${icon('ship')} Hangar</button>
-        <button class="home-link" data-action="shop:home" ${upgradeAvailable ? 'aria-describedby="hangar-upgrade-notice"' : ''}>${icon('power')} Upgrades
+        <button class="home-link" data-action="shop:home" ${upgradeAvailable ? 'aria-describedby="hangar-upgrade-notice"' : ''}>${icon('tools')} Upgrades
           ${upgradeAvailable ? '<span class="hangar-upgrade-badge" aria-hidden="true">!</span>' : ''}</button>
         <button class="home-link" data-action="view:more">${icon('more')} More</button>
       </nav>${upgradeAvailable ? '<span id="hangar-upgrade-notice" class="visually-hidden">Upgrade available to install.</span>' : ''}
-      ${action('Help & Legal', 'legal', 'title-help', '')}</div></article>`;
+      </div></article>`;
 }
 
 function moreView() {
@@ -147,6 +151,7 @@ function moreView() {
     ${action('Records', 'view:records', 'quiet', 'score')}
     ${action('Account', 'view:account', 'quiet', 'account')}
     ${action('Practice', 'help:more', 'quiet', 'play')}
+    ${action('Help & Legal', 'legal', 'quiet', 'book')}
   </nav>`);
 }
 
@@ -297,34 +302,22 @@ function hangar() {
 }
 
 function upgradeText(key, benefit) {
-  const names = { damage:'shot damage', rate:'fire rate', thrusters:'maximum speed', energy:'energy regeneration' };
+  const names = { damage:'damage', rate:'rate', thrusters:'speed', energy:'recharge' };
   return `+${percent.format(benefit)} ${names[key]}`;
 }
 
 function shopTracks() {
   return `<div class="shop-list">${Object.entries(UPGRADES).map(([key, item]) => {
-    const { tier, limit, nextCost, nextBenefit, affordable, available } = upgradeStatus(state.pilot, key);
-    const cost = nextCost === null ? 'Complete' : `${num(nextCost)} Salvage`;
-    return `<button class="shop-card" data-action="upgrade:${key}">${icon(item.icon ?? 'power', 'icon-large')}<span>
-      <strong>${item.name}</strong><small>Tier ${tier}/15 · Unlocked to ${limit}</small>
-      ${nextBenefit === null ? '' : `<small>Next tier ${upgradeText(key, nextBenefit)}</small>`}
-      <span class="tier-bar" aria-hidden="true" style="--tier:${tier / 15};--unlocked-tier:${limit / 15}"></span></span>
-      <span class="price" data-affordable="${affordable}">${cost}${nextCost !== null && !available ? '<small>Locked</small>' : ''}</span></button>`;
+    const { tier, limit, nextCost, installedBenefit, nextBenefit, affordable, available } = upgradeStatus(state.pilot, key);
+    const ready = affordable && available;
+    const status = nextCost === null ? 'Complete' : !available ? `Clear Mission ${limit}` : ready ? 'Install' : 'Need Salvage';
+    return `<button class="shop-card" data-action="upgrade:${key}" aria-disabled="${!ready}" data-ready="${ready}"
+        aria-label="${item.name}, ${ready ? `install tier ${tier + 1} for ${num(nextCost)} Salvage` : status}">${icon(item.icon, 'icon-large')}<span>
+      <strong>${item.name}</strong><small>Tier ${tier}/15${tier ? ` · +${percent.format(installedBenefit)}` : ''}</small>
+      ${nextBenefit === null ? '' : `<small>Next ${upgradeText(key, nextBenefit)}</small>`}
+      <span class="tier-bar" aria-hidden="true" style="--tier:${tier / 15};--prior-tier:${Math.max(0, tier - 1) / 15};--unlocked-tier:${limit / 15}"></span></span>
+      <span class="price" data-affordable="${ready}">${status}${nextCost === null ? '' : `<small>${num(nextCost)} Salvage</small>`}</span></button>`;
   }).join('')}</div>`;
-}
-
-function upgradeView() {
-  const key = state.upgrade;
-  const target = UPGRADES[key];
-  const p = state.pilot;
-  const { tier, limit, nextCost, installedBenefit, nextBenefit, affordable, available } = upgradeStatus(p, key);
-  const finished = nextCost === null;
-  const condition = finished ? 'All tiers installed.' : !available ? `Clear Mission ${limit} to open Tier ${tier + 1}.`
-    : !affordable ? `Earn ${num(nextCost - p.salvage)} more Salvage.` : `${num(p.salvage - nextCost)} Salvage left after installation.`;
-  return screen(target.name, 'hangar', `<div class="notice"><strong>Tier ${tier}/15</strong>
-      <p>${tier ? upgradeText(key, installedBenefit) : 'Stock configuration'}. Unlocked to Tier ${limit}.</p>
-      ${finished ? '' : `<p>Tier ${tier + 1} adds ${upgradeText(key, nextBenefit)}.</p>`}<p>${condition}</p></div>
-    ${action(finished ? 'Complete' : `Install Tier ${tier + 1} · ${num(nextCost)} Salvage`, 'install', 'primary', 'check', canInstall(p, key) ? '' : 'disabled')}`, wallet());
 }
 
 function recordLine(title, copy, value) {
@@ -580,7 +573,7 @@ function helpView() {
       : 'Drag anywhere on the playfield. Lift and touch again to reanchor. Try Floating joystick in Settings. Arrow keys and WASD also steer.'],
     ['Line up your shots', 'Weapons fire automatically. Aim by placing your ship beneath the target.'],
     ['Energy', 'Start each flight with full energy. It recharges over time when you aren’t phasing. Hits and kills charge it faster.'],
-    ['Specials', 'Equip a Special in the Hangar. Tap its button or press Space. Ghost Shift phases through physical fire for 0.58 seconds. Ion Burst clears nearby physical shots. Afterburner boosts speed. Overcharge boosts damage.'],
+    ['Specials', 'Equip a Special in the Hangar. Tap its button or press Space. Ghost Shift phases through physical fire for 0.58 seconds. Ion Burst clears nearby physical shots. Speed Boost lasts 2.5 seconds. Damage Boost lasts three seconds.'],
     ['Wraith realms', 'Tap Hop or press Space to change realms. Match the Wraith’s realm and shoot its marked core. Solid rounds hit physical ships. Hollow diamonds hit ghost ships.'],
     ['Read the warning', 'Leave striped beam lanes. Fly through the opening between the rocks.'],
     ['Watch the edges', 'Some surviving fighters circle up the side and return in a different lane. They keep any damage you dealt.'],
@@ -912,7 +905,7 @@ function launchView() {
 }
 
 const views = {
-  home, more: moreView, callSign: callSignView, stages, hangar, upgrade: upgradeView, records, settings: settingsView,
+  home, more: moreView, callSign: callSignView, stages, hangar, records, settings: settingsView,
   storyLog, story: storyView,
   account: accountView, legal: legalHub, privacy: () => policyPage('privacy'), terms: () => policyPage('terms'),
   support: () => policyPage('support'), help: helpView, result: results, launch: launchView, commerce: commerceView
@@ -1424,8 +1417,7 @@ async function handle(command) {
   audio.unlock();
   audio.effect('ui');
   if (type === 'view') {
-    if (value === 'hangar' && state.view === 'upgrade') updateHangar(`upgrade:${state.upgrade}`);
-    else if (value === 'callSign') openCallSign(state.view);
+    if (value === 'callSign') openCallSign(state.view);
     else if (state.view === 'callSign' && value === state.callSign?.from) closeCallSign();
     else if (state.view === 'legal' && value === state.legalFrom.view) {
       returnToControl(value, 'legal', state.legalFrom.scroll);
@@ -1461,7 +1453,7 @@ async function handle(command) {
     else if (state.view === 'commerce' && (value === 'purchase' || value === 'restore')) void runCommerce(value);
     return;
   }
-  if (type === 'legal' && ['home', 'settings'].includes(state.view)) {
+  if (type === 'legal' && ['more', 'settings'].includes(state.view)) {
     state.legalFrom = { view:state.view, scroll:menu.scrollTop };
     state.rating = { available:null, message:'' };
     show('legal');
@@ -1510,7 +1502,20 @@ async function handle(command) {
   }
   if (type === 'tab') { state.hangarTab = value; updateHangar(command); return; }
   if (type === 'inspect') { state.inspected = value; updateHangar(command); return; }
-  if (type === 'upgrade') { state.upgrade = value; show('upgrade'); return; }
+  if (type === 'upgrade' && state.view === 'hangar' && state.hangarTab === 'upgrades' && canInstall(state.pilot, value)) {
+    const beforeTier = state.pilot.tiers[value];
+    const scroll = menu.scrollTop;
+    const { pilot, result } = await store.change((saved) => install(saved, value));
+    state.pilot = pilot;
+    returnToControl('hangar', command, scroll);
+    if (result) {
+      menu.querySelector(`[data-action="${command}"]`).dataset.installed = 'true';
+      audio.chord([490, 620, 742], .14, .079);
+      pacing?.purchase(value, beforeTier, pilot);
+    }
+    announce(result ? `${UPGRADES[value].name} tier ${pilot.tiers[value]} installed.` : 'Upgrade unavailable.');
+    return;
+  }
   if (type === 'equip') {
     const { pilot, result } = await store.change((saved) => equip(saved, value));
     state.pilot = pilot;
@@ -1524,18 +1529,6 @@ async function handle(command) {
     state.pilot = pilot;
     announce(result ? `${SPECIALS[value].name} equipped.` : 'Special locked.');
     updateHangar(command);
-    return;
-  }
-  if (type === 'install') {
-    const beforeTier = state.pilot.tiers[state.upgrade];
-    const { pilot, result } = await store.change((saved) => install(saved, state.upgrade));
-    state.pilot = pilot;
-    if (result) {
-      audio.chord([490, 620, 742], .14, .079);
-      pacing?.purchase(state.upgrade, beforeTier, pilot);
-    }
-    announce(result ? `${UPGRADES[state.upgrade].name} installed.` : 'Upgrade unavailable.');
-    show('upgrade');
     return;
   }
   if (type === 'toggle' && Object.hasOwn(settings, value)) {

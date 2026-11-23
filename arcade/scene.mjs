@@ -5,6 +5,7 @@ import { SPECTRAL, WRAITH_EMITTER, otherRealm, realmTint } from './wraith.mjs';
 import { diveWarningAt, shardArmTime } from './enemy-course.mjs';
 import { moduleSprite, shieldModules } from './collision.mjs';
 import { spriteBodies } from './silhouettes.mjs';
+import { cruiseSpeed } from './travel.mjs';
 
 export function spriteUrl(key) {
   return new URL(`./media/sprites/${key}.${/-alt(?:-\d+)?$/.test(key) ? 'webp' : 'png'}`, import.meta.url).href;
@@ -168,6 +169,7 @@ export class FlightScene {
     const fallback = `env-${environment}`;
     const bossArt = (kind) => BOSSES[kind]?.art ?? kind;
     const keyList = new Set([...regular, ...variantKeys, flight.run.ship, bossArt(flight.stage.boss), illustration]);
+    if (flight.pursuit) keyList.add('cruiser-long');
     if (flight.endless || flight.stage.cruisers?.length) {
       keyList.add('cruiser');
       keyList.add('cruiser-alt');
@@ -233,10 +235,12 @@ export class FlightScene {
         case 'unlinked': this.explode(e.x, e.y, '#90ead9', 7, 11); break;
         case 'escortExposed': this.explode(e.x, e.y, '#86c8ff', 11, 19); break;
         case 'moduleDown': this.explode(e.x, e.y, '#ffd478', 25, 21); break;
-        case 'bossDown':
-          this.bossWreck = { x:e.x, y:e.y, kind:e.detail, size:BOSSES[e.detail]?.size ?? 185, age:0, next:0, reduced:reduce };
+        case 'bossDown': {
+          const wreck = typeof e.detail === 'object' ? e.detail : { kind:e.detail, size:BOSSES[e.detail]?.size ?? 185 };
+          this.bossWreck = { ...wreck, x:e.x, y:e.y, age:0, next:0, reduced:reduce };
           this.explode(e.x, e.y, '#ffd19d', reduce ? 14 : 20, reduce ? 20 : 29);
           break;
+        }
         case 'ionBurst':
           this.shocks.push({ x:e.x, y:e.y, color:'#8effdf', life:0, total:.34, radius:e.detail.radius, hollow:true });
           this.burst(e.x, e.y, '#c6fff0', reduce ? 4 : 15, 136, .29);
@@ -459,10 +463,11 @@ export class FlightScene {
     c.setTransform(1, 0, 0, 1, 0, 0);
     const { width, height } = this.canvas;
     const left = Math.round((width - this.backdrop.width) / 2);
-    const top = reduce ? 0 : Math.round((height - this.backdrop.height) * Math.exp(-flight.elapsed / 112));
+    const travel = flight.pursuit ? flight.travelDistance / cruiseSpeed : flight.elapsed;
+    const top = reduce ? 0 : Math.round((height - this.backdrop.height) * Math.exp(-travel / 112));
     c.drawImage(this.backdrop, left, top);
     c.setTransform(width / WIDTH, 0, 0, height / HEIGHT, 0, 0);
-    const t = reduce ? 0 : flight.elapsed;
+    const t = reduce ? 0 : travel;
     for (const star of stars) {
       const y = (star.y + t * star.speed) % (HEIGHT + 12) - 6;
       c.fillStyle = star.color;
@@ -698,9 +703,10 @@ export class FlightScene {
   boss(b, prefs) {
     const c = this.ctx;
     const ghost = b.realm === SPECTRAL;
-    const patrol = b.variant === 'patrol' && this.sprites.has('cruiser-alt');
+    const patrol = !b.spec.art && b.variant === 'patrol' && this.sprites.has('cruiser-alt');
     const look = ghost ? 'wraith-ghost' : patrol ? 'cruiser-alt' : b.spec.art ?? b.kind;
-    this.sprite(look, b.x, b.y, b.spec.size, 0, b.hull > 0 ? 1 : .35, ghost ? '#8262e3' : '');
+    if ((b.worldSpeed || b.approach?.speed) && b.hull > 0) this.capitalExhaust(b, prefs, ghost);
+    this.sprite(look, b.x, b.y, b.spec.size, b.turn ?? 0, b.hull > 0 ? 1 : .35, ghost ? '#8262e3' : '');
     if (b.kind === 'wraith' && b.hull > 0 && b.age >= b.entryTime - .25) this.wraithCue(b, prefs);
     const hasShields = shieldModules(b);
     for (const part of b.parts) {
@@ -736,13 +742,36 @@ export class FlightScene {
     if (b.hitFlash > 0) ring(c, b.x, coreY, 9, '#fff6dc88');
   }
 
+  capitalExhaust(b, prefs, ghost) {
+    const c = this.ctx;
+    const long = b.spec.art === 'cruiser-long';
+    const flagship = b.kind === 'crown' || b.kind === 'emperor';
+    const y = b.y + b.spec.size * (long ? .451 : flagship ? .205 : .138);
+    const spread = b.spec.size * (long ? .084 : flagship ? .045 : .09);
+    const length = (long ? 34 : 23) + (prefs.reduced ? 0 : 4 * Math.sin(b.age * 12));
+    const flame = c.createLinearGradient(0, y, 0, y + length);
+    flame.addColorStop(0, ghost ? '#dccefb' : '#ffb380');
+    flame.addColorStop(.34, ghost ? '#a17df78a' : '#e2673586');
+    flame.addColorStop(1, '#e27a4300');
+    c.fillStyle = flame;
+    for (const offset of long ? [-spread, 0, spread] : [-spread, spread]) {
+      const x = b.x + offset;
+      c.beginPath();
+      c.moveTo(x - 4.5, y);
+      c.lineTo(x + 4.5, y);
+      c.quadraticCurveTo(x + 2, y + length * .8, x, y + length);
+      c.quadraticCurveTo(x - 2, y + length * .8, x - 4.5, y);
+      c.fill();
+    }
+  }
+
   drawBossWreck() {
     const c = this.ctx;
-    const { x, y, kind, age, size, reduced } = this.bossWreck;
-    const art = BOSSES[kind]?.art ?? kind;
+    const { x, y, kind, age, size, reduced, turn = 0 } = this.bossWreck;
+    const art = this.bossWreck.art ?? BOSSES[kind]?.art ?? kind;
     const driftStart = kind === 'emperor' ? .84 : .41;
     if (reduced || age < driftStart) {
-      this.sprite(art, x, y + (reduced ? 0 : age * 16), size, 0, saturate(.94 - age * .53));
+      this.sprite(art, x, y + (reduced ? 0 : age * 16), size, turn, saturate(.94 - age * .53));
       return;
     }
     const drift = age - driftStart;
@@ -754,7 +783,7 @@ export class FlightScene {
       c.beginPath();
       c.rect(side < 0 ? -half : 0, -half, half, size);
       c.clip();
-      this.sprite(art, 0, 0, size, 0, saturate(.72 - drift * (kind === 'emperor' ? .53 : .84)));
+      this.sprite(art, 0, 0, size, turn, saturate(.72 - drift * (kind === 'emperor' ? .53 : .84)));
       c.restore();
     }
   }
@@ -853,7 +882,7 @@ export class FlightScene {
     const phase = saturate(w.age / w.windup);
     const { reduced } = prefs;
     for (const rock of w.rocks) {
-      const look = this.debrisLook(rock.x, rock.y);
+      const look = rock.art ?? this.debrisLook(rock.x, rock.y);
       const offset = seededNoise(rock.x * .41 + rock.y * .17);
       const delay = .035 + offset * .23;
       const travel = reduced ? phase : saturate((phase - delay) / (1 - delay));
@@ -910,7 +939,7 @@ export class FlightScene {
       // Recover the warning's launch row so each rock keeps its original finish.
       const originY = s.y - s.vy * s.age;
       const size = s.size ?? rockSize;
-      this.sprite(this.debrisLook(s.x, originY), s.x, s.y, size, s.age * .7);
+      this.sprite(s.art ?? this.debrisLook(s.x, originY), s.x, s.y, size, s.age * .7);
       if (contrast) ring(c, s.x, s.y, (s.radius + 1) * size / rockSize, '#ffcc93', 2);
       return;
     }

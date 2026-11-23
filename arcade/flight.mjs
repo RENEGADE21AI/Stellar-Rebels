@@ -1,10 +1,12 @@
-import { AIM_PRECISION, ENDLESS_BOSSES, ENEMIES, GHOST, GUNNER_MUZZLES, HEIGHT, INPUT_RESUME, INPUT_SHIFT, LEGACY_ENDLESS_BOSSES, PICKUPS, PREVIOUS_RULES, RULES_VERSION, SHIPS, SPECIALS, WIDTH, enemyMuzzle, formation, hardpointAt, legacyStageById, stageById, weaponStats } from './catalog.mjs';
+import { AIM_PRECISION, BALANCE_RULES, ENDLESS_BOSSES, ENEMIES, GHOST, GUNNER_MUZZLES, HEIGHT, INPUT_RESUME, INPUT_SHIFT, LEGACY_ENDLESS_BOSSES, PICKUPS, PREVIOUS_RULES, RULES_VERSION, SHIPS, SPECIALS, WIDTH, enemyMuzzle, formation, hardpointAt, legacyStageById, stageById, weaponStats } from './catalog.mjs';
 import { advanceBoss, bossPartPosition, launchBoss, operatorWarnings } from './bosses.mjs';
 import { markPull, markRail, markWall } from './boss-patterns.mjs';
 import { VANE_HULL, breakFormation, commandCharge, linkedVolley, vanePosition } from './formations.mjs';
 import { PHYSICAL, SPECTRAL, otherRealm, realmLabel } from './wraith.mjs';
 import { flightRandom } from './seed.mjs';
 import { advanceCruiser, launchCruiser } from './cruiser.mjs';
+import { cruiseSpeed } from './travel.mjs';
+import { createDebrisField, scheduleDebris } from './debris-field.mjs';
 import { edgeReturnCourse, fliesBack, flyEnemy, flyReturning, inFiringRange, separateWing, shardArmTime } from './enemy-course.mjs';
 import { bodiesMeet, bossBody, contactTime, coreBody, enemyBody, exposedCoreBody, friendlyBody, hostileBody, moduleBody,
   pickupBody, pilotBody, pilotReceiver, rememberPosition, shieldModules, vaneBody, wraithWingBody } from './collision.mjs';
@@ -46,8 +48,10 @@ export class Flight {
     this.run = run;
     this.legacy = run.rules === 'arcade-11';
     this.rebalanced = !this.legacy && run.rules !== PREVIOUS_RULES;
+    this.pursuit = run.rules == null || run.rules === RULES_VERSION;
     this.random = flightRandom(run.seed);
     this.flankRandom = flightRandom(run.seed, routeStream);
+    this.debrisRandom = flightRandom(run.seed, 0x3c6ef372);
     this.recordInput = options.recordInput;
     this.ticks = 0;
     this.inputFlags = 0;
@@ -62,8 +66,11 @@ export class Flight {
     this.veteran = !this.legacy && (run.variant === 'veteran' || run.mode === 'veteran');
     this.endless = run.mode === 'endless';
     this.waves = this.rebalanced && !this.endless ? reinforcementSchedule(this.stage) : this.stage.waves;
+    this.terrain = this.pursuit ? scheduleDebris(this.stage) : this.stage.terrain;
     this.status = 'active';
     this.elapsed = 0;
+    this.forwardSpeed = cruiseSpeed;
+    this.travelDistance = 0;
     this.score = 0;
     this.kills = 0;
     this.movement = 0;
@@ -189,9 +196,10 @@ export class Flight {
       p.ghostRecovery = this.ghostDuration + GHOST.recovery;
       this.signal('ghostStart', p.x, p.y);
     } else {
-      const { duration: activeTime, recovery } = SPECIALS[this.special];
+      const special = SPECIALS[this.special];
+      const activeTime = this.pursuit ? special.duration : special.previousDuration ?? special.duration;
       p.specialTime = activeTime;
-      p.ghostRecovery = activeTime + recovery;
+      p.ghostRecovery = activeTime + special.recovery;
       this.signal(this.special, p.x, p.y);
     }
     return true;
@@ -241,7 +249,7 @@ export class Flight {
   assignSupplies() {
     for (const supply of this.supplies) {
       const previous = supply.carrier;
-      if (previous && !previous.retreat && (previous.loop || previous.y < HEIGHT + 24)) continue;
+      if (previous && (!this.pursuit || previous.hull > 0) && !previous.retreat && (previous.loop || previous.y < HEIGHT + 24)) continue;
       if (previous) previous.carrying = null;
       supply.carrier = null;
       let distance = Infinity;
@@ -288,7 +296,7 @@ export class Flight {
   }
 
   projectile(x, y, angle, speed, kind = 'bolt', extras = {}) {
-    if (this.hostile.length >= 210) return;
+    if (this.hostile.length >= 210 && (!this.pursuit || kind !== 'rock')) return;
     const velocity = speed * this.pressure;
     this.hostile.push({ x, y, vx: Math.cos(angle) * velocity, vy: Math.sin(angle) * velocity,
       kind, radius: projectileRadii[kind], age: 0, live: true, ...extras });
@@ -413,14 +421,20 @@ export class Flight {
         if (!opening || !this.openingPowerGranted) this.supplies.push({ kind, lane, opening });
         this.dropIndex++;
       }
-      const terrain = this.stage.terrain?.[this.terrainIndex];
+      const terrain = this.terrain?.[this.terrainIndex];
       if (terrain && this.elapsed >= terrain[0]) {
         const [, kind, lane] = terrain;
-        if (kind === 'wall') markWall(this, lane);
+        if (kind === 'wall') {
+          if (this.pursuit) {
+            const field = createDebrisField(this.debrisRandom, lane);
+            this.hazards.push(field);
+            this.signal('charge', field.x, field.y);
+          } else markWall(this, lane);
+        }
         if (kind === 'rail') markRail(this, this.player.x, 34);
         if (kind === 'pull') markPull(this, WIDTH * lane);
         if (this.terrainIndex === 0) {
-          const cue = { wall:['Follow the open seam.', 'Debris ahead'], rail:['Leave the striped lane.', 'Rail lock'],
+          const cue = { wall:[this.pursuit ? 'Read the next opening as the field approaches.' : 'Follow the open seam.', 'Debris ahead'], rail:['Leave the striped lane.', 'Rail lock'],
             pull:['Move clear of the arrows.', 'Gravity lane'] }[kind];
           this.message(cue[0], 1.8, 'tactic', cue[1]);
         }
@@ -578,7 +592,56 @@ export class Flight {
     rememberPosition(e);
   }
 
-  moveEnemies(dt) {
+  rockObstacles(dt) {
+    return this.hostile.filter((rock) => rock.live && rock.kind === 'rock').map((rock) => {
+      const next = { ...rock, px:rock.x, py:rock.y, x:rock.x + rock.vx * dt, y:rock.y + rock.vy * dt, age:rock.age + dt };
+      return { rock, body:hostileBody(next) };
+    });
+  }
+
+  avoidDebris(e, obstacles, dt) {
+    const previous = e.avoidance ?? 0;
+    const v = (e.y - e.py) / dt;
+    let dodge = 0;
+    let soonest = .58;
+    for (const { rock } of obstacles) {
+      const reach = (rock.size ?? 42) * .47 + e.spec.hit + 7;
+      const dy = rock.y - e.y;
+      const closing = v - rock.vy;
+      const time = Math.abs(dy) < reach ? 0 : dy / closing;
+      if (time < 0 || time > soonest || !Number.isFinite(time) || Math.abs(rock.x - e.x - previous) >= reach) continue;
+      const left = rock.x - reach;
+      const right = rock.x + reach;
+      const goal = left >= 16 && (right > WIDTH - 16 || e.x + previous < rock.x) ? left : right;
+      dodge = goal - e.x;
+      soonest = time;
+    }
+    e.avoidance = clamp(dodge, previous - 150 * dt, previous + 150 * dt);
+    e.x = clamp(e.x + e.avoidance, 16, WIDTH - 16);
+  }
+
+  debrisStrikesEnemy(e, obstacles) {
+    if (e.hull <= 0 || !obstacles.length) return false;
+    const body = enemyBody(e);
+    for (const { rock, body: obstacle } of obstacles) {
+      if (Math.abs(rock.y - e.y) > 80 + Math.abs(e.y - e.py) || Math.abs(rock.x - e.x) > 80 + Math.abs(e.x - e.px)) continue;
+      const contact = contactTime(body, obstacle);
+      if (contact === Infinity) continue;
+      const splash = impactAt(e, contact);
+      this.signal('rockHit', splash.x, splash.y);
+      this.signal('enemyDown', splash.x, splash.y, e.kind);
+      e.hull = 0;
+      if (e.priority) {
+        // An asteroid cannot fulfill an intercept objective or consume its target.
+        const lane = (e.x < WIDTH / 2 ? .72 : .28);
+        this.spawns.push({ kind:e.kind, lane, priority:true, at:this.elapsed + 3 });
+      }
+      return true;
+    }
+    return false;
+  }
+
+  moveEnemies(dt, obstacles = this.pursuit ? this.rockObstacles(dt) : []) {
     for (const queued of this.spawns) {
       if (queued.at <= this.elapsed) this.addEnemy(queued);
     }
@@ -602,11 +665,13 @@ export class Flight {
       e.jam = duration(e.jam - dt);
       if (e.retreat) {
         e.y -= 155 * dt;
+        this.debrisStrikesEnemy(e, obstacles);
         continue;
       }
       if (e.loop) {
         this.moveReturning(e, dt);
         if (!e.loop) returning--;
+        else if (this.debrisStrikesEnemy(e, obstacles)) returning--;
         continue;
       }
       if (e.group && !wingCommand.has(e.group)) e.group = 0;
@@ -615,6 +680,10 @@ export class Flight {
     }
     separateWing(active, dt);
     for (const e of active) {
+      if (obstacles.length || e.avoidance) {
+        this.avoidDebris(e, obstacles, dt);
+        if (this.debrisStrikesEnemy(e, obstacles)) continue;
+      }
       if (canReturn && e.returns && e.returnCount < maxReturns && returning < maxReturning &&
           e.y >= HEIGHT && e.y < HEIGHT + 24) {
         this.startReturn(e, dt);
@@ -784,7 +853,7 @@ export class Flight {
     if (b.hull <= 0) {
       if (b.kind === 'wraith') this.player.realm = PHYSICAL;
       this.scoreKill(2400 + 750 * this.mission);
-      this.signal('bossDown', b.x, b.y, b.kind);
+      this.signal('bossDown', b.x, b.y, this.pursuit ? { kind:b.kind, art:b.spec.art, size:b.spec.size, turn:b.turn } : b.kind);
       this.hazards = [];
       this.hostile = [];
       if (this.endless) {
@@ -799,12 +868,11 @@ export class Flight {
     return true;
   }
 
-  moveProjectiles(dt) {
+  moveProjectiles(dt, obstacles = this.rockObstacles(dt)) {
     const targets = this.enemies.filter((e) => e.hull > 0 && !e.retreat)
       .map((e) => ({ enemy:e, body:enemyBody(e), relay:e.vane > 0 ? vaneBody(e) : null }));
     // Both sides test against the same rock positions for this simulation step.
-    const rocks = this.hostile.filter((shot) => shot.live && shot.kind === 'rock').map((shot) => hostileBody({ ...shot,
-      px:shot.x, py:shot.y, x:shot.x + shot.vx * dt, y:shot.y + shot.vy * dt, age:shot.age + dt }));
+    const rocks = obstacles.map(({ body }) => body);
     const rockContact = (body) => {
       let first = Infinity;
       for (const rock of rocks) first = Math.min(first, contactTime(body, rock));
@@ -876,7 +944,7 @@ export class Flight {
         if (this.damage(x, y, s.realm, cause) && s.kind !== 'rock') s.live = false;
       }
     }
-    this.hostile = this.hostile.filter((s) => s.live && s.age < 8 && s.y < HEIGHT + 28 &&
+    this.hostile = this.hostile.filter((s) => s.live && s.age < (s.corridor ? 16 : 8) && s.y < HEIGHT + 28 &&
       (s.y > -40 || (s.kind === 'rock' && s.vy > 0)) && s.x > -42 && s.x < WIDTH + 42);
   }
 
@@ -888,17 +956,20 @@ export class Flight {
     this.ticks++;
     this.updateSchedule();
     if (this.status !== 'active') return;
-    this.moveEnemies(dt);
+    this.forwardSpeed = cruiseSpeed;
+    const obstacles = this.pursuit ? this.rockObstacles(dt) : undefined;
+    this.moveEnemies(dt, obstacles);
     if (this.supplies.length) this.assignSupplies();
     advanceCruiser(this, dt);
     advanceBoss(this, dt);
+    this.travelDistance += this.forwardSpeed * dt;
     if (this.operation?.type === 'transmission' && this.boss && this.transmissionStoppedAt === null &&
         this.boss.age - this.boss.entryTime >= this.operation.seconds) {
       this.failObjective('objective-transmitted');
       return;
     }
     this.shoot(dt);
-    this.moveProjectiles(dt);
+    this.moveProjectiles(dt, obstacles);
     if (this.status !== 'active') return;
     operatorWarnings(this, dt);
     if (this.status !== 'active') return;
@@ -958,6 +1029,7 @@ export class Flight {
     }[condition]?.();
     return { status: this.status, score: this.score, duration: this.elapsed, kills: this.kills, breaks: this.breaks, movement: this.movement,
       mastery: Boolean(!this.endless && this.status === 'clear' && met), damageCause: this.damageCause,
-      ...(this.run.rules === RULES_VERSION && { bossesDefeated: this.endless ? this.endlessBossCount - Number(Boolean(this.boss)) : Number(this.status === 'clear') }) };
+      ...([BALANCE_RULES, RULES_VERSION].includes(this.run.rules) &&
+        { bossesDefeated: this.endless ? this.endlessBossCount - Number(Boolean(this.boss)) : Number(this.status === 'clear') }) };
   }
 }

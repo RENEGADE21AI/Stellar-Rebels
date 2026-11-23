@@ -22,7 +22,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,summary:focus-visible{
 .frame input[type=text],.frame input:not([type]),.frame textarea,.frame .policy-section{user-select:text;-webkit-user-select:text;-webkit-touch-callout:default}
 .menu,.flight{position:absolute;inset:0}
 .menu{background:#080f19 url('media/environment/navigation.webp') 61% 50%/cover no-repeat;overflow-y:auto;scrollbar-width:thin;overscroll-behavior:contain}
-.title-screen{position:relative;isolation:isolate;overflow:hidden;min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:clamp(24px,15cqw,68px);padding:max(clamp(18px,15cqw,81px),calc(var(--safe-top) + 12px)) max(18px,var(--safe-right)) max(44px,11cqw,calc(var(--safe-bottom) + 44px)) max(18px,var(--safe-left));background:#050912}
+.title-screen{position:relative;isolation:isolate;overflow:hidden;min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:clamp(24px,15cqw,68px);padding:max(clamp(18px,15cqw,81px),calc(var(--safe-top) + 12px)) max(18px,var(--safe-right)) max(25px,8cqw,calc(var(--safe-bottom) + 19px)) max(18px,var(--safe-left));background:#050912}
 .title-screen::before,.title-screen::after{content:"";position:absolute;z-index:-3;inset:0;pointer-events:none}
 .title-screen::before{background:radial-gradient(ellipse at 48% 45%,#4f83aa35,transparent 58%),linear-gradient(180deg,#04091412 10%,#050a1609 46%,#040a1460 74%,#050912eb 98%),url('media/environment/cover-space.webp') 52% 48%/cover;transition:transform .6s cubic-bezier(.3,.75,.2,1)}
 .title-screen::after{z-index:-1;background:linear-gradient(180deg,#01061036,transparent 41%,transparent 62%,#05091230 83%,#050912ac)}
@@ -59,9 +59,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,summary:focus-visible{
 .home-link:last-child{border-right:0}
 .home-link .icon{color:#a1c5db}
 .hangar-upgrade-badge{position:absolute;top:3px;left:calc(50% + 9px);display:grid;place-items:center;width:15px;height:15px;border-radius:50%;border:1px solid #111b28;background:#ffd19a;color:#1c1714;font:800 .65rem/1 var(--sans)}
-.title-help,.text-action{appearance:none;min-height:44px;padding:0 8px;border:0;background:transparent;color:#b5cbda;font:650 .76rem/1.2 var(--sans);text-align:center}
-.title-help{position:absolute;bottom:var(--safe-bottom);left:50%;transform:translateX(-50%);white-space:nowrap}
-.title-help:focus-visible{outline-offset:-3px}
+.text-action{appearance:none;min-height:44px;padding:0 8px;border:0;background:transparent;color:#b5cbda;font:650 .76rem/1.2 var(--sans);text-align:center}
 .is-launching::before{transform:scale(1.075) translateY(2%)}
 .is-launching .brand-lockup{opacity:0;transform:translateY(-14px);pointer-events:none}
 .is-launching .title-actions{opacity:0;transform:translateY(13px);pointer-events:none}
@@ -164,10 +162,17 @@ button:focus-visible,a:focus-visible,select:focus-visible,summary:focus-visible{
 .craft-specs{display:flex;gap:10px;color:#a8e4db;font:.74rem var(--mono);flex-wrap:wrap}
 .shop-list{display:grid;gap:8px}
 .shop-card{min-height:68px;width:100%;display:grid;grid-template-columns:25px 1fr auto;gap:9px;text-align:left;align-items:center;padding:9px 10px;border:1px solid #556577;background:linear-gradient(100deg,#253043,#101c2be6)}
-.shop-card strong{display:block;font:700 24px/1.05 var(--display)}
+.shop-card strong{display:block;font:700 clamp(20px,7cqw,24px)/1.05 var(--display)}
 .shop-card small{display:block;margin-top:4px;color:#ced9df;font-size:.74rem;line-height:1.3}
 .shop-card .price{font:700 .77rem var(--mono);color:#ffc49b;text-align:right}
 .shop-card .price[data-affordable=false]{color:#c2ccd4}
+.shop-card[aria-disabled=true]{cursor:default}
+.shop-card[data-ready=true] .price{border-left:1px solid #cfa47a7a;padding-left:8px}
+.shop-card[data-installed=true]{border-color:#83dbc6;animation:install-confirm .65s ease-out}
+.shop-card[data-installed=true] .tier-bar::after{animation:install-tier .42s cubic-bezier(.16,.65,.3,1) both}
+[data-reduced-motion=true] .shop-card[data-installed=true],[data-reduced-motion=true] .shop-card[data-installed=true] .tier-bar::after{animation:none}
+@keyframes install-confirm{0%{box-shadow:inset 0 0 30px #91ffe06a,0 0 13px #83dbc587}100%{box-shadow:inset 0 0 0 transparent,0 0 0 transparent}}
+@keyframes install-tier{from{transform:scaleX(var(--prior-tier));background:#baffe9}to{transform:scaleX(var(--tier))}}
 .tier-bar{display:block;position:relative;width:100%;height:4px;margin-top:7px;background:#060b16;overflow:hidden}
 .tier-bar::before,.tier-bar::after{content:"";position:absolute;inset:0;transform-origin:left}
 .tier-bar::before{transform:scaleX(var(--unlocked-tier));background:#496072}
@@ -461,7 +466,7 @@ dialog::backdrop{background:#040911af}
 @media(hover:hover) and (pointer:fine){
   .title-id:hover,.title-equipped:hover{background:#30251f}
   .home-link:hover,.icon-button:hover{background:#252f39}
-  .title-help:hover,.text-action:hover{color:var(--paper);text-decoration:underline;text-underline-offset:3px}
+  .text-action:hover{color:var(--paper);text-decoration:underline;text-underline-offset:3px}
   .quiet:hover:not(:disabled),.flat:hover:not(:disabled){background:#26323c;border-color:#8598a4}
   .primary:hover::before{filter:brightness(1.13)}
   .back:hover{border-color:#78929b}

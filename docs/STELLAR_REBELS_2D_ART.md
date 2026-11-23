@@ -2,6 +2,8 @@
 
 The foreground uses cinematic stylized realism at portrait phone scale. Ships are close to overhead, with distinct silhouettes, directional light and readable material blocks. Pale panels and teal exhaust identify the player fleet. Hostile metal stays darker and uses small concentrated emitters. Combat layers stay independent of the backdrop. The existing Blender source and original public game assets remain in the repository.
 
+The pursuit cruiser uses the individually generated `source-art/stellar/2d/cruiser-pursuit.png`. The ImageGen brief called for a narrow, nose-up armored hull, three recessed stern engines and open deck space for separate turrets. The runtime sprite under `arcade/media/sprites/cruiser-long.png` shares its alpha with the generated collision geometry.
+
 ## Generation and export
 
 The reference board compared the strongest Star Strike RUSH hulls with the earlier Blender exports. The new image-generation direction used orthographic isolated objects, clean transparent boundaries, readable scale, soft upper key lighting, worn alloy and bright accent panels. The boss briefs specified empty attachment points, the Rail Ship's forward emitter and an asymmetric attack silhouette. The environment brief asked for a cold blue orbital ring at the upper edge and low exposure across the playable center. Source sheets and environment are stored in `source-art/stellar/2d/`.

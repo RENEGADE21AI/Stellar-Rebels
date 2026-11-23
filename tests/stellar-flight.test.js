@@ -458,6 +458,7 @@ test('short Ghost Shift, movement and damage Specials, and one-point repairs fol
 
   const charged = make('overcharge');
   assert.equal(charged.activateGhost(), true);
+  assert.equal(charged.player.specialTime, 3);
   charged.shoot(.25);
   assert.equal(charged.friendly[0].strength, charged.ship.guns[0][3] * charged.stats.damage * SPECIALS.overcharge.damage);
   launchBoss(charged, 'wraith');
@@ -486,6 +487,82 @@ test('a Phantom fades briefly and only shots in its current realm can damage it'
   assert.equal(e.hull, hull);
   fire('ghost');
   assert.equal(e.hull, hull - 2);
+});
+
+test('capital ships overtake in the camera frame and a boss catch slows forward travel', async () => {
+  const [{ Flight }, , { RULES_VERSION }, { advanceBoss, launchBoss }] = await load;
+  const { advanceCruiser, launchCruiser } = await import('../arcade/cruiser.mjs');
+  const { cruiseSpeed } = await import('../arcade/travel.mjs');
+  const f = new Flight({ ...context(), rules:RULES_VERSION, tiers:{} });
+  launchCruiser(f, 'heavy');
+  const ship = f.cruiser;
+  assert.ok(ship.worldSpeed > 0 && ship.worldSpeed < cruiseSpeed);
+  assert.ok(ship.y + ship.spec.size / 2 < 0);
+  const { x, y } = ship;
+  advanceCruiser(f, step);
+  assert.equal(ship.x, x);
+  assert.equal(ship.y, y + (cruiseSpeed - ship.worldSpeed) * step);
+  assert.ok(ship.parts.length >= 3);
+
+  launchBoss(f, 'emperor');
+  const boss = f.boss;
+  assert.ok(boss.entryTime >= 5 && boss.approach.speed > 0);
+  while (boss.age + step < boss.entryTime) advanceBoss(f, step);
+  assert.ok(f.forwardSpeed < cruiseSpeed / 2);
+  assert.ok(boss.y >= boss.arrivalY - 1);
+  assert.equal(boss.turn, Math.PI);
+
+  launchBoss(f, 'siphon');
+  for (let i = 0; i < 300; i++) advanceBoss(f, step);
+  assert.equal(f.forwardSpeed, 0);
+  assert.equal(f.boss.x, 192);
+});
+
+test('seeded debris has a stock-speed winding route through its moving obstacles', async () => {
+  const [{ Flight }, , { RULES_VERSION }] = await load;
+  const { createDebrisField, debrisRouteX } = await import('../arcade/debris-field.mjs');
+  const { flightRandom } = await import('../arcade/seed.mjs');
+  const build = (index) => createDebrisField(flightRandom(index.toString(16).padStart(32, '0')), index % 5);
+  assert.deepEqual(build(0), build(0));
+  assert.notDeepEqual(build(1), build(0));
+  for (let index = 0; index < 12; index++) {
+    const field = build(index);
+    const turns = field.route.slice(1).map(({ x }, i) => Math.sign(x - field.route[i].x));
+    assert.ok(turns.includes(-1) && turns.includes(1));
+    assert.ok(field.rocks.length > 15);
+    const f = new Flight({ ...context(), rules:RULES_VERSION, tiers:{} });
+    f.practice = true;
+    f.pressure = 1.42;
+    const speed = f.pressure * field.speed;
+    f.reanchor();
+    f.player.guard = 0;
+    f.player.x = f.xIntent = field.route[0].x;
+    f.hazards.push(field);
+    for (let tick = 0; tick < 700; tick++) {
+      const drift = Math.max(0, (tick + 1) * step - field.windup) * speed;
+      const target = debrisRouteX(field.route, f.player.y - drift);
+      f.drag(target - f.xIntent, 0);
+      f.step(step);
+      f.takeEvents();
+    }
+    assert.equal(f.hullHits, 0, `seed ${index}`);
+    assert.ok(f.player.x > 0 && f.hostile.every((shot) => shot.kind !== 'rock'));
+  }
+});
+
+test('a rock blocks both realms and prevents a retreating Phantom from clipping through', async () => {
+  const [{ Flight }, , { RULES_VERSION }] = await load;
+  const f = new Flight({ ...context(), rules:RULES_VERSION, tiers:{} });
+  f.projectile(125, 390, Math.PI / 2, 95, 'rock', { size:51, art:'rock-alt-2' });
+  f.projectile(125, 363, Math.PI / 2, 650, 'bolt');
+  f.projectile(125, 363, Math.PI / 2, 650, 'specter', { realm:'ghost' });
+  f.moveProjectiles(.06);
+  assert.deepEqual(f.hostile.map((shot) => shot.kind), ['rock']);
+  const enemy = f.addEnemy({ kind:'phantom', lane:125 / 384 });
+  Object.assign(enemy, { x:125, y:420, realm:'ghost', retreat:true });
+  f.moveEnemies(.10);
+  assert.equal(enemy.hull, 0);
+  assert.equal(f.score, 0);
 });
 
 test('Ion Burst clears local physical shots and leaves other threats and rewards intact', async () => {

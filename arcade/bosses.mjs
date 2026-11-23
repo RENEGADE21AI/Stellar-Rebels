@@ -4,16 +4,38 @@ import { ambushLeader, arrayStabilizer, borderBastion, communicationPost, defens
   salvagePlatform, siegeCruiser, spectralBeacon, startWallWarning, supplyTender } from './boss-patterns.mjs';
 import { advanceWraith, enterWraith } from './wraith.mjs';
 import { bodiesMeet, pilotBody, railBody, rememberPosition } from './collision.mjs';
+import { flightApproach, pursuitPosition } from './travel.mjs';
+
+const reversedHulls = new Set(['wraith','crown','emperor','hunterLead']);
+const longHulls = new Set(['interdictor','convoy','siegeShip']);
+
+function pursuitHull(kind, spec) {
+  if (longHulls.has(kind)) {
+    const size = kind === 'siegeShip' ? 424 : kind === 'convoy' ? 350 : 316;
+    const sockets = kind === 'siegeShip' ? [[-.161,.27],[.161,.27],[-.057,.431],[.057,.431]]
+      : [[-.161,.27],[.161,.27],[0,.437]];
+    return { ...spec, size, artSize:size, art:'cruiser-long', body:'cruiser-long',
+      parts:spec.parts.map(([, , role, hull], i) => [sockets[i][0] * size, sockets[i][1] * size, role, hull]) };
+  }
+  if (kind === 'emperor') {
+    return { ...spec, coreY:91, coreHit:[[-27,72,27,111]], parts:spec.parts.map(([x, y, role, hp]) => [x, y - 6, role, hp]) };
+  }
+  return spec;
+}
 
 export function launchBoss(flight, kind) {
-  const spec = BOSSES[kind];
+  const spec = flight.pursuit ? pursuitHull(kind, BOSSES[kind]) : BOSSES[kind];
   const artScale = spec.size / (spec.artSize ?? spec.size);
   const entryY = -Math.ceil(spec.size / 2) - 8;
+  const arrivalY = spec.arrivalY ?? 230;
+  const approach = flight.pursuit ? flightApproach(kind, arrivalY - entryY) : null;
+  const entryTime = approach?.entryTime ?? 1.55;
   for (const enemy of flight.enemies) enemy.retreat = true;
   flight.spawns.length = 0;
   flight.boss = {
-    kind, spec, artScale, x: WIDTH / 2, y:entryY, entryY, hull: spec.hull, age: 0, timer: 2.9, attack: 0,
-    entryTime: 1.55, hitFlash: 0, parts: spec.parts.map(([dx, dy, role, hull]) => ({
+    kind, spec, artScale, x: WIDTH / 2, y:entryY, entryY, arrivalY, approach,
+    turn:approach && reversedHulls.has(kind) ? Math.PI : 0, hull:spec.hull, age:0, timer:approach ? entryTime + 1.35 : 2.9, attack:0,
+    entryTime, hitFlash: 0, parts: spec.parts.map(([dx, dy, role, hull]) => ({
       dx:dx * artScale, dy:dy * artScale, size:43 * artScale,
       radius:12.5 * artScale, muzzle:14 * artScale, hull:hull ?? spec.partHull, flash:0,
       ...(role ? { role } : {})
@@ -57,9 +79,14 @@ export function advanceBoss(flight, dt) {
   b.hitFlash = Math.max(0, b.hitFlash - dt);
   for (const part of b.parts) part.flash = Math.max(0, part.flash - dt);
   const entry = Math.min(1, b.age / b.entryTime);
-  const arrivalY = b.spec.arrivalY ?? 230;
-  b.y = b.entryY + (arrivalY - b.entryY) * (1 - (1 - entry) ** 2) + 7 * Math.sin(b.age * 1.1) * entry;
-  b.x = WIDTH / 2 + b.spec.motion * Math.sin(Math.max(0, b.age - b.entryTime) * .78);
+  const arrivalY = b.arrivalY ?? b.spec.arrivalY ?? 230;
+  if (b.approach) {
+    b.y = pursuitPosition(b, b.age);
+    flight.forwardSpeed = Math.max(0, b.approach.speed + (b.y - b.py) / dt);
+  } else {
+    b.y = b.entryY + (arrivalY - b.entryY) * (1 - (1 - entry) ** 2) + 7 * Math.sin(b.age * 1.1) * entry;
+  }
+  b.x = b.approach?.fixed ? WIDTH / 2 : WIDTH / 2 + b.spec.motion * Math.sin(Math.max(0, b.age - b.entryTime) * .78);
   if (b.kind === 'wraith') {
     advanceWraith(flight, b, dt);
     return;
@@ -91,8 +118,9 @@ export function operatorWarnings(flight, dt) {
       if (warning.kind === 'wall') {
         warning.rowY = warning.y;
         warning.rowSpeed = warning.speed * flight.pressure;
-        for (const { x, y, size, pace } of warning.rocks) {
-          flight.projectile(x, y, Math.PI / 2, warning.speed * (pace ?? 1), 'rock', { size });
+        for (const { x, y, size, pace, art } of warning.rocks) {
+          flight.projectile(x, y, Math.PI / 2, warning.speed * (pace ?? 1), 'rock',
+            { size, ...(flight.pursuit && { art:art ?? 'rock', corridor:warning.corridor }) });
         }
       }
     }

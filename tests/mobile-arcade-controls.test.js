@@ -106,10 +106,11 @@ test('only the visible title ship opens Hangar and the Upgrades badge reflects w
     await page.getByRole('heading', { name: 'Hangar', exact: true }).waitFor();
     assert.equal(await button('Ship bay').getAttribute('aria-pressed'), 'true');
     await button('Upgrades').tap();
-    await page.getByRole('button', { name: /^Weapon Damage/ }).tap();
-    await button('Install Tier 1 · 20 Salvage').tap();
-    await page.getByText('Tier 1/15', { exact:true }).waitFor();
-    await button('Back').tap();
+    const damage = page.getByRole('button', { name: /^Weapon Damage/ });
+    await damage.tap();
+    await damage.getByText(/^Tier 1\/15/).waitFor();
+    assert.equal(await damage.getAttribute('aria-disabled'), 'true');
+    assert.equal(await damage.getAttribute('data-installed'), 'true');
     await button('Back').tap();
     await button('Play').waitFor();
     assert.equal(await badge.count(), 0);

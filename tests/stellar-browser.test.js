@@ -195,6 +195,9 @@ test('Help and Legal is reachable from compact title and Settings, and rating is
         const heading = (name) => page.getByRole('heading', { name, exact:typeof name === 'string' });
         await page.goto(origin);
         const help = button('Help & Legal');
+        await button('More').waitFor();
+        assert.equal(await help.count(), 0);
+        await button('More').tap();
         await help.waitFor();
         const frame = await page.locator('#frame').boundingBox();
         const titleHelp = await help.boundingBox();
@@ -221,7 +224,6 @@ test('Help and Legal is reachable from compact title and Settings, and rating is
         }
         await button('Back').tap();
         assert.equal(await help.evaluate((control) => document.activeElement === control), true);
-        await button('More').tap();
         await button('Settings').tap();
         assert.equal(await help.isVisible(), true);
         await page.evaluate(() => { window.ratingFixture.available = true; });
@@ -946,11 +948,21 @@ test('flight instructions stay in the HUD during real touch and a rail strike', 
   } finally { await browser.close(); }
 });
 
-test('keyboard focus follows hangar controls and an upgrade detail return', { skip: !origin, timeout:75000 }, async () => {
+test('keyboard focus stays on an in-place upgrade after installation', { skip: !origin, timeout:75000 }, async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({viewport:{width:390,height:844}});
     await page.goto(origin);
+    await page.getByRole('button',{name:'Hangar',exact:true}).waitFor();
+    await page.evaluate(async () => {
+      const main = document.querySelector('script[type=module]').src;
+      const { PilotStore } = await import(new URL('pilot.mjs', main));
+      const store = new PilotStore(indexedDB);
+      await store.open();
+      await store.change((pilot) => { pilot.salvage = 40; });
+      store.db.close();
+    });
+    await page.reload();
     await page.getByRole('button',{name:'Hangar',exact:true}).press('Enter');
     const activate = async (button) => {
       await button.press('Enter');
@@ -960,8 +972,9 @@ test('keyboard focus follows hangar controls and an upgrade detail return', { sk
     await activate(page.getByRole('button',{name:'Upgrades',exact:true}));
     const chamber = page.getByRole('button',{name:/^Fire Rate/});
     await chamber.press('Enter');
-    await page.getByRole('heading',{name:'Fire Rate'}).waitFor();
-    await page.getByRole('button',{name:'Back',exact:true}).press('Enter');
+    await chamber.getByText(/^Tier 1\/15/).waitFor();
+    await page.getByRole('heading',{name:'Upgrades'}).waitFor();
+    assert.equal(await chamber.getAttribute('data-installed'), 'true');
     assert.equal(await chamber.evaluate((node) => document.activeElement === node),true);
     await page.keyboard.press('Tab');
     assert.equal(await page.getByRole('button',{name:/^Thrusters/}).evaluate((node) => document.activeElement === node),true);

@@ -36,7 +36,7 @@ for (const file of walk(source)) {
   files.set(local, /\.(mjs|css|svg|txt)$/.test(local) ? readText(file) : fs.readFileSync(file));
 }
 for (const [sprite, expected] of Object.entries(spriteColliderDigests)) {
-  const art = files.get(`media/sprites/${sprite}.png`);
+  const art = files.get(`media/sprites/${sprite}.${/-alt(?:-\d+)?$/.test(sprite) ? 'webp' : 'png'}`);
   if (!art || crypto.createHash('sha256').update(art).digest('hex') !== expected) {
     throw Error(`Collision geometry is stale for ${sprite}. Run scripts/prepare-stellar-colliders.py and check its overlay.`);
   }

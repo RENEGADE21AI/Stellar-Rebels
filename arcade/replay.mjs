@@ -1,4 +1,4 @@
-import { AIM_PRECISION, FIXED_TICK, HEIGHT, INPUT_RESUME, INPUT_SHIFT, PREVIOUS_RULES, RULES_VERSION, SHIPS, SPECIALS, WIDTH, legacyStageById, stageById } from './catalog.mjs';
+import { AIM_PRECISION, BALANCE_RULES, FIXED_TICK, HEIGHT, INPUT_RESUME, INPUT_SHIFT, PREVIOUS_RULES, RULES_VERSION, SHIPS, SPECIALS, WIDTH, legacyStageById, stageById } from './catalog.mjs';
 import { Flight } from './flight.mjs';
 import { LEGACY_UPGRADES, tierKey, validTiers } from './progression.mjs';
 import { validFlightSeed } from './seed.mjs';
@@ -38,10 +38,10 @@ export function captureReplay(run) {
 
 function validContext(run, schema) {
   const legacy = schema === 1 && run?.rules === legacyRules;
-  if (!run || !validFlightSeed(run.seed) || !(legacy || schema === 2 && [PREVIOUS_RULES, RULES_VERSION].includes(run.rules)) ||
+  if (!run || !validFlightSeed(run.seed) || !(legacy || schema === 2 && [PREVIOUS_RULES, BALANCE_RULES, RULES_VERSION].includes(run.rules)) ||
       !Object.hasOwn(SHIPS, run.ship)) return false;
   if (typeof run.special !== 'string' || !Object.hasOwn(SPECIALS, run.special)) return false;
-  if (run.rules !== RULES_VERSION && !['ghost', 'ion'].includes(run.special)) return false;
+  if ((legacy || run.rules === PREVIOUS_RULES) && !['ghost', 'ion'].includes(run.special)) return false;
   const stage = legacy ? legacyStageById : stageById;
   if (!(run.mode === 'arcade' && Number.isInteger(run.stage) && stage(run.stage) || run.mode === 'endless' && run.stage === null)) return false;
   if (!legacy) return (run.variant === 'standard' || run.variant === 'veteran' && run.mode === 'arcade') && validTiers(run.tiers);

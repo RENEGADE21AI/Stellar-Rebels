@@ -1,10 +1,10 @@
 export const MAX_TIER = 15;
 
 export const UPGRADES = {
-  damage: { name: 'Weapon Damage', detail: 'Damage per shot', icon: 'power', maxBonus: .32 },
-  rate: { name: 'Fire Rate', detail: 'Shots per second', icon: 'overdrive', maxBonus: .18 },
-  thrusters: { name: 'Thrusters', detail: 'Movement speed', icon: 'next', maxBonus: .28 },
-  energy: { name: 'Energy', detail: 'Energy regeneration', icon: 'barrier', maxBonus: .20 }
+  damage: { name: 'Weapon Damage', detail: 'Damage per shot', icon: 'fist', maxBonus: .32 },
+  rate: { name: 'Fire Rate', detail: 'Shots per second', icon: 'fireRate', maxBonus: .18 },
+  thrusters: { name: 'Thrusters', detail: 'Movement speed', icon: 'thrust', maxBonus: .28 },
+  energy: { name: 'Energy', detail: 'Energy regeneration', icon: 'overdrive', maxBonus: .20 }
 };
 
 export const LEGACY_UPGRADES = {
