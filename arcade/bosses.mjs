@@ -6,7 +6,7 @@ import { advanceWraith, enterWraith } from './wraith.mjs';
 import { bodiesMeet, pilotBody, railBody, rememberPosition } from './collision.mjs';
 import { flightApproach, pursuitPosition } from './travel.mjs';
 
-const reversedHulls = new Set(['wraith','crown','emperor','hunterLead']);
+const reversedHulls = new Set(['warden','matron','tyrant','wraith','crown','emperor','ambushLead','hunterLead']);
 const longHulls = new Set(['interdictor','convoy','siegeShip']);
 
 function pursuitHull(kind, spec) {
@@ -20,6 +20,7 @@ function pursuitHull(kind, spec) {
   if (kind === 'emperor') {
     return { ...spec, coreY:91, coreHit:[[-27,72,27,111]], parts:spec.parts.map(([x, y, role, hp]) => [x, y - 6, role, hp]) };
   }
+  if (kind === 'matron') return { ...spec, parts:[[-69,10],[69,10]] };
   return spec;
 }
 

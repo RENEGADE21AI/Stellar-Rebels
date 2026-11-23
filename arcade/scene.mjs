@@ -746,7 +746,8 @@ export class FlightScene {
     const c = this.ctx;
     const long = b.spec.art === 'cruiser-long';
     const flagship = b.kind === 'crown' || b.kind === 'emperor';
-    const y = b.y + b.spec.size * (long ? .451 : flagship ? .205 : .138);
+    const harrow = b.kind === 'warden' || b.kind === 'ambushLead';
+    const y = b.y + b.spec.size * (long ? .451 : flagship ? .205 : harrow ? .317 : .138);
     const spread = b.spec.size * (long ? .084 : flagship ? .045 : .09);
     const length = (long ? 34 : 23) + (prefs.reduced ? 0 : 4 * Math.sin(b.age * 12));
     const flame = c.createLinearGradient(0, y, 0, y + length);
