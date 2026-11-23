@@ -1,9 +1,9 @@
 export const MAX_TIER = 15;
 
 export const UPGRADES = {
-  damage: { name: 'Weapon Damage', detail: 'Damage per shot', icon: 'power', maxBonus: .25 },
-  rate: { name: 'Fire Rate', detail: 'Shots per second', icon: 'overdrive', maxBonus: .15 },
-  thrusters: { name: 'Thrusters', detail: 'Movement speed', icon: 'next', maxBonus: .12 },
+  damage: { name: 'Weapon Damage', detail: 'Damage per shot', icon: 'power', maxBonus: .32 },
+  rate: { name: 'Fire Rate', detail: 'Shots per second', icon: 'overdrive', maxBonus: .18 },
+  thrusters: { name: 'Thrusters', detail: 'Movement speed', icon: 'next', maxBonus: .28 },
   energy: { name: 'Energy', detail: 'Energy regeneration', icon: 'barrier', maxBonus: .20 }
 };
 
@@ -34,14 +34,14 @@ export function tierKey(value) {
 }
 
 export function tierCost(tier) {
-  return 18 + (tier - 1) * 4;
+  return 20 + (tier - 1) * 5 + (tier >= 10 ? 10 : 0) + (tier >= 13 ? 6 : 0);
 }
 
 export function tierBenefit(key, tier) {
   return UPGRADES[key].maxBonus * (tier / MAX_TIER);
 }
 
-export function weaponStats(owned) {
+export function weaponStats(owned, rebalanced = true) {
   if (Array.isArray(owned)) {
     return {
       damage: (owned.includes('rails') ? 1.08 : 1) * (owned.includes('cells') ? 1.10 : 1),
@@ -52,8 +52,10 @@ export function weaponStats(owned) {
     };
   }
   const tiers = normalizeTiers(owned);
-  return { damage: 1 + tierBenefit('damage', tiers.damage), rate: 1 + tierBenefit('rate', tiers.rate),
-    speed: 1 + tierBenefit('thrusters', tiers.thrusters), recharge: 1 + tierBenefit('energy', tiers.energy), hull: 0 };
+  if (!rebalanced) return { damage:1 + .25 * (tiers.damage / MAX_TIER), rate:1 + .15 * (tiers.rate / MAX_TIER),
+    speed:1 + .12 * (tiers.thrusters / MAX_TIER), recharge:1 + .20 * (tiers.energy / MAX_TIER), hull:0 };
+  return { damage:.94 * (1 + tierBenefit('damage', tiers.damage)), rate:1 + tierBenefit('rate', tiers.rate),
+    speed:.86 * (1 + tierBenefit('thrusters', tiers.thrusters)), recharge:1 + tierBenefit('energy', tiers.energy), hull:0 };
 }
 
 const ranks = [

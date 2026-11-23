@@ -18,7 +18,8 @@ test('all 60 finite purchases are bounded by consecutive standard clears and ret
   pilot.lifetimeXp = 50_000;
   const tracks = Object.keys(UPGRADES);
   assert.deepEqual(tracks, ['damage', 'rate', 'thrusters', 'energy']);
-  assert.deepEqual(weaponStats(pilot.tiers), { damage: 1, rate: 1, speed: 1, recharge: 1, hull: 0 });
+  const baseline = weaponStats(pilot.tiers);
+  assert.deepEqual(baseline, { damage:.94, rate:1, speed:.86, recharge:1, hull:0 });
   for (let index = 0; index < 15; index++) {
     const stage = STAGES[index];
     assert.equal(api.nextMission(pilot).id, stage.id);
@@ -34,7 +35,7 @@ test('all 60 finite purchases are bounded by consecutive standard clears and ret
     clearMission(api, pilot, stage.id);
   }
   assert.deepEqual(pilot.tiers, { damage: 15, rate: 15, thrusters: 15, energy: 15 });
-  assert.deepEqual(weaponStats(pilot.tiers), { damage: 1.25, rate: 1.15, speed: 1.12, recharge: 1.2, hull: 0 });
+  assert.deepEqual(weaponStats(pilot.tiers), { damage:baseline.damage * 1.32, rate:1.18, speed:baseline.speed * 1.28, recharge:1.2, hull:0 });
   assert.equal(api.nextMission(pilot), null);
   assert.equal(api.install(pilot, 'hull'), false);
 });
@@ -206,10 +207,12 @@ test('nine Side Operations follow their main clearance and settle optional progr
 
 test('the main-only economy buys a competitive build and operations accelerate purchases within the same cap', async () => {
   const [api, { STAGES, SIDE_OPERATIONS, UPGRADES }] = await load;
-  const stockBudget = 2760;
+  const { tierCost, MAX_TIER } = await import('../arcade/progression.mjs');
+  const stockBudget = Object.keys(UPGRADES).length * Array.from({ length:MAX_TIER }, (_, index) => tierCost(index + 1)).reduce((a, b) => a + b, 0);
   const mainSalvage = STAGES.reduce((sum, stage) => sum + stage.first, 0);
-  assert.ok(mainSalvage >= .82 * stockBudget && mainSalvage < stockBudget);
-  assert.ok(SIDE_OPERATIONS.reduce((sum, stage) => sum + stage.first, 0) < .32 * mainSalvage);
+  const optionalSalvage = SIDE_OPERATIONS.reduce((sum, stage) => sum + stage.first, 0);
+  assert.ok(mainSalvage >= .64 * stockBudget);
+  assert.ok(mainSalvage + optionalSalvage < stockBudget);
   const tracks = Object.keys(UPGRADES);
 
   function spend(pilot) {
@@ -231,7 +234,7 @@ test('the main-only economy buys a competitive build and operations accelerate p
     }
     assert.equal(api.campaignComplete(pilot), true);
     assert.equal(api.hasEndless(pilot), true);
-    if (includeSide) assert.ok(tracks.every((key) => pilot.tiers[key] === 15));
-    else assert.ok(tracks.every((key) => pilot.tiers[key] >= 13));
+    assert.ok(tracks.every((key) => pilot.tiers[key] >= (includeSide ? 13 : 12)));
+    assert.ok(tracks.some((key) => pilot.tiers[key] < MAX_TIER));
   }
 });

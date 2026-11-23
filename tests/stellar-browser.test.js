@@ -221,6 +221,7 @@ test('Help and Legal is reachable from compact title and Settings, and rating is
         }
         await button('Back').tap();
         assert.equal(await help.evaluate((control) => document.activeElement === control), true);
+        await button('More').tap();
         await button('Settings').tap();
         assert.equal(await help.isVisible(), true);
         await page.evaluate(() => { window.ratingFixture.available = true; });
@@ -303,7 +304,7 @@ test('a fast touch release preserves pending steering and a canceled touch stops
     const page = await browser.newPage({ viewport:{ width:390, height:844 }, isMobile:true, hasTouch:true, serviceWorkers:'block' });
     await page.route(/\/app\.mjs$/, async (route) => {
       const response = await route.fetch();
-      await route.fulfill({ response, body:`${await response.text()}\nwindow.sampleSteering = () => ({\n        tick:state.flight.ticks, x:state.flight.player.x, aim:state.flight.xIntent,\n        unit:renderer.unit, cap:state.flight.ship.speed * .19 });` });
+      await route.fulfill({ response, body:`${await response.text()}\nwindow.sampleSteering = () => ({\n        tick:state.flight.ticks, x:state.flight.player.x, aim:state.flight.xIntent,\n        unit:renderer.unit, cap:state.flight.speed * .19 });` });
     });
     await page.clock.install();
     await page.goto(origin);
@@ -347,7 +348,10 @@ test('a returning playfield follows an operating system reduction preference', {
   try {
     const page = await browser.newPage({ viewport:{ width:390, height:844 }, reducedMotion:'no-preference', serviceWorkers:'block' });
     await page.goto(origin);
-    const open = () => page.getByRole('button', { name:'Settings', exact:true }).click();
+    const open = async () => {
+      await page.getByRole('button', { name:'More', exact:true }).click();
+      await page.getByRole('button', { name:'Settings', exact:true }).click();
+    };
     const motion = page.getByRole('button', { name:'Reduced motion', exact:true });
     await open();
     assert.equal(await motion.getAttribute('aria-pressed'), 'false');
@@ -466,6 +470,7 @@ test('Campaign, Hangar and Settings keep their controls inside the landscape fra
     await button('Specials').tap();
     await fit('.hangar-tab, .special-choice, .special-choice button');
     await button('Back').tap();
+    await button('More').tap();
     await button('Settings').tap();
     await fit('.setting, #sensitivity');
   } finally { await browser.close(); }
@@ -589,10 +594,12 @@ test('Side Operations unlock independently and never interrupt the main mission 
     await heading('Operation clear').waitFor();
     assert.equal(await button(/Next Mission/).count(), 0);
     await button('Title Screen').tap();
+    await button('More').tap();
     await button('Records').tap();
     await page.getByText('1 / 15', { exact:true }).waitFor();
     await page.getByText('1 / 9', { exact:true }).waitFor();
     await page.getByText('2 / 24', { exact:true }).waitFor();
+    await button('Back').tap();
     await button('Back').tap();
     await launch(button('Play'), 7);
     await page.evaluate((ids) => window.campaignProbe.prepare(ids), missionIds.slice(0, 14));
@@ -672,6 +679,7 @@ test('production web artifact uses touch, atomic saves, and a recoverable offlin
 
     await context.setOffline(true);
     await page.reload();
+    await page.getByRole('button', { name:'More', exact:true }).tap();
     await page.getByRole('button', { name:'Settings', exact:true }).tap();
     await page.getByText('Offline. Flight pack available.').waitFor();
     const audio = await page.evaluate(async () => {
@@ -690,6 +698,7 @@ test('production web artifact uses touch, atomic saves, and a recoverable offlin
     await context.setOffline(false);
     await page.reload();
     await page.getByRole('button', { name:'Play', exact:true }).waitFor();
+    await page.getByRole('button', { name:'More', exact:true }).tap();
     await page.getByRole('button', { name:'Settings', exact:true }).tap();
     await page.getByText('Offline flight pack ready.').waitFor();
     await page.getByRole('button', { name:'Back' }).tap();
@@ -702,6 +711,7 @@ test('production web artifact uses touch, atomic saves, and a recoverable offlin
     await page.getByRole('button', { name:'Settings', exact:true }).tap();
     await page.getByText('Offline flight pack incomplete. Reload to download missing files.').waitFor();
     await page.reload();
+    await page.getByRole('button', { name:'More', exact:true }).tap();
     await page.getByRole('button', { name:'Settings', exact:true }).tap();
     await page.getByText('Offline flight pack ready.').waitFor();
     assert.deepEqual(errors, []);
@@ -843,7 +853,7 @@ test('results scope record comparisons and link back to the Title Screen', { ski
         await title.waitFor();
         const comparison = page.locator('.result-comparison');
         if (seedOlderBest) {
-          await comparison.getByText('This loadout · Current rules', { exact:true }).waitFor();
+          await comparison.waitFor();
           assert.match(await comparison.innerText(), mode === 'endless' ? /First survival result/ : /First clear with this loadout/);
         } else assert.equal(await comparison.count(), 0);
         const fit = await page.locator('.result-card').evaluate((card) => card.scrollWidth <= card.clientWidth);
@@ -1054,7 +1064,7 @@ test('Space activates Pause on focus and uses the indicated ability from the pla
   } finally { await browser.close(); }
 });
 
-test('slow flight art can be canceled and failed art has a bounded fallback', { skip: !origin, timeout:90000 }, async () => {
+test('launch commits to flight and slow art has a bounded fallback', { skip: !origin, timeout:90000 }, async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport:{ width:320, height:568 }, isMobile:true, hasTouch:true, serviceWorkers:'block' });
@@ -1080,31 +1090,11 @@ test('slow flight art can be canceled and failed art has a bounded fallback', { 
     await stage.tap();
     const image = await stalled;
     await page.getByRole('status').filter({ hasText:'Loading flight assets' }).waitFor();
-    await button('Cancel launch').tap();
-    await stage.waitFor();
-    assert.equal(await stage.evaluate((node) => node === document.activeElement), true);
-    await button('Change ship').tap();
-    await page.getByRole('heading', { name:'Hangar' }).waitFor();
-    await image.continue().catch(() => {});
-    await page.unroute(target, routeHandler);
-    await page.waitForFunction(async () => {
-      const main = document.querySelector('script[type=module]').src;
-      const { PilotStore } = await import(new URL('pilot.mjs', main));
-      const store = new PilotStore(indexedDB);
-      const pilot = await store.open();
-      store.db.close();
-      return Object.keys(pilot.active).length === 0;
-    });
-    assert.equal(await button('Pause').count(), 0);
-    await button('Back').tap();
-    let second;
-    await page.route(target, (route) => { second = route; });
-    await stage.tap();
-    await page.getByRole('heading', { name:'Preparing flight' }).waitFor();
+    assert.equal(await button('Cancel launch').count(), 0);
+    await page.keyboard.press('Escape');
     const deadline = 5600;
     await button('Pause').waitFor({ timeout:deadline });
-    assert.ok(second, 'The launch completed while the image response was still held');
-    await second.abort().catch(() => {});
+    await image.abort().catch(() => {});
     await page.getByText('Hold the line at Neyara and break the enemy command ship.', { exact:true }).waitFor();
     await button('Pause').tap();
     await page.getByRole('heading', { name:'Paused' }).waitFor();

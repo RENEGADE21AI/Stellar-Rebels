@@ -3,7 +3,7 @@ import { isArcadeStage } from './commerce.mjs';
 const maxProfileBytes = 512 * 1024;
 const maxReplayBytes = 4_000_000;
 const operationsWithoutData = new Set([
-  'commerce-status', 'commerce-purchase', 'commerce-restore', 'load', 'rating-status', 'rate-app'
+  'commerce-status', 'commerce-purchase', 'commerce-restore', 'load', 'rating-status', 'rate-app', 'open-browser-account'
 ]);
 const ratingLinks = {
   ios: ['https://apps.apple.com/app/id6837596687?action=write-review'],

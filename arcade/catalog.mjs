@@ -8,19 +8,24 @@ export { SIDE_OPERATIONS } from './side-operations.mjs';
 
 export const WIDTH = 384;
 export const HEIGHT = 768;
-export const RULES_VERSION = 'arcade-12';
+export const PREVIOUS_RULES = 'arcade-12';
+export const RULES_VERSION = 'arcade-13';
 export const FIXED_TICK = 1 / 60;
 export const AIM_PRECISION = 16;
 export const INPUT_SHIFT = 1;
 export const INPUT_RESUME = 2;
 export const GUNNER_MUZZLES = [[-21,22],[21,22]];
-export const GHOST = { capacity: 100, start: 100, recharge: 3, cost: 38, duration: 1.05, recovery: 1.15, hop: 18, hopRecovery: .42 };
+export const GHOST = { capacity: 100, start: 100, recharge: 3, cost: 38, duration: .58, previousDuration: 1.05, recovery: 1.15, hop: 18, hopRecovery: .42 };
 
 export const SPECIALS = {
-  ghost: { name: 'Ghost Shift', label: 'Shift', clearance: 0, cost: GHOST.cost,
+  ghost: { name: 'Ghost Shift', short: 'Ghost', label: 'Shift', clearance: 0, cost: GHOST.cost,
     description: 'Briefly phase through physical fire.' },
-  ion: { name: 'Ion Burst', label: 'Burst', clearance: 2, cost: 50, radius: 96, recovery: 1.65,
-    description: 'Clear nearby physical shots. Beams and debris keep moving.' }
+  ion: { name: 'Ion Burst', short: 'Ion', label: 'Burst', clearance: 2, cost: 50, radius: 96, recovery: 1.65,
+    description: 'Clear nearby physical shots. Beams and debris keep moving.' },
+  afterburner: { name: 'Afterburner', short: 'Thrust', label: 'Boost', clearance: 8, cost: 42, duration: 2.5, recovery: 1.2, speed: 1.42,
+    description: 'Move 42% faster for 2.5 seconds. You still steer and can take damage.' },
+  overcharge: { name: 'Overcharge', short: 'Power', label: 'Charge', clearance: 3, cost: 55, duration: 4, recovery: 1.5, damage: 1.40,
+    description: 'Deal 40% more damage for four seconds.' }
 };
 
 export const SHIPS = {
@@ -47,7 +52,7 @@ export const SHIPS = {
 export const PICKUPS = {
   power: { name: 'Multi-Shot', hint: 'Adds two flank shots for 12 seconds.', color: '#c8a0ff', duration: 12 },
   barrier: { name: 'Shield', hint: 'Blocks one hit for up to 12 seconds.', color: '#77c7ff', duration: 12 },
-  repair: { name: 'Repair', hint: 'Restores up to two hull segments.', color: '#8bffd0', hull: 2 },
+  repair: { name: 'Repair', hint: 'Restores one hull segment.', color: '#8bffd0', hull: 1 },
   overdrive: { name: 'Rapid Fire', hint: 'Faster, harder shots for seven seconds.', color: '#ffd478', duration: 7 }
 };
 

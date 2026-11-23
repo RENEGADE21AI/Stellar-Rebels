@@ -72,7 +72,7 @@ test('Arcade progression settles one receipt atomically and Endless pays no Salv
   assert.equal(pilot.settleRun(p, 'first', result), first);
   assert.equal(p.salvage, opening.first);
   assert.ok(pilot.install(p, 'damage'));
-  assert.equal(p.salvage, opening.first - 18);
+  assert.equal(p.salvage, opening.first - 20);
   pilot.beginRun(p, 'repeat', 'arcade', opening.id);
   assert.equal(pilot.settleRun(p, 'repeat', result).award, Math.round(.62 * opening.first));
   pilot.beginRun(p, 'ongoing', 'arcade', opening.id);
@@ -420,7 +420,7 @@ test('ordinary charge starts full and recharges at three per second while practi
   assert.equal(p.ghostEnergy, GHOST.capacity);
   assert.equal(f.activateGhost(), true);
   const afterShift = p.ghostEnergy;
-  f.movePilot(GHOST.duration);
+  f.movePilot(f.ghostDuration);
   assert.equal(p.ghostEnergy, afterShift);
   f.movePilot(2);
   assert.equal(p.ghostEnergy, afterShift + 6);
@@ -432,6 +432,60 @@ test('ordinary charge starts full and recharges at three per second while practi
   p.ghostEnergy = 0;
   f.movePilot(2);
   assert.equal(p.ghostEnergy, 0);
+});
+
+test('short Ghost Shift, movement and damage Specials, and one-point repairs follow the current rules', async () => {
+  const [{ Flight }, , { PREVIOUS_RULES, RULES_VERSION, SPECIALS }, { launchBoss }] = await load;
+  const make = (special, rules = RULES_VERSION) => new Flight({ ...context(), rules, tiers:{}, special });
+  const ghost = make('ghost');
+  assert.ok(ghost.ghostDuration < make('ghost', PREVIOUS_RULES).ghostDuration);
+  const original = ghost.player.x;
+  ghost.setDirection(1, 0);
+  ghost.activateGhost();
+  ghost.movePilot(step);
+  assert.ok(Math.abs(ghost.player.x - original - ghost.ship.speed * ghost.stats.speed * step) < .04);
+  ghost.player.hull = 2;
+  ghost.collect({ kind:'repair' });
+  assert.equal(ghost.player.hull, 3);
+
+  const boosted = make('afterburner');
+  boosted.setDirection(1, 0);
+  assert.equal(boosted.activateGhost(), true);
+  boosted.movePilot(step);
+  assert.ok(Math.abs(boosted.player.x - original - boosted.ship.speed * boosted.stats.speed * SPECIALS.afterburner.speed * step) < .04);
+  assert.equal(boosted.player.realm, 'physical');
+  assert.equal(boosted.activateGhost(), false);
+
+  const charged = make('overcharge');
+  assert.equal(charged.activateGhost(), true);
+  charged.shoot(.25);
+  assert.equal(charged.friendly[0].strength, charged.ship.guns[0][3] * charged.stats.damage * SPECIALS.overcharge.damage);
+  launchBoss(charged, 'wraith');
+  assert.equal(charged.player.specialTime, 0);
+  assert.equal(charged.activateGhost(), true);
+  assert.equal(charged.player.realm, 'ghost');
+});
+
+test('a Phantom fades briefly and only shots in its current realm can damage it', async () => {
+  const [{ Flight }, , { RULES_VERSION }] = await load;
+  const f = new Flight({ ...context(), rules:RULES_VERSION, tiers:{} });
+  const e = f.addEnemy({ kind:'phantom', lane:.33 });
+  Object.assign(e, { x:150, y:240, age:2.4, pace:0, fireTimer:Infinity });
+  f.moveEnemies(step);
+  assert.equal(e.phaseCue, true);
+  assert.equal(e.realm, 'physical');
+  e.age = 3;
+  f.moveEnemies(step);
+  assert.equal(e.realm, 'ghost');
+  const fire = (realm) => {
+    f.friendly = [{ x:e.x, y:e.y + 24, vx:0, vy:-690, strength:2, live:true, realm }];
+    f.moveProjectiles(.05);
+  };
+  const hull = e.hull;
+  fire('physical');
+  assert.equal(e.hull, hull);
+  fire('ghost');
+  assert.equal(e.hull, hull - 2);
 });
 
 test('Ion Burst clears local physical shots and leaves other threats and rewards intact', async () => {

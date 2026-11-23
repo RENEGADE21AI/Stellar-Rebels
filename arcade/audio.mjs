@@ -13,6 +13,8 @@ const effects = {
   barrier: [1000, 280, .19, .12, 'sine'],
   ghostStart: [260, 980, .28, .115, 'triangle'],
   ionBurst: [540, 128, .22, .14, 'triangle'],
+  afterburner: [135, 590, .30, .11, 'triangle'],
+  overcharge: [280, 815, .24, .11, 'square'],
   ghostEnd: [680, 220, .21, .075, 'sine'],
   realmHop: [340, 760, .22, .12, 'sine'],
   realmWarning: [132, 425, .62, .145, 'sine'],
@@ -58,7 +60,7 @@ export class FlightAudio {
   }
 
   play(name) {
-    if (!this.enabled || !this.music || !this.foreground || document.hidden) return;
+    if (!this.music || !this.foreground || document.hidden) return;
     if (document.documentElement.dataset.nativeFlight === 'true') {
       this.nativeMusic(name === 'flight' ? 'flight' : 'hangar');
       return;

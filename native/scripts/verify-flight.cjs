@@ -60,6 +60,7 @@ async function check(engine, viewport) {
     else if (request.op === 'save') saved = structuredClone(request.data);
     else if (request.op === 'haptic') haptics.push(request.data);
     else if (request.op === 'music') music.push(request.data);
+    else if (request.op === 'open-browser-account') reply.value = true;
     else if (request.op === 'commerce-status') reply.value = { owned: false, price: null, available: false };
     else if (request.op === 'authorize-stage') reply.value = { allowed: request.data <= 5 || request.data >= 16 && request.data <= 18 };
     else if (request.op === 'rating-status') reply.value = { available: false };
@@ -76,6 +77,8 @@ async function check(engine, viewport) {
         const request = JSON.parse(text);
         return window.pilotHost(request).then((reply) => {
           if (request.op === 'haptic') window.lastNativePulse = request.data;
+          if (request.op === 'music') window.lastNativeMusic = request.data;
+          if (request.op === 'open-browser-account') window.openedBrowserAccount = true;
           window.stellarNativeReply(reply);
         });
       }
@@ -87,7 +90,17 @@ async function check(engine, viewport) {
 
   try {
     await page.goto(entry);
+    await page.getByRole('button', { name: 'Play', exact:true }).waitFor();
+    await page.waitForFunction(() => window.lastNativeMusic === 'hangar');
     const settings = page.getByRole('button', { name: 'Settings', exact: true });
+    const more = page.getByRole('button', { name:'More', exact:true });
+    const account = page.getByRole('button', { name:'Account', exact:true });
+    const back = page.getByRole('button', { name: 'Back', exact: true });
+    await more.tap();
+    await account.tap();
+    await page.getByRole('button', { name:'Open browser account', exact:true }).tap();
+    await page.waitForFunction(() => window.openedBrowserAccount === true);
+    await back.tap();
     await settings.tap();
     await page.getByText('Bundled flight assets ready.').waitFor();
     assert.equal(await page.getByRole('button', { name: 'Account', exact: true }).count(), 0);
@@ -96,7 +109,6 @@ async function check(engine, viewport) {
     await page.getByText('The purchase price is unavailable right now.').waitFor();
     assert.equal(await page.getByRole('button', { name: 'Unlock Full Game' }).isDisabled(), true);
     await page.getByRole('button', { name: 'Not Now', exact: true }).tap();
-    const back = page.getByRole('button', { name: 'Back', exact: true });
     await page.getByRole('button', { name: 'Help & Legal', exact: true }).tap();
     await page.getByText('Rating becomes available when the store listing opens.').waitFor();
     assert.equal(await page.getByRole('button', { name: 'Rate the App' }).isDisabled(), true);
@@ -120,9 +132,11 @@ async function check(engine, viewport) {
     await page.waitForFunction((expected) => document.querySelector('[aria-label="High contrast hazards"]')?.getAttribute('aria-pressed') === String(expected), desired);
     assert.equal(saved.settings.contrast, desired);
     await page.reload();
+    await more.tap();
     await settings.tap();
     assert.equal(await contrast.getAttribute('aria-pressed'), String(desired));
     assert.equal(clients.size, 2);
+    await page.getByRole('button', { name: 'Back', exact: true }).tap();
     await page.getByRole('button', { name: 'Back', exact: true }).tap();
     await page.getByRole('button', { name: 'Play', exact: true }).tap();
     await page.getByRole('textbox', { name: 'Pilot call sign' }).fill('NOVA-7');

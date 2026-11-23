@@ -65,6 +65,7 @@ test('pause touch settings update the same flight and persist on the device', { 
     assert.equal(Math.round((await page.locator('#flight-stick').boundingBox()).width), 112);
     await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await page.reload();
+    await button('More').tap();
     await button('Settings').tap();
     assert.equal(await page.getByLabel('Touch steering').inputValue(), 'stick');
     assert.equal(await page.getByLabel('Joystick size').inputValue(), '112');
@@ -74,16 +75,17 @@ test('pause touch settings update the same flight and persist on the device', { 
   }
 });
 
-test('the equipped title ship opens Hangar and its upgrade badge reflects what can be bought', { skip: !origin, timeout: 30000 }, async () => {
+test('only the visible title ship opens Hangar and the Upgrades badge reflects what can be bought', { skip: !origin, timeout: 30000 }, async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({
-      viewport: { width: 320, height: 568 }, isMobile: true, hasTouch: true, serviceWorkers: 'block'
+      viewport: { width: 320, height: 568 }, isMobile: true, hasTouch: true, reducedMotion:'reduce', serviceWorkers: 'block'
     });
     await page.route(/\/app\.mjs$/, async (route) => {
       const response = await route.fetch();
       await route.fulfill({ response, body: `${await response.text()}
-        window.grantUpgradeSalvage = () => store.change((pilot) => { pilot.salvage = 18; });
+        window.grantUpgradeSalvage = () => store.change((pilot) => { pilot.salvage = 20; });
+        window.hitsTitleCraft = (x, y) => state.titlePatrol?.hitsShip(x, y);
       ` });
     });
     await page.goto(origin);
@@ -94,13 +96,18 @@ test('the equipped title ship opens Hangar and its upgrade badge reflects what c
     await page.evaluate(() => window.grantUpgradeSalvage());
     await page.reload();
     await badge.waitFor();
-    assert.equal(await button('Hangar').getAttribute('aria-describedby'), 'hangar-upgrade-notice');
-    await page.getByRole('button', { name: /Open Hangar for Fighter/ }).tap();
+    assert.equal(await button('Upgrades').getAttribute('aria-describedby'), 'hangar-upgrade-notice');
+    const field = await page.locator('.title-patrol').boundingBox();
+    const ship = { x:field.x + field.width * .5, y:field.y + field.height * .44 };
+    await page.waitForFunction(({ x, y }) => window.hitsTitleCraft(x, y), ship);
+    await page.touchscreen.tap(ship.x - field.width * .19, ship.y - field.width * .16);
+    assert.equal(await button('Play').isVisible(), true);
+    await page.touchscreen.tap(ship.x, ship.y);
     await page.getByRole('heading', { name: 'Hangar', exact: true }).waitFor();
     assert.equal(await button('Ship bay').getAttribute('aria-pressed'), 'true');
     await button('Upgrades').tap();
     await page.getByRole('button', { name: /^Weapon Damage/ }).tap();
-    await button('Install Tier 1 · 18 Salvage').tap();
+    await button('Install Tier 1 · 20 Salvage').tap();
     await page.getByText('Tier 1/15', { exact:true }).waitFor();
     await button('Back').tap();
     await button('Back').tap();
@@ -130,13 +137,19 @@ test('a steering thumb and a second Special touch do not zoom or cancel steering
     await page.goto(origin);
     const button = (name) => page.getByRole('button', { name, exact:true });
     await button('Play').waitFor();
+    const touch = await page.context().newCDPSession(page);
+    const pinch = async () => {
+      const before = await page.evaluate(() => window.visualViewport.scale);
+      await touch.send('Input.synthesizePinchGesture', { x:190, y:330, scaleFactor:1.7, gestureSourceType:'touch' });
+      assert.equal(await page.evaluate(() => window.visualViewport.scale), before);
+    };
+    await pinch();
     await page.evaluate(() => window.touchProbe.seed());
     await page.reload();
     await button('Play').tap();
     const special = button('Ghost Shift');
     await special.waitFor();
     const control = await special.boundingBox();
-    const touch = await page.context().newCDPSession(page);
     const dispatch = (type, touchPoints) => touch.send('Input.dispatchTouchEvent', { type, touchPoints });
     const thumb = { id:1, x:150, y:639 };
     const ability = { id:2, x:control.x + control.width / 2, y:control.y + control.height / 2 };
@@ -151,6 +164,8 @@ test('a steering thumb and a second Special touch do not zoom or cancel steering
     assert.deepEqual([moved.scale, moved.scrollX, moved.scrollY], [initial.scale, 0, 0]);
     await dispatch('touchEnd', []);
     assert.equal(await page.evaluate(() => window.touchProbe.sample().steering), false);
+    await button('Pause').tap();
+    await pinch();
     await page.close();
   } finally { await browser.close(); }
 });

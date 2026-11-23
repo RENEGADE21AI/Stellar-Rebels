@@ -8,6 +8,7 @@ export const realmLabel = (realm) => realm === SPECTRAL ? 'Ghost' : 'Physical';
 
 export function enterWraith(flight, boss) {
   flight.player.ghostTime = 0;
+  flight.player.specialTime = 0;
   flight.player.ghostRecovery = 0;
   flight.player.realm = PHYSICAL;
   Object.assign(boss, { realm: PHYSICAL, shiftAt: 8.6, shifting: false, charge: null, timer: 2.95 });

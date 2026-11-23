@@ -122,7 +122,7 @@ function debrisWarningBadge(c, x, y, color, opacity) {
   c.restore();
 }
 
-const fighterExhaust = [[0, 22]];
+const fighterExhaust = [[0, 19.3]];
 
 function exhaustTexture(core, flame) {
   const texture = document.createElement('canvas');
@@ -243,8 +243,6 @@ export class FlightScene {
           break;
         case 'pickup': this.explode(e.x, e.y, PICKUPS[e.detail].color, 16, 19); break;
         case 'barrier': this.hullImpact(e, reduce, true); break;
-        case 'ghostStart': this.phaseFlash(e.x, e.y, '#bbceff'); break;
-        case 'ghostEnd': this.burst(e.x, e.y, '#e4c3ff', 12, 91, .43); break;
         case 'realmHop': case 'wraithShift': this.phaseFlash(e.x, e.y, realmTint(e.detail)); break;
         case 'veilHit': this.burst(e.x, e.y, '#b6a0db', 2, 37, .28); break;
         case 'hurt':
@@ -555,35 +553,26 @@ export class FlightScene {
     const c = this.ctx;
     const p = flight.player;
     const ghost = p.realm === SPECTRAL;
+    const boosting = p.specialTime > 0 && flight.special === 'afterburner';
     const fighter = flight.run.ship === 'kestrel';
     this.exhaust ??= {
       normal: exhaustTexture('#9ffdf1', '#3fade0a6'),
       boost: exhaustTexture('#ffe1ac', '#f48950ae'),
       ghost: exhaustTexture('#ebe0ff', '#afa0fdba')
     };
-    const image = this.exhaust[ghost ? 'ghost' : p.overdrive ? 'boost' : 'normal'];
-    const plume = prefs.reduced ? 10 : 10 + (Math.sin(flight.elapsed * 22) + 1) * 2 + this.arrival * 38;
+    const image = this.exhaust[ghost ? 'ghost' : p.overdrive || boosting ? 'boost' : 'normal'];
+    const plume = (prefs.reduced ? 10 : 10 + (Math.sin(flight.elapsed * 22) + 1) * 2 + this.arrival * 38) + (boosting ? 12 : 0);
     c.save();
     c.translate(p.x, p.y);
     c.rotate(p.bank);
+    if (ghost) c.globalAlpha = .57;
     for (const [dx, dy] of fighter ? fighterExhaust : flight.ship.engines) {
-      const width = fighter ? 6 : dx === 0 ? 9 : 6;
+      const width = fighter ? 7 : dx === 0 ? 9 : 6;
       c.drawImage(image, dx - width / 2, dy, width, plume + (dx === 0 && !fighter ? 6 : 0));
     }
     c.restore();
     this.sprite(flight.run.ship, p.x, p.y, flight.ship.size, p.bank,
-      ghost ? .64 : p.guard && !prefs.reduced ? .74 + .25 * Math.abs(Math.sin(flight.elapsed * 24)) : 1, ghost ? '#beaeff' : '');
-    if (ghost) {
-      const turn = prefs.reduced ? 0 : flight.elapsed * 2.2;
-      c.beginPath();
-      for (const angle of [turn, turn + Math.PI]) {
-        c.moveTo(p.x + 24 * Math.cos(angle), p.y + 24 * Math.sin(angle));
-        c.arc(p.x, p.y, 24, angle, angle + .92);
-      }
-      c.strokeStyle = '#dbceff';
-      c.lineWidth = 1.6;
-      c.stroke();
-    }
+      ghost ? .49 : p.guard && !prefs.reduced ? .74 + .25 * Math.abs(Math.sin(flight.elapsed * 24)) : 1);
     if (p.barrier) {
       const charge = saturate(p.barrierTime / PICKUPS.barrier.duration);
       c.save();
@@ -633,7 +622,13 @@ export class FlightScene {
       c.fill();
       c.restore();
     }
-    this.sprite(look, e.x, e.y, e.spec.size, turn, e.retreat ? .66 : 1);
+    const phased = e.realm === SPECTRAL;
+    const alpha = phased ? .37 : e.retreat ? .66 : e.phaseCue ? .74 + .21 * Math.abs(Math.sin(clock * 28)) : 1;
+    this.sprite(look, e.x, e.y, e.spec.size, turn, alpha);
+    if (e.phaseCue && !e.retreat) {
+      const nose = enemyMuzzle(e);
+      filled(c, nose.x, nose.y, 2.75, '#c7aeff');
+    }
     if (e.priority && !e.retreat) {
       const radius = Math.max(13, e.spec.size * .38);
       for (const side of [-1, 1]) {
@@ -896,8 +891,9 @@ export class FlightScene {
     const x = s.vx * .019;
     const y = s.vy * .019;
     const ghost = s.realm === SPECTRAL;
-    line(c, s.x - x * .58, s.y - y * .58, x, y, ghost ? '#b591e7' : s.powered ? '#8847efac' : '#3bb5bba3', s.powered ? 5.2 : 4.7);
-    line(c, s.x - x * .34, s.y - y * .34, x * .73, y * .73, ghost || s.powered ? '#f1ddff' : '#d5fff6', 2.0);
+    const boosted = s.charged && !ghost;
+    line(c, s.x - x * .58, s.y - y * .58, x, y, boosted ? '#d98245' : ghost ? '#b591e7' : s.powered ? '#8847efac' : '#3bb5bba3', s.powered ? 5.2 : 4.7);
+    line(c, s.x - x * .34, s.y - y * .34, x * .73, y * .73, boosted ? '#fff1c4' : ghost || s.powered ? '#f1ddff' : '#d5fff6', 2.0);
   }
 
   debrisLook(x, originY) {

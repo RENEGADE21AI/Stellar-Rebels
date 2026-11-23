@@ -92,7 +92,7 @@ for (const [name, browserType, viewport] of [
       await page.goto(origin);
       await button('Play').waitFor();
       const original = await pilotFingerprint(page, true);
-      await button('Settings').tap();
+      await button('More').tap();
       assert.deepEqual(vendorRequests, []);
 
       await context.setOffline(true);
@@ -133,7 +133,7 @@ for (const [name, browserType, viewport] of [
       await status('Signed in with Google.').waitFor();
       const beforeRefresh = vendorRequests.length;
       await page.reload();
-      await button('Settings').tap();
+      await button('More').tap();
       assert.equal(vendorRequests.length, beforeRefresh);
       await button('Account').tap();
       await status('Signed in with Google.').waitFor();

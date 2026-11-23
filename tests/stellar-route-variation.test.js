@@ -20,7 +20,7 @@ function lineup(flight) {
 
 function route(Flight, stage, seed, rules, consumeCombatRandomness = false) {
   const flight = makeFlight(Flight, stage.id, seed, 'arcade', rules);
-  return stage.waves.map(([at], index) => {
+  return flight.waves.map(([at], index) => {
     if (consumeCombatRandomness) {
       for (let i = 0; i <= index; i++) flight.random();
     }
@@ -38,10 +38,11 @@ test('selected Arcade wings can attack from either flank without changing their 
       const reference = route(Flight, stage, seeds[0], rules);
       assert.deepEqual(route(Flight, stage, seeds[0], rules, true), reference, `${stage.name} uses an independent route seed`);
       const distinct = seeds.map((seed) => route(Flight, stage, seed, rules));
-      const adaptive = stage.waves.filter((beat) => beat[2] === 'flank').length;
-      const variableLimit = rules === legacyRules ? 4 : Math.floor(stage.waves.length / 3);
+      const waves = makeFlight(Flight, stage.id, seeds[0], 'arcade', rules).waves;
+      const adaptive = waves.filter((beat) => beat[2] === 'flank').length;
+      const variableLimit = rules === legacyRules ? 4 : Math.floor(waves.length / 3);
       assert.ok(adaptive >= 2 && adaptive <= variableLimit, `${stage.name} keeps a bounded set of variable beats`);
-      stage.waves.forEach((beat, index) => {
+      waves.forEach((beat, index) => {
         const lineups = distinct.map((result) => result[index]);
         if (beat[2] !== 'flank') {
           assert.ok(lineups.every((wing) => JSON.stringify(wing) === JSON.stringify(reference[index])));

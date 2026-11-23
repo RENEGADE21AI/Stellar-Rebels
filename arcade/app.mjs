@@ -60,6 +60,8 @@ const icons = {
   score: '<path d="M7 3h10v5c0 4-2 7-5 7S7 12 7 8zM3 5h4v5c-3 0-4-2-4-5zm18 0h-4v5c3 0 4-2 4-5zM12 15v5m-4 1h8"/>',
   ship: '<path d="m12 3 3.5 9 5 4.6V20l-5-2-3.5 3-3.5-3L3.5 20v-3.4l5-4.6L12 3Z"/>',
   settings: '<path d="M4 6h16M4 12h16M4 18h16M9 4v4m7 2v4m-7 2v4"/>',
+  more: '<path stroke-width="2.8" stroke-linecap="round" d="M5 12h.01m6.99 0h.01m6.99 0h.01"/>',
+  account: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20v-1a7 7 0 0 1 14 0v1"/>',
   salvage: '<path d="M5.5 4h13l4 8-4 8h-13l-4-8zM5.5 4 9 12l-3.5 8m13-16L15 12l3.5 8M9 12h6"/>',
   barrier: '<path d="M12 3 20 6v5c0 4-3 8-8 10-5-2-8-6-8-10V6zM12 7v9"/>',
   overdrive: '<path d="m13 3-8 11h6l-1 7 9-12h-6z"/>',
@@ -131,12 +133,21 @@ function home() {
       </div>
       <nav class="home-links" aria-label="Game options">
         <button class="home-link" data-action="campaign:standard">${icon('stages')} Campaign</button>
-        <button class="home-link" data-action="hangar:home" ${upgradeAvailable ? 'aria-describedby="hangar-upgrade-notice"' : ''}>${icon('ship')} Hangar
+        <button class="home-link" data-action="hangar:home">${icon('ship')} Hangar</button>
+        <button class="home-link" data-action="shop:home" ${upgradeAvailable ? 'aria-describedby="hangar-upgrade-notice"' : ''}>${icon('power')} Upgrades
           ${upgradeAvailable ? '<span class="hangar-upgrade-badge" aria-hidden="true">!</span>' : ''}</button>
-        <button class="home-link" data-action="view:records">${icon('score')} Records</button>
-        <button class="home-link" data-action="view:settings">${icon('settings')} Settings</button>
+        <button class="home-link" data-action="view:more">${icon('more')} More</button>
       </nav>${upgradeAvailable ? '<span id="hangar-upgrade-notice" class="visually-hidden">Upgrade available to install.</span>' : ''}
       ${action('Help & Legal', 'legal', 'title-help', '')}</div></article>`;
+}
+
+function moreView() {
+  return screen('More', 'home', `<nav class="more-links" aria-label="More game options">
+    ${action('Settings', 'view:settings', 'quiet', 'settings')}
+    ${action('Records', 'view:records', 'quiet', 'score')}
+    ${action('Account', 'view:account', 'quiet', 'account')}
+    ${action('Practice', 'help:more', 'quiet', 'play')}
+  </nav>`);
 }
 
 function suggestCallSign(previous) {
@@ -271,7 +282,7 @@ function hangar() {
   const craft = SHIPS[state.inspected];
   const owned = hasShip(pilot, state.inspected);
   const active = pilot.ship === state.inspected;
-  if (state.hangarTab === 'upgrades') return screen('Hangar', state.hangarBack, tabs + shopTracks(), wallet());
+  if (state.hangarTab === 'upgrades') return screen('Upgrades', state.hangarBack, tabs + shopTracks(), wallet());
   const selection = Object.entries(SHIPS).map(([key, ship]) => {
     const copy = key === pilot.ship ? 'Equipped' : hasShip(pilot, key) ? ship.role : `Clear ${chapter(stageById(ship.clearance).number)}`;
     return `<button class="craft-choice" data-action="inspect:${key}" aria-pressed="${key === state.inspected}">${ship.name}<small>${copy}</small></button>`;
@@ -386,7 +397,7 @@ function records() {
   const mastery = earned.length || legacy ? `<section class="record-heading" aria-labelledby="record-mastery">
     <h2 id="record-mastery">Mastery</h2><ul class="mastery-list">${earned.map((name) => `<li>${name}</li>`).join('')}
     ${legacy ? `<li>${num(legacy)} earned on the original campaign</li>` : ''}</ul></section>` : '';
-  return screen('Records', 'home', `${profile}<div class="record-heading"><h2>Current loadout</h2><p class="subtle">${SHIPS[pilot.ship].name} · ${loadoutContext(pilot)} · Current rules</p></div>
+  return screen('Records', 'more', `${profile}<div class="record-heading"><h2>Current loadout</h2><p class="subtle">${SHIPS[pilot.ship].name} · ${loadoutContext(pilot)} · Current rules</p></div>
     ${rows || survival ? rows + survival : '<p class="subtle">Fly with this loadout to set a record.</p>'}${mastery}${career}`);
 }
 
@@ -459,12 +470,11 @@ function settingsView() {
     return `<div class="setting"><span><strong>${label}</strong><small>${systemMotion ? 'On in your device settings' : copy}</small></span>
       <button class="toggle" data-action="toggle:${key}" aria-label="${label}" aria-pressed="${on}" ${systemMotion ? 'disabled' : ''}>${on ? 'On' : 'Off'}</button></div>`;
   }).join('');
-  return screen('Settings', 'home', `<nav class="settings-shortcuts" aria-label="Help and purchases">
+  return screen('Settings', 'more', `<nav class="settings-shortcuts" aria-label="Help and purchases">
     ${action('Help & Legal', 'legal', 'quiet', '')}
     ${nativeFlight ? action('Full Game Unlock', 'commerce:show', 'quiet', '') : ''}</nav>
     ${switches}${touchSettings(prefs)}
     <div class="notice" id="pack-status" role="status">${packCopy()}</div>${state.installed ? '' : '<p class="subtle">Install from your browser menu or Add to Home Screen in Safari.</p>'}
-    ${googleSignInAvailable ? action('Account', 'view:account') : ''}
     ${action('Edit call sign', 'view:callSign', 'quiet', 'edit')}
     ${action('Practice', 'help:settings', 'quiet')}${state.support ? `<p class="notice">${state.support}</p>` : ''}`);
 }
@@ -531,7 +541,14 @@ async function rateApp() {
 }
 
 function accountView() {
-  return screen('Account', 'settings', `<div class="info account-panel">
+  if (!googleSignInAvailable) {
+    return screen('Account', 'more', `<div class="info account-panel">
+      <strong>Guest pilot</strong>
+      <p class="subtle">${nativeFlight ? 'Google sign-in is available in the browser. Your app progress stays on this device.' : 'Open the online game to sign in with Google. You can keep playing as a guest here.'}</p>
+      ${nativeFlight ? action('Open browser account', 'account:browser', 'quiet', 'arrowout') + '<p id="account-browser-status" class="subtle" role="status" hidden></p>' : ''}
+    </div>`);
+  }
+  return screen('Account', 'more', `<div class="info account-panel">
     <p class="subtle">Sign-in is optional. Scores, Salvage and upgrades stay in this browser.</p>
     <p id="account-status" class="subtle" role="status" tabindex="-1"></p>
     <button type="button" class="google-sign-in" data-action="account:sign-in" aria-label="Sign in with Google" hidden>
@@ -563,7 +580,7 @@ function helpView() {
       : 'Drag anywhere on the playfield. Lift and touch again to reanchor. Try Floating joystick in Settings. Arrow keys and WASD also steer.'],
     ['Line up your shots', 'Weapons fire automatically. Aim by placing your ship beneath the target.'],
     ['Energy', 'Start each flight with full energy. It recharges over time when you aren’t phasing. Hits and kills charge it faster.'],
-    ['Specials', 'Equip a Special in the Hangar. Tap its button or press Space to use it. Ghost Shift phases through physical fire for one second. Ion Burst clears nearby physical shots.'],
+    ['Specials', 'Equip a Special in the Hangar. Tap its button or press Space. Ghost Shift phases through physical fire for 0.58 seconds. Ion Burst clears nearby physical shots. Afterburner boosts speed. Overcharge boosts damage.'],
     ['Wraith realms', 'Tap Hop or press Space to change realms. Match the Wraith’s realm and shoot its marked core. Solid rounds hit physical ships. Hollow diamonds hit ghost ships.'],
     ['Read the warning', 'Leave striped beam lanes. Fly through the opening between the rocks.'],
     ['Watch the edges', 'Some surviving fighters circle up the side and return in a different lane. They keep any damage you dealt.'],
@@ -603,16 +620,6 @@ function resultComparison(receipt) {
   return improved ? `New ${best} · +${points}` : `${points} short of your ${best}`;
 }
 
-const retryAdvice = {
-  debris: 'Fly through the opening between the rocks.',
-  rail: 'Leave the striped lane before the rail fires.',
-  spectral: 'Dodge hollow rounds while you are in the ghost realm.',
-  collision: 'Keep your cockpit clear of enemy hulls.',
-  fire: 'Move across incoming fire and save your Special for tight spots.',
-  'objective-escaped': 'Your crew survived. Line up the priority ships early, before they reach the far edge.',
-  'objective-transmitted': 'Your crew survived. Silence the transmitter before it completes the call.'
-};
-
 function results() {
   const p = state.pending;
   const report = p.receipt ?? p.terminal;
@@ -636,11 +643,12 @@ function results() {
   const repeat = isEndless ? 'Fly again' : clear ? side ? 'Replay operation' : 'Replay mission' : 'Retry';
   const fly = veteran ? 'fly-veteran' : 'fly';
   const retry = `${fly}:${isEndless ? 'endless' : stage.id}`;
-  const progression = p.receipt?.award ? `<p class="result-reward">${icon('salvage')} <span>+${num(p.receipt.award)} Salvage ${store.temporary ? 'this session' : 'banked'}</span>${p.receipt.first ? '<small>First clear</small>' : ''}</p>` : '';
-  const xp = p.receipt?.xpAward ? `<p class="result-xp">+${num(p.receipt.xpAward)} XP${p.receipt.rankUp ? ` · ${p.receipt.rankUp}` : ''}</p>` : '';
+  const progression = p.receipt?.award ? `<span class="result-reward">${icon('salvage')} +${num(p.receipt.award)} Salvage ${store.temporary ? 'this session' : 'banked'}</span>` : '';
+  const xp = p.receipt?.xpAward ? `<span class="result-xp">+${num(p.receipt.xpAward)} XP</span>` : '';
   const unlocked = [
     p.receipt?.newStage && !requiresPurchase(p.receipt.newStage) ? `${stageById(p.receipt.newStage).name} unlocked` : null,
-    p.receipt?.newSpecial === 'ion' ? 'Ion Burst unlocked' : null,
+    p.receipt?.newSpecial ? `${SPECIALS[p.receipt.newSpecial].name} unlocked` : null,
+    p.receipt?.rankUp ? `Rank earned · ${p.receipt.rankUp}` : null,
     p.receipt?.campaignWon && !veteran ? 'Veteran Campaign and Endless unlocked' : null,
     ...((p.receipt?.newOperations ?? []).filter((id) => !requiresPurchase(id)).map((id) => `Side Operation unlocked · ${stageById(id).name}`))
   ].filter(Boolean);
@@ -653,10 +661,8 @@ function results() {
     : next && !preview ? action('Next Mission', `${fly}:${next.id}`, 'primary', 'next', `aria-label="Next Mission · ${next.name}"`)
       : finale ? action('Return to Campaign', 'view:stages', 'primary') : action(repeat, retry, 'primary');
   const mastery = p.receipt && clear && stage?.mastery ? `<p class="subtle">${p.receipt.mastery ? `Mastery earned · ${stage.mastery.name}`
-    : p.receipt.masteryMet ? `Mastery repeated · ${stage.mastery.name}` : stage.mastery.detail}</p>` : '';
-  const comparison = resultComparison(p.receipt);
-  const cause = p.terminal.damageCause;
-  const advice = !clear && Object.hasOwn(retryAdvice, cause) ? retryAdvice[cause] : '';
+    : p.receipt.masteryMet ? `Mastery repeated · ${stage.mastery.name}` : ''}</p>` : '';
+  const comparison = clear || p.receipt?.loadout?.improved ? resultComparison(p.receipt) : '';
   const secondary = [
     p.receipt && !finale ? action('Campaign', 'view:stages', 'quiet', '') : '',
     p.receipt || p.discarded ? action('Title Screen', 'view:home', 'quiet', '') : '',
@@ -676,9 +682,9 @@ function results() {
         <div><span class="caption">Flight time</span><strong>${time(report.duration)}</strong></div>
         <div><span class="caption">Targets</span><strong>${num(report.kills)}</strong></div>
       </section>
-      ${progression || xp || mastery || comparison || advice || unlocked.length || ship ? `<div class="result-earned">
-        ${comparison ? `<p class="result-comparison"><small class="subtle">This loadout · Current rules</small>${comparison}</p>` : ''}
-        ${mastery}${advice ? `<p class="subtle">${advice}</p>` : ''}${progression}${xp}
+      ${progression || xp || mastery || comparison || unlocked.length || ship ? `<div class="result-earned">
+        ${comparison ? `<p class="result-comparison">${comparison}</p>` : ''}
+        ${mastery}${progression || xp ? `<p class="result-payout" aria-label="Flight rewards">${progression}${xp}</p>` : ''}
         ${unlocked.length ? `<ul class="result-unlocks">${unlocked.map((label) => `<li>${icon('check')}${label}</li>`).join('')}</ul>` : ''}
         ${ship}
       </div>` : ''}
@@ -901,11 +907,11 @@ function showSettledResult(focus = true) {
 function launchView() {
   return `<article class="screen launch-screen"><header class="screen-header"><p class="caption">${state.launch.name}</p>
     <h1 tabindex="-1">Preparing flight</h1></header>
-    <p class="notice" role="status">Loading flight assets…</p>${action('Cancel launch', 'cancel-flight', 'quiet', 'back')}</article>`;
+    <p class="notice" role="status">Loading flight assets…</p></article>`;
 }
 
 const views = {
-  home, callSign: callSignView, stages, hangar, upgrade: upgradeView, records, settings: settingsView,
+  home, more: moreView, callSign: callSignView, stages, hangar, upgrade: upgradeView, records, settings: settingsView,
   storyLog, story: storyView,
   account: accountView, legal: legalHub, privacy: () => policyPage('privacy'), terms: () => policyPage('terms'),
   support: () => policyPage('support'), help: helpView, result: results, launch: launchView, commerce: commerceView
@@ -924,7 +930,7 @@ function showBrowserUpdate() {
 }
 
 function show(view, focus = true) {
-  if (!views[view] || (view === 'account' && !googleSignInAvailable)) return;
+  if (!views[view]) return;
   if (view === 'commerce' && (!nativeFlight || !state.commerceScreen)) return;
   if (view === 'story' && !state.story) return;
   if (view === 'callSign' && !state.callSign) return;
@@ -951,7 +957,7 @@ function show(view, focus = true) {
   menu.scrollTop = 0;
   if (focus) menu.querySelector('h1')?.focus({ preventScroll: true });
   if (view === 'settings') checkPack();
-  if (view === 'account') {
+  if (view === 'account' && googleSignInAvailable) {
     paintAccount();
     void googleAccount.open();
   }
@@ -1056,15 +1062,16 @@ async function start(which, trainingMode = null, drill = 'basics', variant = 'st
     state.titlePatrol?.launch();
     const status = document.createElement('div');
     status.className = 'launch-status';
-    status.innerHTML = '<p role="status">Launching…</p>' + action('Cancel launch', 'cancel-flight', 'quiet', '');
+    status.innerHTML = '<p role="status">Launching…</p>';
     title.append(status);
-    status.querySelector('button').focus({ preventScroll:true });
+    status.firstElementChild.tabIndex = -1;
+    status.firstElementChild.focus({ preventScroll:true });
   } else show('launch');
   try {
     const seed = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
     if (trainingMode) {
       const special = trainingMode === 'practice' && drill === 'special' ? state.pilot.special : 'ghost';
-      run = { id:readId(), mode:'arcade', stage:1, ship:'kestrel', equipment:[], special, assistance:{ ...state.pilot.settings }, seed };
+      run = { id:readId(), mode:'arcade', stage:1, ship:'kestrel', rules:RULES_VERSION, special, assistance:{ ...state.pilot.settings }, seed };
     } else {
       const saved = await store.change((pilot) => beginRun(pilot, readId(), endless ? 'endless' : 'arcade', stage, Date.now(), seed, variant));
       state.pilot = saved.pilot;
@@ -1250,8 +1257,9 @@ function refreshGhost(f) {
   const p = f.player;
   const special = SPECIALS[f.special];
   const energy = Math.floor(p.ghostEnergy);
-  const active = p.realm === 'ghost';
-  const action = f.realmHop ? 'Hop' : p.ghostTime ? `${(Math.ceil(p.ghostTime * 10) / 10).toFixed(1)}s` : p.ghostRecovery ? 'Wait' : special.label;
+  const specialTime = p.ghostTime || p.specialTime;
+  const active = p.realm === 'ghost' || specialTime > 0;
+  const action = f.realmHop ? 'Hop' : specialTime ? `${(Math.ceil(specialTime * 10) / 10).toFixed(1)}s` : p.ghostRecovery ? 'Wait' : special.label;
   const mode = active ? 'active' : f.shiftReady ? 'ready' : 'charging';
   const key = `${energy}/${action}/${mode}/${f.shiftReady}/${f.realmHop}/${f.special}`;
   if (lastHud.ghost === key) return;
@@ -1266,11 +1274,11 @@ function refreshGhost(f) {
   content('ghost-action', action);
   const destination = realmLabel(otherRealm(p.realm));
   $('ghost-shift').setAttribute('aria-label', f.realmHop ? `Hop to ${destination} realm` : special.name);
-  content('ghost-label', f.realmHop ? `To ${destination}` : f.special === 'ion' ? 'Ion' : 'Ghost');
+  content('ghost-label', f.realmHop ? `To ${destination}` : special.short);
   const remaining = `${energy} energy. ${f.realmHop ? 'Hop' : special.name} costs ${f.ghostCost}.`;
   const recovery = p.ghostRecovery ? ` ${f.realmHop ? 'Hop' : special.name} is recovering.` : '';
   content('ghost-status', f.realmHop ? `Current realm is ${realmLabel(p.realm)}. ${remaining}${recovery}`
-    : p.ghostTime ? `${action} of phasing remaining.` : remaining + recovery);
+    : specialTime ? `${action} of ${special.name} remaining.` : remaining + recovery);
 }
 
 function refreshHud(restart = false) {
@@ -1426,6 +1434,14 @@ async function handle(command) {
     return;
   }
   if (type === 'account' && state.view === 'account') {
+    if (value === 'browser' && nativeFlight) {
+      const status = $('account-browser-status');
+      status.hidden = true;
+      if (await window.stellarOpenBrowserAccount?.()) return;
+      status.textContent = 'Could not open the browser. Try again.';
+      status.hidden = false;
+      return;
+    }
     if (value === 'sign-in') void googleAccount.signIn();
     if (value === 'sign-out') void googleAccount.signOut();
     if (value === 'retry') void googleAccount.open();
@@ -1595,13 +1611,19 @@ menu.addEventListener('submit', async (event) => {
   }
 });
 
+function acceptFirstAudioGesture() {
+  audio.unlock();
+  if (state.mode === 'menu' || state.mode === 'playing') audio.play(state.mode === 'playing' ? 'flight' : 'hangar');
+}
+document.addEventListener('click', acceptFirstAudioGesture, { once:true, capture:true });
+document.addEventListener('keydown', acceptFirstAudioGesture, { once:true, capture:true });
 document.addEventListener('click', async (event) => {
   const target = event.target.closest('button[data-action]');
   if (!target && event.detail > 0 && event.target.matches('.title-screen')) {
-    state.titlePatrol?.shootAt(event.clientX, event.clientY);
+    if (state.titlePatrol?.hitsShip(event.clientX, event.clientY)) menu.querySelector('.title-ship')?.click();
+    else state.titlePatrol?.shootAt(event.clientX, event.clientY);
     return;
   }
-  if (target?.dataset.action === 'cancel-flight' && state.launch) { restoreLaunch(state.launch); return; }
   if (!target || target.disabled || state.busy) return;
   const command = {};
   state.busy = command;
@@ -1659,13 +1681,16 @@ modal.addEventListener('cancel', (event) => { event.preventDefault(); if (state.
 
 const stickKnob = $('flight-stick-knob');
 
-for (const type of ['gesturestart', 'gesturechange']) {
-  field.addEventListener(type, (event) => {
-    if (state.mode === 'playing' && event.cancelable) event.preventDefault();
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+  document.addEventListener(type, (event) => {
+    if (event.cancelable) event.preventDefault();
   }, { passive:false });
 }
-field.addEventListener('touchmove', (event) => {
-  if (state.mode === 'playing' && event.touches.length > 1 && event.cancelable) event.preventDefault();
+document.addEventListener('touchmove', (event) => {
+  if (event.touches.length > 1 && event.cancelable) event.preventDefault();
+}, { passive:false });
+document.addEventListener('wheel', (event) => {
+  if (event.ctrlKey && event.cancelable) event.preventDefault();
 }, { passive:false });
 
 sky.addEventListener('pointerdown', (event) => {
@@ -1729,7 +1754,7 @@ sky.addEventListener('pointerup', (event) => {
   const dx = flight.xIntent - flight.player.x;
   const dy = flight.yIntent - flight.player.y;
   const distance = Math.hypot(dx, dy);
-  const releaseTravel = flight.ship.speed * (flight.stats.speed ?? 1) * .19;
+  const releaseTravel = flight.speed * .19;
   if (distance > releaseTravel) {
     const trim = releaseTravel / distance - 1;
     flight.drag(dx * trim, dy * trim);
@@ -1747,7 +1772,6 @@ window.addEventListener('keydown', (event) => {
     if (!event.repeat) menu.querySelector('[data-action="story-continue"]')?.click();
   } else if (event.key === 'Escape' && state.launch) {
     event.preventDefault();
-    if (!event.repeat) restoreLaunch(state.launch);
   } else if (event.key === 'Escape' && state.mode === 'menu' && state.view === 'commerce') {
     event.preventDefault();
     if (!event.repeat) closeCommerce();
@@ -1784,7 +1808,7 @@ window.addEventListener('resize', () => {
   if (!field.hidden && state.flight) { renderer.resize(); renderer.draw(state.flight, appearance(state.flight.run.assistance)); }
 });
 
-const hapticPulse = { hurt:18, barrier:11, ghostStart:9, realmHop:9, ionBurst:12, bossDown:28, playerDown:25 };
+const hapticPulse = { hurt:18, barrier:11, ghostStart:9, realmHop:9, ionBurst:12, afterburner:10, overcharge:10, bossDown:28, playerDown:25 };
 let lastHaptic = -Infinity;
 
 function pulseFeedback(events, timestamp) {
@@ -1808,7 +1832,7 @@ function loop(timestamp) {
     const tick = globalThis.advanceFixedStep(clock, timestamp, (dt) => {
       const steering = state.pointer?.stick;
       if (steering && (steering.x || steering.y)) {
-        const travel = f.ship.speed * (f.stats.speed ?? 1) * FIXED_TICK;
+        const travel = f.speed * FIXED_TICK;
         f.drag(steering.x * travel, steering.y * travel);
       }
       f.step(FIXED_TICK);
@@ -1914,7 +1938,9 @@ async function boot() {
   catch { state.pilot = store.useTemporary(); }
   applyControlStyles(field, touchControlLayout(state.pilot.settings));
   audio.reflect(state.pilot.settings);
-  const returning = googleSignInAvailable && pendingGoogleReturn();
+  const accountLink = googleSignInAvailable && location.hash === '#account';
+  const returning = googleSignInAvailable && (pendingGoogleReturn() || accountLink);
+  if (accountLink) history.replaceState(null, '', location.pathname + location.search);
   show(returning ? 'account' : 'home', returning);
   if (nativeFlight) {
     window.addEventListener('stellar-commerce-change', (event) => updateCommerce(event.detail));

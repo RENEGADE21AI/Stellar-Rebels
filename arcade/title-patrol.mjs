@@ -38,7 +38,7 @@ function drawCraft(c, image, x, y, size, turn, luminosity, ship = '', thrust = 1
   c.globalAlpha = luminosity;
   const friendly = Boolean(ship);
   const sign = friendly ? -1 : 1;
-  const aft = friendly ? size * .40 : -size * .24;
+  const aft = friendly ? size * (ship === 'kestrel' ? .333 : .40) : -size * .24;
   const tail = aft - size * .67 * sign * thrust;
   const jet = c.createLinearGradient(0, aft, 0, tail);
   jet.addColorStop(0, friendly ? '#c4fffb' : '#fff3be');
@@ -67,7 +67,7 @@ function drawCraft(c, image, x, y, size, turn, luminosity, ship = '', thrust = 1
     c.closePath();
     c.fill();
   }
-  lamp(c, 0, -sign * size * .04, Math.max(.65, size * .026), friendly ? '#dffffe' : '#ffd0b5');
+  if (!friendly) lamp(c, 0, -sign * size * .04, Math.max(.65, size * .026), '#ffd0b5');
   c.restore();
 }
 
@@ -82,6 +82,8 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
   let lastFrame = 0;
   let started = null;
   let patrolCraft = [];
+  let hero = null;
+  let heroMask = null;
   let shot = null;
   let spark = null;
   let shotAt = -Infinity;
@@ -140,6 +142,7 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
   function paint() {
     if (!width || !height) return;
     c.setTransform(canvas.width / width, 0, 0, canvas.height / height, 0, 0);
+    c.imageSmoothingQuality = 'high';
     c.clearRect(0, 0, width, height);
     const launchPhase = started === null ? 0 : clamp((time - started) / .46);
     for (const speck of specks) {
@@ -179,8 +182,10 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
     const heroY = height * (heroOrigin - (heroOrigin + .25) * launchProgress) + hover * (1 - launchPhase) * 3.2;
     const heroSize = width * (heroScale + (.26 - heroScale) * launchProgress);
     const bank = (.12 + hover * .027) * (1 - launchPhase);
-    if (images.has(ship)) drawCraft(c, images.get(ship), width * .5, heroY, heroSize, bank,
-      1, ship, .13 + hover * .021 + launchPhase * .91);
+    if (images.has(ship)) {
+      hero = { x:width * .5, y:heroY, size:heroSize, bank };
+      drawCraft(c, images.get(ship), hero.x, hero.y, hero.size, hero.bank, 1, ship, .13 + hover * .021 + launchPhase * .91);
+    }
   }
 
   function frame(timestamp) {
@@ -216,12 +221,30 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
     void loadSprite(key, controller.signal, 4500).then((image) => {
       if (!image || controller.signal.aborted) return;
       images.set(key, image);
+      if (key === ship) {
+        const sample = document.createElement('canvas');
+        sample.width = sample.height = 128;
+        const probe = sample.getContext('2d');
+        probe.drawImage(image, 0, 0, 128, 128);
+        heroMask = probe.getImageData(0, 0, 128, 128).data;
+      }
       if (reduce) paint();
     });
   }
 
   if (!reduce) handle = requestAnimationFrame(frame);
   return {
+    hitsShip(clientX, clientY) {
+      if (!hero || !heroMask || started !== null) return false;
+      const bounds = canvas.getBoundingClientRect();
+      const dx = clientX - bounds.left - hero.x;
+      const dy = clientY - bounds.top - hero.y;
+      const cos = Math.cos(hero.bank);
+      const sin = Math.sin(hero.bank);
+      const x = Math.floor(128 * (.5 + (dx * cos + dy * sin) / hero.size));
+      const y = Math.floor(128 * (.5 + (dy * cos - dx * sin) / hero.size));
+      return x >= 0 && x < 128 && y >= 0 && y < 128 && heroMask[(y * 128 + x) * 4 + 3] >= 110;
+    },
     shootAt(clientX, clientY) {
       if (reduce || started !== null || shot || time - shotAt < .75) return;
       const bounds = canvas.getBoundingClientRect();

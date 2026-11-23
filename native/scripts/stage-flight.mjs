@@ -47,6 +47,7 @@ const built = await build({
       body += `\nwindow.addEventListener('stellar-native-pause', () => { pause(true); audio.setForeground(false); });\n`;
       body += `window.addEventListener('stellar-native-foreground', () => { audio.setForeground(true); if (state.mode === 'menu') audio.play('hangar'); });\n`;
       body += `window.addEventListener('stellar-native-music', (event) => { void nativeRequest('music', event.detail).catch(() => {}); });\n`;
+      body += `window.stellarOpenBrowserAccount = () => nativeRequest('open-browser-account').catch(() => false);\n`;
       body += `window.addEventListener('stellar-native-haptic', (event) => { void nativeRequest('haptic', event.detail).catch(() => {}); });\n`;
       return { contents: body, loader: 'js', resolveDir: source };
     });

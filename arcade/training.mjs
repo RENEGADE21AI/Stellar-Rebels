@@ -20,6 +20,12 @@ function prompt(flight, step) {
 export function startTraining(flight, drill = 'basics') {
   flight.practice = true;
   flight.player.ghostEnergy = 0;
+  if (drill === 'special' && ['afterburner', 'overcharge'].includes(flight.special)) {
+    const special = SPECIALS[flight.special];
+    flight.player.ghostEnergy = GHOST.capacity;
+    flight.message(`Tap ${special.label} or press Space. ${special.description}`, Infinity, 'training', special.name);
+    return { step:'boost', drill };
+  }
   const step = drill === 'special' ? 'shift' : 'steer';
   prompt(flight, step === 'shift' && flight.special === 'ion' ? 'burst' : step);
   return { step, drill, x:flight.player.x, y:flight.player.y, nextThreat:0 };
@@ -28,6 +34,11 @@ export function startTraining(flight, drill = 'basics') {
 export function advanceTraining(flight, training, events) {
   const p = flight.player;
   p.guard = Math.max(p.guard, 1.5);
+  if (training.step === 'boost' && events.some((event) => event.type === flight.special)) {
+    training.step = 'complete';
+    prompt(flight, 'complete');
+    return;
+  }
   if (training.step === 'steer' && Math.hypot(p.x - training.x, p.y - training.y) >= 43) {
     training.step = 'fire';
     prompt(flight, 'fire');
@@ -61,7 +72,7 @@ export function advanceTraining(flight, training, events) {
       prompt(flight, ion ? 'burstRetry' : 'retry');
     } else if (!training.cued && flight.shiftReady) {
       const inRange = ion ? Math.hypot(shot.x - p.x, shot.y - p.y) <= SPECIALS.ion.radius * .88
-        : p.y - shot.y <= shot.vy * GHOST.duration * .7;
+        : p.y - shot.y <= shot.vy * flight.ghostDuration * .7;
       if (inRange) {
         training.cued = true;
         prompt(flight, ion ? 'burstCue' : 'cue');

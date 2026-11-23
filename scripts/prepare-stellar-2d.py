@@ -118,8 +118,15 @@ def main():
             unit = isolated_foreground(source.crop(box))
             write(name, frame(unit, side, world, center, scale, box[:2], SOCKET_COLUMNS.get(name)))
 
+    # Keep the nozzle centered at the authored exhaust mount in the 58-unit world cell.
+    with Image.open(SOURCE / 'fighter-nozzle.png') as source:
+        fighter = source.convert('RGBA').crop((31, 44, 1271, 1086))
+        fighter.thumbnail((530, 530), Image.Resampling.LANCZOS)
+        cell = Image.new('RGBA', (600, 600))
+        cell.paste(fighter, ((cell.width - fighter.width) // 2, 63))
+        write('kestrel', cell)
+
     legacy = [
-        ('kestrel', 'player', 300, 58, (248.5, 256), .101, False),
         ('scout', 'enemy-red', 192, 43, (224, 191.5), .091, True),
         ('escort', 'enemy-shieldbearer', 224, 54, (224, 203), .099, False),
         ('phantom', 'enemy-phantom', 224, 59, (212, 225), .101, True),

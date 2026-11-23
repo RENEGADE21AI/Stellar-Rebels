@@ -9,6 +9,8 @@ const canopies = {
   needle: [[-2.5, -12, 2.5, -7], [-4.5, -7, 4.5, 7], [-3.5, 7, 3.5, 12]],
   bastion: [[-6, -14, 6, -8], [-9, -8, 9, 8], [-6, 8, 6, 14]]
 };
+// Measured along the new Fighter's cyan canopy in the 58-unit combat sprite.
+const fighterCanopy = [[-3,-6,3,-2], [-5,-2,5,8], [-3,8,3,13]];
 
 // The Wraith's lit crystal and its supporting cage are the damageable center.
 const wraithCore = [[-7,-28,7,-22], [-14,-22,14,-12], [-17,-12,17,10],
@@ -119,7 +121,9 @@ export function contactTime(a, b) {
 export const bodiesMeet = (a, b) => contactTime(a, b) !== Infinity;
 
 export function pilotBody(flight) {
-  return bodyAt(canopies[flight.run.ship] ?? canopies.kestrel, flight.player, flight.player.bank);
+  const { ship } = flight.run;
+  const profile = flight.rebalanced && ship === 'kestrel' ? fighterCanopy : canopies[ship] ?? canopies.kestrel;
+  return bodyAt(profile, flight.player, flight.player.bank);
 }
 
 function spriteBody(key, body, size, turn = 0, parent = body) {

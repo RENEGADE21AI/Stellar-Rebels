@@ -1,4 +1,4 @@
-import { AIM_PRECISION, ENDLESS_BOSSES, ENEMIES, GHOST, GUNNER_MUZZLES, HEIGHT, INPUT_RESUME, INPUT_SHIFT, LEGACY_ENDLESS_BOSSES, PICKUPS, RULES_VERSION, SHIPS, SPECIALS, WIDTH, enemyMuzzle, formation, hardpointAt, legacyStageById, stageById, weaponStats } from './catalog.mjs';
+import { AIM_PRECISION, ENDLESS_BOSSES, ENEMIES, GHOST, GUNNER_MUZZLES, HEIGHT, INPUT_RESUME, INPUT_SHIFT, LEGACY_ENDLESS_BOSSES, PICKUPS, PREVIOUS_RULES, RULES_VERSION, SHIPS, SPECIALS, WIDTH, enemyMuzzle, formation, hardpointAt, legacyStageById, stageById, weaponStats } from './catalog.mjs';
 import { advanceBoss, bossPartPosition, launchBoss, operatorWarnings } from './bosses.mjs';
 import { markPull, markRail, markWall } from './boss-patterns.mjs';
 import { VANE_HULL, breakFormation, commandCharge, linkedVolley, vanePosition } from './formations.mjs';
@@ -19,6 +19,21 @@ const endlessFlanks = new Set(['spear', 'anvil', 'hook', 'trap', 'surge', 'spect
 const armorPerTier = { lancer:.18, sweeper:.21, escort:.18, relay:.14 };
 const projectileRadii = { bolt: 4, seed: 4.5, rock: 12, lance: 4.8, blade: 5, pulse: 4.7, orb: 5.1, specter: 5.4 };
 const duration = (value) => Math.max(0, value);
+const reinforcementWings = ['screen', 'returnPatrol', 'cross'];
+
+function reinforcementSchedule(stage) {
+  const encounters = [stage.bossAt, ...(stage.cruisers ?? []).map((ship) => ship.at)];
+  const waves = stage.waves.flatMap(([at, , , reward], index) => {
+    const after = stage.waves[index + 1];
+    const next = after?.[0] ?? stage.bossAt;
+    const mid = (at + next) / 2;
+    if (reward === 'priority' || after?.[3] === 'priority' || mid < 12 || next - at < 7 ||
+        encounters.some((entry) => Math.abs(mid - entry) < 6)) return [];
+    const wing = stage.number >= 7 && !stage.side && index % 4 === 2 ? 'specters' : reinforcementWings[index % reinforcementWings.length];
+    return [[mid, wing, index % 2]];
+  });
+  return [...stage.waves, ...waves].sort((a, b) => a[0] - b[0]);
+}
 
 function impactAt(shot, time) {
   const x = shot.px ?? shot.x;
@@ -30,6 +45,7 @@ export class Flight {
   constructor(run, options = {}) {
     this.run = run;
     this.legacy = run.rules === 'arcade-11';
+    this.rebalanced = !this.legacy && run.rules !== PREVIOUS_RULES;
     this.random = flightRandom(run.seed);
     this.flankRandom = flightRandom(run.seed, routeStream);
     this.recordInput = options.recordInput;
@@ -37,14 +53,15 @@ export class Flight {
     this.inputFlags = 0;
     this.nextResumeGuard = 0;
     this.ship = SHIPS[run.ship] ?? SHIPS.kestrel;
-    this.special = run.special === 'ion' ? 'ion' : 'ghost';
-    this.stats = weaponStats(this.legacy ? run.equipment : run.tiers ?? run.equipment);
+    this.special = Object.hasOwn(SPECIALS, run.special) ? run.special : 'ghost';
+    this.stats = weaponStats(this.legacy ? run.equipment : run.tiers ?? {}, this.rebalanced);
     const getStage = this.legacy ? legacyStageById : stageById;
     this.stage = getStage(run.stage, run.variant ?? run.mode) ?? getStage(1);
     this.mission = this.legacy ? this.stage.id : this.stage.number;
     this.difficultyMission = this.stage.side ? this.stage.requires + 1 : this.mission;
     this.veteran = !this.legacy && (run.variant === 'veteran' || run.mode === 'veteran');
     this.endless = run.mode === 'endless';
+    this.waves = this.rebalanced && !this.endless ? reinforcementSchedule(this.stage) : this.stage.waves;
     this.status = 'active';
     this.elapsed = 0;
     this.score = 0;
@@ -90,7 +107,7 @@ export class Flight {
     this.player = {
       x: this.xIntent, y: this.yIntent, hull: maxHull, maxHull,
       guard: 1.6, barrier: 0, barrierTime: 0, power: 0, overdrive: 0, bank: 0,
-      realm: PHYSICAL, ghostEnergy: GHOST.start, ghostTime: 0, ghostRecovery: 0, ghostEarnAt: 0
+      realm: PHYSICAL, ghostEnergy: GHOST.start, ghostTime: 0, specialTime: 0, ghostRecovery: 0, ghostEarnAt: 0
     };
     this.message(this.endless ? 'Survive as long as you can.' : this.stage.brief, 3, 'intro', this.endless ? 'Endless' : this.stage.name);
   }
@@ -101,6 +118,10 @@ export class Flight {
   }
 
   get movementBounds() { return bounds; }
+  get speed() {
+    const boost = this.player.specialTime && this.special === 'afterburner' ? SPECIALS.afterburner.speed : 1;
+    return this.ship.speed * this.stats.speed * boost;
+  }
 
   drag(dx, dy) {
     const area = this.movementBounds;
@@ -139,9 +160,11 @@ export class Flight {
 
   get realmHop() { return this.boss?.kind === 'wraith'; }
   get ghostCost() { return this.realmHop ? GHOST.hop : SPECIALS[this.special].cost; }
+  get ghostDuration() { return this.rebalanced ? GHOST.duration : GHOST.previousDuration; }
   get shiftReady() {
     const p = this.player;
-    return this.status === 'active' && p.ghostEnergy >= this.ghostCost && !p.ghostTime && !p.ghostRecovery;
+    return this.status === 'active' && p.ghostEnergy >= this.ghostCost &&
+      (this.realmHop ? !p.ghostRecovery : !p.ghostTime && !p.specialTime && !p.ghostRecovery);
   }
 
   activateGhost() {
@@ -160,11 +183,16 @@ export class Flight {
         (shot.realm ?? PHYSICAL) !== PHYSICAL || (shot.x - p.x) ** 2 + (shot.y - p.y) ** 2 > radius ** 2);
       p.ghostRecovery = recovery;
       this.signal('ionBurst', p.x, p.y, { radius, cleared: count - this.hostile.length });
-    } else {
+    } else if (this.special === 'ghost') {
       p.realm = SPECTRAL;
-      p.ghostTime = GHOST.duration;
-      p.ghostRecovery = GHOST.duration + GHOST.recovery;
+      p.ghostTime = this.ghostDuration;
+      p.ghostRecovery = this.ghostDuration + GHOST.recovery;
       this.signal('ghostStart', p.x, p.y);
+    } else {
+      const { duration: activeTime, recovery } = SPECIALS[this.special];
+      p.specialTime = activeTime;
+      p.ghostRecovery = activeTime + recovery;
+      this.signal(this.special, p.x, p.y);
     }
     return true;
   }
@@ -246,7 +274,7 @@ export class Flight {
       p.barrier = 1;
       p.barrierTime = type.duration;
     } else if (drop.kind === 'repair') {
-      const add = Math.min(type.hull, p.maxHull - p.hull);
+      const add = Math.min(this.rebalanced ? type.hull : 2, p.maxHull - p.hull);
       p.hull += add;
       this.message(add ? `+${add} hull restored` : 'Hull already full', 2, 'pickup', type.name, add ? `+${add} hull` : 'Hull full');
     } else p[drop.kind] = type.duration;
@@ -351,7 +379,8 @@ export class Flight {
     const wing = loop[this.endlessWave % unlocked];
     const flip = this.endlessWave >= 8 && endlessFlanks.has(wing) ? this.flankRandom() < .5 : this.endlessWave % 2 === 1;
     this.queue(wing, flip);
-    this.endlessNext = this.elapsed + Math.max(3.25, 6.1 - this.elapsed / 95);
+    const interval = Math.max(3.25, 6.1 - this.elapsed / 95);
+    this.endlessNext = this.elapsed + (this.rebalanced ? interval * .83 : interval);
     this.countEndlessWing();
   }
 
@@ -372,7 +401,7 @@ export class Flight {
     } else {
       this.pressure = 1.08 + (this.legacy ? .035 : .013) * (this.difficultyMission - 1) +
         Math.min(.075, this.elapsed / 1400) + (this.veteran ? .055 : 0);
-      const beat = this.stage.waves[this.waveIndex];
+      const beat = this.waves[this.waveIndex];
       if (beat && this.elapsed >= beat[0]) {
         const [, wing, flank, reward] = beat;
         this.queue(wing, flank === 'flank' ? this.flankRandom() < .5 : Boolean(flank), reward);
@@ -445,8 +474,9 @@ export class Flight {
     } else if (!this.practice && p.ghostEnergy < GHOST.capacity) {
       this.earnGhost(GHOST.recharge * (this.stats.recharge ?? 1) * dt);
     }
+    p.specialTime = duration(p.specialTime - dt);
     p.ghostRecovery = duration(p.ghostRecovery - dt);
-    const speed = this.ship.speed * (this.stats.speed ?? 1);
+    const speed = this.speed;
     if (this.keys) this.drag(this.keys.x * speed * dt, this.keys.y * speed * dt);
     const area = this.movementBounds;
     const aimX = recordedAim ? recordedAim[0] : Math.round(this.xIntent * AIM_PRECISION);
@@ -477,19 +507,20 @@ export class Flight {
     this.fireTimer -= dt;
     if (this.fireTimer > 0) return;
     const boosted = p.overdrive > 0;
+    const damageBoost = p.specialTime && this.special === 'overcharge' ? SPECIALS.overcharge.damage : 1;
     this.fireTimer += Math.max(.095, this.ship.interval / this.stats.rate / (boosted ? 1.56 : 1));
     const emit = ([dx, dy, angle, value], powered = false) => {
       const { x, y } = hardpointAt(p, dx, dy, p.bank);
       const speed = this.run.ship === 'needle' ? 782 : 685;
       this.friendly.push({ x, y, px: x, py: y, vx: Math.sin(angle) * speed, vy: -Math.cos(angle) * speed,
-        strength: value * this.stats.damage * (boosted ? 1.21 : 1), powered, live: true, realm: p.realm });
+        strength: value * this.stats.damage * damageBoost * (boosted ? 1.21 : 1), powered, charged:damageBoost > 1, live: true, realm: p.realm });
     };
     this.ship.guns.forEach((gun) => emit(gun));
     if (p.power) {
       emit([-13, -5, -.33, .62], true);
       emit([13, -5, .33, .62], true);
     }
-    this.signal('shot', p.x, p.y - 12, boosted ? 'boost' : this.run.ship);
+    this.signal('shot', p.x, p.y - 12, boosted || damageBoost > 1 ? 'boost' : this.run.ship);
   }
 
   enemyFire(e) {
@@ -507,7 +538,7 @@ export class Flight {
       case 'escort': this.fan(x, y, Math.PI / 2, 3, .29, 136, 'seed', undefined, e); break;
       case 'relay': this.fan(x, y, aim, 2, .27, 165, 'pulse', undefined, e); break;
       case 'phantom': {
-        const physical = e.volley % 2 === 1;
+        const physical = this.rebalanced ? e.realm !== SPECTRAL : e.volley % 2 === 1;
         this.fan(x, y, aim, 3, .24, 158, physical ? 'orb' : 'specter', { realm: physical ? PHYSICAL : SPECTRAL }, e);
         break;
       }
@@ -562,6 +593,11 @@ export class Flight {
       if (e.hull <= 0) continue;
       rememberPosition(e);
       e.age += dt;
+      if (this.rebalanced && e.kind === 'phantom') {
+        const shift = (e.age + (e.side === 1 ? 0 : .37)) % 4.2;
+        e.realm = shift >= 2.6 && shift < 3.45 ? SPECTRAL : PHYSICAL;
+        e.phaseCue = shift >= 2.34 && shift < 2.6;
+      }
       e.flash = duration(e.flash - dt);
       e.jam = duration(e.jam - dt);
       if (e.retreat) {
@@ -784,7 +820,8 @@ export class Flight {
       let target = null;
       let hitsVane = false;
       for (const entry of targets) {
-        if (entry.enemy.hull <= 0) continue;
+        if (entry.enemy.hull <= 0 || this.rebalanced && entry.enemy.kind === 'phantom' &&
+            (entry.enemy.realm ?? PHYSICAL) !== (s.realm ?? PHYSICAL)) continue;
         const bodyHit = contactTime(beam, entry.body);
         const vaneHit = entry.relay && entry.enemy.vane > 0 ? contactTime(beam, entry.relay) : Infinity;
         const time = Math.min(bodyHit, vaneHit);
@@ -869,8 +906,9 @@ export class Flight {
     const cockpit = pilotBody(this);
     for (const e of this.enemies) {
       if (e.kind === 'shard' && e.age < shardArmTime) continue;
-      if (p.realm === PHYSICAL && !p.guard && e.hull > 0 && !e.retreat && !e.loop && bodiesMeet(enemyBody(e), cockpit)) {
-        if (this.damage(e.x, e.y)) e.retreat = true;
+      const realm = e.realm ?? PHYSICAL;
+      if (p.realm === realm && !p.guard && e.hull > 0 && !e.retreat && !e.loop && bodiesMeet(enemyBody(e), cockpit)) {
+        if (this.damage(e.x, e.y, realm)) e.retreat = true;
       }
     }
     for (const ship of [this.cruiser, this.boss]) {

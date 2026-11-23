@@ -177,6 +177,11 @@ function Game() {
       reply(true);
       return;
     }
+    if (request.op === 'open-browser-account') {
+      if (AppState.currentState !== 'active') { reply(false); return; }
+      void Linking.openURL('https://stellar-rebels.web.app/#account').then(() => reply(true), () => reply(false));
+      return;
+    }
     if (request.op === 'rate-app') {
       void openStoreRating(Platform.OS, {
         available: ratingAvailable,
@@ -250,6 +255,8 @@ function Game() {
     automaticallyAdjustContentInsets={false}
     contentInsetAdjustmentBehavior="never"
     scalesPageToFit={false}
+    setBuiltInZoomControls={false}
+    setDisplayZoomControls={false}
     bounces={false}
     overScrollMode="never"
     setSupportMultipleWindows={false}
