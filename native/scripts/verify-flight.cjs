@@ -92,6 +92,12 @@ async function check(engine, viewport) {
     await page.goto(entry);
     await page.getByRole('button', { name: 'Play', exact:true }).waitFor();
     await page.waitForFunction(() => window.lastNativeMusic === 'hangar');
+    await page.evaluate(async () => {
+      const fighter = new Image();
+      fighter.src = new URL('media/sprites/kestrel.png', document.baseURI).href;
+      await fighter.decode();
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    });
     const sprite = await page.locator('.title-patrol').boundingBox();
     const shipCenter = { x:sprite.x + sprite.width * .5, y:sprite.y + sprite.height * .44 };
     await page.touchscreen.tap(shipCenter.x - sprite.width * .19, shipCenter.y - sprite.width * .16);
@@ -173,7 +179,7 @@ async function check(engine, viewport) {
     assert.deepEqual(diagnostics.webRequests, []);
     assert.deepEqual(diagnostics.failedFiles, []);
     assert.deepEqual(diagnostics.scriptErrors, []);
-    assert.deepEqual([...diagnostics.bridge].sort(), ['commerce-status', 'haptic', 'load', 'music', 'rating-status', 'save']);
+    assert.deepEqual([...diagnostics.bridge].sort(), ['commerce-status', 'haptic', 'load', 'music', 'open-browser-account', 'rating-status', 'save']);
     await page.screenshot({ path: path.join(output, `${engine.name()}.png`) });
     return { engine: engine.name(), viewport, musicBridge: music, helpPagesOpen: true, unpublishedRatingDisabled: true, settingsPersisted: true, interruptionPaused: true, hapticBridge: haptics, offlineRequests: 0 };
   } finally {

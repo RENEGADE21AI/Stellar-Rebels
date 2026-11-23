@@ -1618,13 +1618,23 @@ function acceptFirstAudioGesture() {
 }
 document.addEventListener('click', acceptFirstAudioGesture, { once:true, capture:true });
 document.addEventListener('keydown', acceptFirstAudioGesture, { once:true, capture:true });
+let titleTap;
+menu.addEventListener('pointerdown', (event) => {
+  if (event.button === 0 && event.isPrimary && event.target.matches('.title-screen')) {
+    titleTap = { id:event.pointerId, x:event.clientX, y:event.clientY, screen:event.target };
+  }
+});
+menu.addEventListener('pointercancel', () => { titleTap = null; });
+menu.addEventListener('pointerup', (event) => {
+  if (titleTap?.id !== event.pointerId) return;
+  const tap = titleTap;
+  titleTap = null;
+  if (event.target !== tap.screen || Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > 9) return;
+  if (state.titlePatrol?.hitsShip(event.clientX, event.clientY)) menu.querySelector('.title-ship')?.click();
+  else state.titlePatrol?.shootAt(event.clientX, event.clientY);
+});
 document.addEventListener('click', async (event) => {
   const target = event.target.closest('button[data-action]');
-  if (!target && event.detail > 0 && event.target.matches('.title-screen')) {
-    if (state.titlePatrol?.hitsShip(event.clientX, event.clientY)) menu.querySelector('.title-ship')?.click();
-    else state.titlePatrol?.shootAt(event.clientX, event.clientY);
-    return;
-  }
   if (!target || target.disabled || state.busy) return;
   const command = {};
   state.busy = command;
