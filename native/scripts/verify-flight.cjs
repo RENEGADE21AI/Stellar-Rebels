@@ -33,7 +33,7 @@ assert.ok(zip.length < 12 * 1024 * 1024);
 
 async function check(engine, viewport) {
   const browser = await engine.launch();
-  const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true });
+  const context = await browser.newContext({ viewport, hasTouch:true, isMobile:true, reducedMotion:'reduce' });
   await context.route(/^https?:/, (route) => route.abort());
   const page = await context.newPage();
   const diagnostics = { webRequests: [], failedFiles: [], scriptErrors: [], bridge: new Set() };
@@ -92,10 +92,17 @@ async function check(engine, viewport) {
     await page.goto(entry);
     await page.getByRole('button', { name: 'Play', exact:true }).waitFor();
     await page.waitForFunction(() => window.lastNativeMusic === 'hangar');
+    const sprite = await page.locator('.title-patrol').boundingBox();
+    const shipCenter = { x:sprite.x + sprite.width * .5, y:sprite.y + sprite.height * .44 };
+    await page.touchscreen.tap(shipCenter.x - sprite.width * .19, shipCenter.y - sprite.width * .16);
+    assert.equal(await page.getByRole('button', { name:'Play', exact:true }).isVisible(), true);
+    await page.touchscreen.tap(shipCenter.x, shipCenter.y);
+    await page.getByRole('heading', { name:'Hangar', exact:true }).waitFor({ timeout:6500 });
     const settings = page.getByRole('button', { name: 'Settings', exact: true });
     const more = page.getByRole('button', { name:'More', exact:true });
     const account = page.getByRole('button', { name:'Account', exact:true });
     const back = page.getByRole('button', { name: 'Back', exact: true });
+    await back.tap();
     await more.tap();
     await account.tap();
     await page.getByRole('button', { name:'Open browser account', exact:true }).tap();

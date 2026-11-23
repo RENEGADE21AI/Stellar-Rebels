@@ -851,6 +851,11 @@ test('results scope record comparisons and link back to the Title Screen', { ski
         await page.getByRole('heading', { name, exact:true }).waitFor();
         const title = button('Title Screen');
         await title.waitFor();
+        if (status === 'defeat') {
+          const afterFlight = page.getByRole('navigation', { name:'After the flight' });
+          assert.deepEqual(await afterFlight.getByRole('button').allTextContents(), ['Upgrades', 'Title Screen']);
+          assert.equal(await button(mode === 'endless' ? 'Fly again' : 'Retry').isVisible(), true);
+        }
         const comparison = page.locator('.result-comparison');
         if (seedOlderBest) {
           await comparison.waitFor();

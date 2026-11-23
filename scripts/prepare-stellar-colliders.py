@@ -5,6 +5,7 @@ wings, prongs and nearby modules. One soft edge or glowing pixel cannot create
 a collision surface. The web build checks the source digests.
 """
 
+import base64
 import hashlib
 import json
 from pathlib import Path
@@ -17,6 +18,17 @@ SPRITES = ROOT / 'media' / 'sprites'
 SMALL = ('scout', 'lancer', 'diver', 'sweeper', 'escort', 'relay', 'phantom', 'splitter', 'shard', 'rock', 'turret', 'shield-node')
 LARGE = ('cruiser', 'gatekeeper', 'warden', 'matron', 'tyrant', 'siphon', 'wraith', 'crown')
 PILOTS = ('kestrel', 'needle', 'bastion')
+TITLE_MASK_SIZE = 128
+
+
+def title_hit_mask(source):
+    with Image.open(source) as image:
+        alpha = image.getchannel('A').resize((TITLE_MASK_SIZE, TITLE_MASK_SIZE), Image.Resampling.BOX)
+    mask = bytearray(TITLE_MASK_SIZE * TITLE_MASK_SIZE // 8)
+    for index, value in enumerate(alpha.tobytes()):
+        if value >= 110:
+            mask[index // 8] |= 1 << (index % 8)
+    return base64.b64encode(mask).decode('ascii')
 
 
 def horizontal_runs(row, width):
@@ -69,6 +81,8 @@ def main():
         lines.append('  ],')
     lines.extend(('};', '', 'export const spriteColliderDigests = {'))
     lines.extend(f'  {json.dumps(key)}: {json.dumps(value)},' for key, value in hashes.items())
+    lines.extend(('};', '', f'export const titleMaskSize = {TITLE_MASK_SIZE};', 'export const titleHitMasks = {'))
+    lines.extend(f'  {json.dumps(key)}: {json.dumps(title_hit_mask(SPRITES / (key + ".png")))},' for key in PILOTS)
     lines.extend(('};', ''))
     (ROOT / 'silhouettes.mjs').write_text('\n'.join(lines), encoding='utf-8', newline='\n')
 

@@ -656,7 +656,7 @@ function results() {
   const pendingCopy = p.discarded ? '<p class="result-warning" role="status">This flight was temporary. Your existing device save is active.</p>'
     : !p.receipt ? `<p class="result-warning" role="status">${p.error || 'Saving flight…'}</p>` : '';
   const buyable = p.receipt && clear && Object.keys(UPGRADES).some((key) => canInstall(state.pilot, key));
-  const primary = p.discarded ? action('Return to Campaign', 'view:stages', 'primary')
+  const primary = p.discarded ? (clear ? action('Return to Campaign', 'view:stages', 'primary') : action('Title Screen', 'view:home', 'primary'))
     : !p.receipt ? (p.error ? action('Retry saving', 'settle', 'primary', 'check') : '')
     : next && !preview ? action('Next Mission', `${fly}:${next.id}`, 'primary', 'next', `aria-label="Next Mission · ${next.name}"`)
       : finale ? action('Return to Campaign', 'view:stages', 'primary') : action(repeat, retry, 'primary');
@@ -664,10 +664,11 @@ function results() {
     : p.receipt.masteryMet ? `Mastery repeated · ${stage.mastery.name}` : ''}</p>` : '';
   const comparison = clear || p.receipt?.loadout?.improved ? resultComparison(p.receipt) : '';
   const secondary = [
-    p.receipt && !finale ? action('Campaign', 'view:stages', 'quiet', '') : '',
-    p.receipt || p.discarded ? action('Title Screen', 'view:home', 'quiet', '') : '',
-    p.receipt && ((next && !preview) || finale) ? action(repeat, retry, 'quiet', '') : '',
-    p.receipt ? action(buyable ? 'Upgrades' : 'Hangar', buyable ? 'shop:result' : 'hangar:result', 'quiet', '') : '',
+    p.receipt && clear && !finale ? action('Campaign', 'view:stages', 'quiet', '') : '',
+    p.receipt && !clear ? action('Upgrades', 'shop:result', 'quiet', '') : '',
+    p.receipt || (p.discarded && clear) ? action('Title Screen', 'view:home', 'quiet', '') : '',
+    p.receipt && clear && ((next && !preview) || finale) ? action(repeat, retry, 'quiet', '') : '',
+    p.receipt && clear ? action(buyable ? 'Upgrades' : 'Hangar', buyable ? 'shop:result' : 'hangar:result', 'quiet', '') : '',
     !p.receipt && p.error ? action('Leave unsaved', 'discard', 'quiet', '') : ''
   ].filter(Boolean);
   return `<article class="screen result-screen" data-outcome="${clear ? 'clear' : 'finished'}">

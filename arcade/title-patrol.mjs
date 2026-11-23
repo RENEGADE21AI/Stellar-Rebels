@@ -1,4 +1,5 @@
 import { loadSprite } from './scene.mjs';
+import { titleHitMasks, titleMaskSize } from './silhouettes.mjs';
 
 const depths = [
   { ships:['scout','diver','escort','phantom'], y:.39, size:.047, speed:23, rest:5, light:.55, warm:.49, members:4 },
@@ -83,7 +84,7 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
   let started = null;
   let patrolCraft = [];
   let hero = null;
-  let heroMask = null;
+  const heroMask = atob(titleHitMasks[ship] ?? titleHitMasks.kestrel);
   let shot = null;
   let spark = null;
   let shotAt = -Infinity;
@@ -221,13 +222,6 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
     void loadSprite(key, controller.signal, 4500).then((image) => {
       if (!image || controller.signal.aborted) return;
       images.set(key, image);
-      if (key === ship) {
-        const sample = document.createElement('canvas');
-        sample.width = sample.height = 128;
-        const probe = sample.getContext('2d');
-        probe.drawImage(image, 0, 0, 128, 128);
-        heroMask = probe.getImageData(0, 0, 128, 128).data;
-      }
       if (reduce) paint();
     });
   }
@@ -235,15 +229,17 @@ export function mountTitlePatrol(canvas, reduce = false, ship = 'kestrel') {
   if (!reduce) handle = requestAnimationFrame(frame);
   return {
     hitsShip(clientX, clientY) {
-      if (!hero || !heroMask || started !== null) return false;
+      if (!hero || started !== null) return false;
       const bounds = canvas.getBoundingClientRect();
       const dx = clientX - bounds.left - hero.x;
       const dy = clientY - bounds.top - hero.y;
       const cos = Math.cos(hero.bank);
       const sin = Math.sin(hero.bank);
-      const x = Math.floor(128 * (.5 + (dx * cos + dy * sin) / hero.size));
-      const y = Math.floor(128 * (.5 + (dy * cos - dx * sin) / hero.size));
-      return x >= 0 && x < 128 && y >= 0 && y < 128 && heroMask[(y * 128 + x) * 4 + 3] >= 110;
+      const x = Math.floor(titleMaskSize * (.5 + (dx * cos + dy * sin) / hero.size));
+      const y = Math.floor(titleMaskSize * (.5 + (dy * cos - dx * sin) / hero.size));
+      if (x < 0 || x >= titleMaskSize || y < 0 || y >= titleMaskSize) return false;
+      const pixel = y * titleMaskSize + x;
+      return (heroMask.charCodeAt(pixel >> 3) & (1 << (pixel & 7))) !== 0;
     },
     shootAt(clientX, clientY) {
       if (reduce || started !== null || shot || time - shotAt < .75) return;
